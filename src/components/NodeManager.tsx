@@ -3,7 +3,10 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Plus, X } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import { Plus, X, Sparkles, Upload } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 import type { Node } from '@/types/sentiment';
 
 interface NodeManagerProps {
@@ -13,7 +16,10 @@ interface NodeManagerProps {
 
 export function NodeManager({ nodes, onNodesChange }: NodeManagerProps) {
   const [newNodeName, setNewNodeName] = useState('');
+  const [bulkNodeText, setBulkNodeText] = useState('');
   const [newKeyword, setNewKeyword] = useState<Record<string, string>>({});
+  const [isGenerating, setIsGenerating] = useState(false);
+  const { toast } = useToast();
 
   const addNode = () => {
     if (!newNodeName.trim() || nodes.length >= 10) return;
@@ -26,6 +32,124 @@ export function NodeManager({ nodes, onNodesChange }: NodeManagerProps) {
     
     onNodesChange([...nodes, newNode]);
     setNewNodeName('');
+  };
+
+  const addBulkNodes = () => {
+    if (!bulkNodeText.trim()) return;
+    
+    // Split by newlines and filter out empty strings
+    const nodeNames = bulkNodeText
+      .split(/\r?\n/)
+      .map(name => name.trim())
+      .filter(name => name.length > 0);
+    
+    const remainingSlots = 10 - nodes.length;
+    const nodesToAdd = nodeNames.slice(0, remainingSlots);
+    
+    if (nodesToAdd.length === 0) {
+      toast({
+        title: "No nodes to add",
+        description: "Either all slots are full or no valid node names found.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    const newNodes: Node[] = nodesToAdd.map((name, index) => ({
+      id: `node-${Date.now()}-${index}`,
+      name: name,
+      keywords: [],
+    }));
+    
+    onNodesChange([...nodes, ...newNodes]);
+    setBulkNodeText('');
+    
+    toast({
+      title: "Nodes added",
+      description: `Added ${newNodes.length} node${newNodes.length > 1 ? 's' : ''} successfully.`,
+    });
+  };
+
+  const generateKeywords = async (nodeId: string) => {
+    const node = nodes.find(n => n.id === nodeId);
+    if (!node) return;
+    
+    setIsGenerating(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-keywords', {
+        body: { nodeName: node.name }
+      });
+      
+      if (error) throw error;
+      
+      const keywords = data.keywords as string[];
+      onNodesChange(nodes.map(n => 
+        n.id === nodeId 
+          ? { ...n, keywords: [...n.keywords, ...keywords] }
+          : n
+      ));
+      
+      toast({
+        title: "Keywords generated",
+        description: `Added ${keywords.length} keywords to ${node.name}`,
+      });
+    } catch (error) {
+      console.error('Error generating keywords:', error);
+      toast({
+        title: "Error",
+        description: "Failed to generate keywords. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const generateAllKeywords = async () => {
+    if (nodes.length === 0) return;
+    
+    setIsGenerating(true);
+    toast({
+      title: "Generating keywords",
+      description: `Processing ${nodes.length} nodes...`,
+    });
+    
+    try {
+      let updatedNodes = [...nodes];
+      
+      for (const node of nodes) {
+        const { data, error } = await supabase.functions.invoke('generate-keywords', {
+          body: { nodeName: node.name }
+        });
+        
+        if (error) {
+          console.error(`Error generating keywords for ${node.name}:`, error);
+          continue;
+        }
+        
+        const keywords = data.keywords as string[];
+        updatedNodes = updatedNodes.map(n => 
+          n.id === node.id 
+            ? { ...n, keywords: [...n.keywords, ...keywords] }
+            : n
+        );
+        onNodesChange(updatedNodes);
+      }
+      
+      toast({
+        title: "Keywords generated",
+        description: `Successfully generated keywords for all nodes`,
+      });
+    } catch (error) {
+      console.error('Error generating keywords:', error);
+      toast({
+        title: "Error",
+        description: "Some keywords failed to generate.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const removeNode = (id: string) => {
@@ -62,7 +186,7 @@ export function NodeManager({ nodes, onNodesChange }: NodeManagerProps) {
             Create up to 10 topic nodes with keywords for classification
           </p>
 
-          <div className="flex gap-2 mb-6">
+          <div className="flex gap-2 mb-4">
             <Input
               placeholder="Enter node name (e.g., Funding Access)"
               value={newNodeName}
@@ -77,6 +201,37 @@ export function NodeManager({ nodes, onNodesChange }: NodeManagerProps) {
               <Plus className="w-4 h-4 mr-2" />
               Add Node
             </Button>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Or paste multiple nodes:</label>
+            <Textarea
+              placeholder="Paste node names here (one per line)&#10;&#10;Example:&#10;Funding Outlook & Sustainability&#10;Open Science & Transparency&#10;Collaboration & Community"
+              value={bulkNodeText}
+              onChange={(e) => setBulkNodeText(e.target.value)}
+              disabled={nodes.length >= 10}
+              className="min-h-[120px]"
+            />
+            <div className="flex gap-2">
+              <Button 
+                onClick={addBulkNodes}
+                disabled={!bulkNodeText.trim() || nodes.length >= 10}
+                variant="secondary"
+              >
+                <Upload className="w-4 h-4 mr-2" />
+                Add All Nodes
+              </Button>
+              {nodes.length > 0 && (
+                <Button 
+                  onClick={generateAllKeywords}
+                  disabled={isGenerating}
+                  variant="outline"
+                >
+                  <Sparkles className="w-4 h-4 mr-2" />
+                  {isGenerating ? 'Generating...' : 'Generate Keywords for All'}
+                </Button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -123,6 +278,14 @@ export function NodeManager({ nodes, onNodesChange }: NodeManagerProps) {
                   disabled={!newKeyword[node.id]?.trim()}
                 >
                   Add
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => generateKeywords(node.id)}
+                  disabled={isGenerating}
+                >
+                  <Sparkles className="w-4 h-4" />
                 </Button>
               </div>
             </Card>
