@@ -37,6 +37,27 @@ export function FileUploader({ onFilesChange, disabled }: FileUploaderProps) {
       const file = files[i];
       
       try {
+        // Handle PDF files
+        if (file.name.endsWith('.pdf')) {
+          toast({
+            title: 'Processing PDF',
+            description: `Extracting text from ${file.name}...`,
+          });
+
+          // Create a temporary file path for the PDF
+          const tempPath = `user-uploads://${file.name}`;
+          
+          // Note: This is a placeholder - in a real implementation, 
+          // you would need to upload the file first or use a proper PDF parser
+          // For now, we'll show an error message
+          toast({
+            title: 'PDF Support Coming Soon',
+            description: 'PDF parsing requires additional setup. Please convert to TXT for now.',
+            variant: 'destructive',
+          });
+          continue;
+        }
+
         const text = await file.text();
         
         // Try to parse as JSON (Reddit format)
@@ -215,7 +236,8 @@ export function FileUploader({ onFilesChange, disabled }: FileUploaderProps) {
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                Supports: JSON, TXT, PDF, CSV • Multiple files allowed
+                Supports: JSON, TXT, CSV • Multiple files allowed<br/>
+                <span className="text-destructive">PDF support coming soon - please convert to TXT for now</span>
               </p>
             </div>
           </div>
