@@ -1,67 +1,139 @@
 import { useState, useRef } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Upload, FileJson, FileText, X } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Upload, FileJson, FileText, X, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { ScrollArea } from '@/components/ui/scroll-area';
+
+interface UploadedFile {
+  name: string;
+  type: 'reddit' | 'text';
+  content: any;
+  itemCount: number;
+}
 
 interface FileUploaderProps {
-  onFileUpload: (content: any, fileType: 'reddit' | 'text') => void;
+  onFilesChange: (allContent: any[], fileType: 'reddit' | 'text') => void;
   disabled?: boolean;
 }
 
-export function FileUploader({ onFileUpload, disabled }: FileUploaderProps) {
-  const [fileName, setFileName] = useState<string>('');
+export function FileUploader({ onFilesChange, disabled }: FileUploaderProps) {
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
-    setFileName(file.name);
+    const newFiles: UploadedFile[] = [];
 
-    try {
-      const text = await file.text();
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
       
-      // Try to parse as JSON (Reddit format)
-      if (file.name.endsWith('.json')) {
-        try {
-          const json = JSON.parse(text);
-          onFileUpload(json, 'reddit');
-          toast({
-            title: 'File uploaded',
-            description: `Loaded ${json.length || 0} items from ${file.name}`,
-          });
-        } catch (err) {
-          toast({
-            title: 'Invalid JSON',
-            description: 'Could not parse JSON file. Please check format.',
-            variant: 'destructive',
+      try {
+        const text = await file.text();
+        
+        // Try to parse as JSON (Reddit format)
+        if (file.name.endsWith('.json')) {
+          try {
+            const json = JSON.parse(text);
+            newFiles.push({
+              name: file.name,
+              type: 'reddit',
+              content: json,
+              itemCount: json.length || 0,
+            });
+          } catch (err) {
+            toast({
+              title: 'Invalid JSON',
+              description: `Could not parse ${file.name}. Skipping.`,
+              variant: 'destructive',
+            });
+          }
+        } else {
+          // Handle as text file
+          const lines = text.split('\n\n').filter(l => l.trim());
+          newFiles.push({
+            name: file.name,
+            type: 'text',
+            content: lines,
+            itemCount: lines.length,
           });
         }
-      } else {
-        // Handle as text file
-        const lines = text.split('\n\n').filter(l => l.trim());
-        onFileUpload(lines, 'text');
+      } catch (err) {
         toast({
-          title: 'File uploaded',
-          description: `Loaded ${lines.length} text entries`,
+          title: 'Upload failed',
+          description: `Could not read ${file.name}`,
+          variant: 'destructive',
         });
       }
-    } catch (err) {
+    }
+
+    if (newFiles.length > 0) {
+      const updatedFiles = [...uploadedFiles, ...newFiles];
+      setUploadedFiles(updatedFiles);
+      
+      // Merge all content and notify parent
+      mergeAndNotify(updatedFiles);
+
       toast({
-        title: 'Upload failed',
-        description: 'Could not read file contents',
-        variant: 'destructive',
+        title: 'Files uploaded',
+        description: `Added ${newFiles.length} file(s). Total: ${updatedFiles.length}`,
       });
     }
-  };
 
-  const clearFile = () => {
-    setFileName('');
+    // Reset input
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+  };
+
+  const mergeAndNotify = (files: UploadedFile[]) => {
+    if (files.length === 0) {
+      onFilesChange([], 'text');
+      return;
+    }
+
+    // Determine primary type (reddit if any reddit files exist)
+    const hasReddit = files.some(f => f.type === 'reddit');
+    const fileType = hasReddit ? 'reddit' : 'text';
+
+    // Merge all content
+    let mergedContent: any[] = [];
+    files.forEach(file => {
+      if (Array.isArray(file.content)) {
+        mergedContent = [...mergedContent, ...file.content];
+      } else {
+        mergedContent.push(file.content);
+      }
+    });
+
+    onFilesChange(mergedContent, fileType);
+  };
+
+  const removeFile = (index: number) => {
+    const updatedFiles = uploadedFiles.filter((_, i) => i !== index);
+    setUploadedFiles(updatedFiles);
+    mergeAndNotify(updatedFiles);
+    
+    toast({
+      title: 'File removed',
+      description: `${uploadedFiles[index].name} removed`,
+    });
+  };
+
+  const clearAllFiles = () => {
+    setUploadedFiles([]);
+    onFilesChange([], 'text');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+    toast({
+      title: 'All files cleared',
+      description: 'Upload new files to begin analysis',
+    });
   };
 
   return (
@@ -74,36 +146,18 @@ export function FileUploader({ onFileUpload, disabled }: FileUploaderProps) {
           </p>
         </div>
 
-        <div className="border-2 border-dashed border-border rounded-lg p-8 text-center hover:border-primary/50 transition-colors">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".json,.txt,.pdf,.csv"
-            onChange={handleFileChange}
-            className="hidden"
-            disabled={disabled}
-          />
-          
-          {fileName ? (
-            <div className="space-y-3">
-              <div className="flex items-center justify-center gap-2">
-                <FileJson className="w-8 h-8 text-primary" />
-                <div className="text-left">
-                  <div className="font-medium">{fileName}</div>
-                  <div className="text-xs text-muted-foreground">Ready to analyze</div>
-                </div>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={clearFile}
-                className="gap-2"
-              >
-                <X className="w-4 h-4" />
-                Remove
-              </Button>
-            </div>
-          ) : (
+        <div className="space-y-4">
+          <div className="border-2 border-dashed border-border rounded-lg p-8 text-center hover:border-primary/50 transition-colors">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json,.txt,.pdf,.csv"
+              onChange={handleFileChange}
+              className="hidden"
+              disabled={disabled}
+              multiple
+            />
+            
             <div className="space-y-3">
               <Upload className="w-12 h-12 mx-auto text-muted-foreground" />
               <div>
@@ -113,13 +167,71 @@ export function FileUploader({ onFileUpload, disabled }: FileUploaderProps) {
                   className="gap-2"
                 >
                   <Upload className="w-4 h-4" />
-                  Choose File
+                  Upload Files
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                Supports: JSON, TXT, PDF, CSV
+                Supports: JSON, TXT, PDF, CSV • Multiple files allowed
               </p>
             </div>
+          </div>
+
+          {/* Uploaded Files List */}
+          {uploadedFiles.length > 0 && (
+            <Card className="p-4 bg-muted/30">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="font-medium text-sm">
+                  Uploaded Files ({uploadedFiles.length})
+                </h4>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearAllFiles}
+                  className="h-8 gap-2 text-destructive hover:text-destructive"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Clear All
+                </Button>
+              </div>
+              
+              <ScrollArea className="max-h-[200px]">
+                <div className="space-y-2">
+                  {uploadedFiles.map((file, index) => (
+                    <div
+                      key={index}
+                      className="flex items-center justify-between gap-2 p-2 bg-background rounded-lg"
+                    >
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        {file.type === 'reddit' ? (
+                          <FileJson className="w-4 h-4 text-primary flex-shrink-0" />
+                        ) : (
+                          <FileText className="w-4 h-4 text-secondary flex-shrink-0" />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium truncate">{file.name}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {file.itemCount} items
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">
+                          {file.type}
+                        </Badge>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeFile(index)}
+                          className="h-6 w-6 p-0"
+                        >
+                          <X className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            </Card>
           )}
         </div>
       </div>

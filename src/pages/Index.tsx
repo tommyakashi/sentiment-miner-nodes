@@ -35,7 +35,17 @@ const Index = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const { toast } = useToast();
 
-  const handleFileUpload = async (content: any, fileType: 'reddit' | 'text') => {
+  const handleFilesChange = async (content: any[], fileType: 'reddit' | 'text') => {
+    if (content.length === 0) {
+      // Clear all data when no files
+      setResults([]);
+      setNodeAnalysis([]);
+      setTimeSeriesData([]);
+      setParticipants([]);
+      setTrendingThemes([]);
+      setOverallSentiment(0);
+      return;
+    }
     if (nodes.length === 0) {
       toast({
         title: 'No nodes defined',
@@ -268,7 +278,7 @@ const Index = () => {
           {/* Setup Tab */}
           <TabsContent value="setup" className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <FileUploader onFileUpload={handleFileUpload} disabled={isAnalyzing} />
+              <FileUploader onFilesChange={handleFilesChange} disabled={isAnalyzing} />
               <NodeManager nodes={nodes} onNodesChange={setNodes} />
             </div>
           </TabsContent>
