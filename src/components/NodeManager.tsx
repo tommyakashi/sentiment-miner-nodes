@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
-import { Plus, X, Sparkles, Upload } from 'lucide-react';
+import { Plus, X, Sparkles, Upload, Save, FolderOpen } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import type { Node } from '@/types/sentiment';
@@ -20,6 +20,73 @@ export function NodeManager({ nodes, onNodesChange }: NodeManagerProps) {
   const [newKeyword, setNewKeyword] = useState<Record<string, string>>({});
   const [isGenerating, setIsGenerating] = useState(false);
   const { toast } = useToast();
+
+  // Load nodes from localStorage on mount
+  useEffect(() => {
+    const savedNodes = localStorage.getItem('sentiment-nodes');
+    if (savedNodes && nodes.length === 0) {
+      try {
+        const parsed = JSON.parse(savedNodes);
+        onNodesChange(parsed);
+        toast({
+          title: "Nodes loaded",
+          description: `Loaded ${parsed.length} saved nodes`,
+        });
+      } catch (error) {
+        console.error('Error loading saved nodes:', error);
+      }
+    }
+  }, []);
+
+  // Save nodes to localStorage whenever they change
+  useEffect(() => {
+    if (nodes.length > 0) {
+      localStorage.setItem('sentiment-nodes', JSON.stringify(nodes));
+    }
+  }, [nodes]);
+
+  const saveNodes = () => {
+    localStorage.setItem('sentiment-nodes', JSON.stringify(nodes));
+    toast({
+      title: "Nodes saved",
+      description: `Saved ${nodes.length} nodes to browser storage`,
+    });
+  };
+
+  const loadNodes = () => {
+    const savedNodes = localStorage.getItem('sentiment-nodes');
+    if (savedNodes) {
+      try {
+        const parsed = JSON.parse(savedNodes);
+        onNodesChange(parsed);
+        toast({
+          title: "Nodes loaded",
+          description: `Loaded ${parsed.length} saved nodes`,
+        });
+      } catch (error) {
+        toast({
+          title: "Error",
+          description: "Failed to load saved nodes",
+          variant: "destructive",
+        });
+      }
+    } else {
+      toast({
+        title: "No saved nodes",
+        description: "No nodes found in browser storage",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const clearSavedNodes = () => {
+    localStorage.removeItem('sentiment-nodes');
+    onNodesChange([]);
+    toast({
+      title: "Nodes cleared",
+      description: "Cleared all nodes and saved data",
+    });
+  };
 
   const addNode = () => {
     if (!newNodeName.trim() || nodes.length >= 10) return;
@@ -181,7 +248,37 @@ export function NodeManager({ nodes, onNodesChange }: NodeManagerProps) {
     <Card className="p-6">
       <div className="space-y-6">
         <div>
-          <h2 className="text-xl font-semibold mb-4">Define Analysis Nodes</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold">Define Analysis Nodes</h2>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={saveNodes}
+                disabled={nodes.length === 0}
+              >
+                <Save className="w-4 h-4 mr-2" />
+                Save
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={loadNodes}
+              >
+                <FolderOpen className="w-4 h-4 mr-2" />
+                Load
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearSavedNodes}
+                className="text-destructive"
+              >
+                <X className="w-4 h-4 mr-2" />
+                Clear All
+              </Button>
+            </div>
+          </div>
           <p className="text-sm text-muted-foreground mb-4">
             Create up to 10 topic nodes with keywords for classification
           </p>
