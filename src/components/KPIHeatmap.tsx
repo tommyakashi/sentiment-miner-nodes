@@ -1,4 +1,6 @@
 import { Card } from '@/components/ui/card';
+import { Info } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import type { NodeAnalysis } from '@/types/sentiment';
 
 interface KPIHeatmapProps {
@@ -28,7 +30,23 @@ export function KPIHeatmap({ data }: KPIHeatmapProps) {
 
   return (
     <Card className="p-6">
-      <h3 className="text-lg font-semibold mb-4">KPI Heatmap</h3>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-semibold">KPI Heatmap</h3>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger>
+              <Info className="w-4 h-4 text-muted-foreground" />
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs">
+              <p className="text-sm">
+                Color-coded scores for quick comparison. 
+                Green = positive/strong, Red = negative/weak, Gray = neutral. 
+                Each cell shows the average score for that topic and KPI.
+              </p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
       <div className="overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>

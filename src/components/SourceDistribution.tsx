@@ -1,6 +1,7 @@
 import { Card } from '@/components/ui/card';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
-import { Database } from 'lucide-react';
+import { Database, Info } from 'lucide-react';
+import { Tooltip as UiTooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface SourceDistributionProps {
   sources: Array<{ name: string; value: number }>;
@@ -17,9 +18,24 @@ export function SourceDistribution({ sources }: SourceDistributionProps) {
 
   return (
     <Card className="p-6">
-      <div className="flex items-center gap-2 mb-4">
-        <Database className="w-5 h-5 text-primary" />
-        <h3 className="text-lg font-semibold">Data Sources</h3>
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Database className="w-5 h-5 text-primary" />
+          <h3 className="text-lg font-semibold">Data Sources</h3>
+        </div>
+        <TooltipProvider>
+          <UiTooltip>
+            <TooltipTrigger>
+              <Info className="w-4 h-4 text-muted-foreground" />
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs">
+              <p className="text-sm">
+                Shows the breakdown of where your analyzed data came from. 
+                Each slice represents a different source (Reddit, text files, PDFs, etc.).
+              </p>
+            </TooltipContent>
+          </UiTooltip>
+        </TooltipProvider>
       </div>
       <ResponsiveContainer width="100%" height={250}>
         <PieChart>
