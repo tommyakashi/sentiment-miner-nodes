@@ -7,6 +7,12 @@ import { ParticipantsList } from '@/components/ParticipantsList';
 import { TopicsList } from '@/components/TopicsList';
 import { TrendingThemes } from '@/components/TrendingThemes';
 import { ResultsTable } from '@/components/ResultsTable';
+import { KPISortableTable } from '@/components/KPISortableTable';
+import { KPIRadarChart } from '@/components/KPIRadarChart';
+import { KPIHeatmap } from '@/components/KPIHeatmap';
+import { ExemplarQuotes } from '@/components/ExemplarQuotes';
+import { SourceDistribution } from '@/components/SourceDistribution';
+import { ConfidenceDistribution } from '@/components/ConfidenceDistribution';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -15,7 +21,7 @@ import { analyzeSentiment, extractKeywords } from '@/utils/sentimentAnalyzer';
 import { parseRedditJSON, extractTimeSeriesData } from '@/utils/redditParser';
 import type { Node, SentimentResult, NodeAnalysis } from '@/types/sentiment';
 import type { RedditData } from '@/types/reddit';
-import { Brain, BarChart3, Settings } from 'lucide-react';
+import { Brain, BarChart3, Settings, Download } from 'lucide-react';
 
 const Index = () => {
   const [nodes, setNodes] = useState<Node[]>([
@@ -33,6 +39,7 @@ const Index = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [sources, setSources] = useState<Array<{ name: string; value: number }>>([]);
   const { toast } = useToast();
 
   const handleFilesChange = async (content: any[], fileType: 'reddit' | 'text') => {
@@ -86,7 +93,11 @@ const Index = () => {
         textsToAnalyze = content;
       }
 
-      // Analyze sentiment
+      // Track sources
+      const sourceData = fileType === 'reddit' 
+        ? [{ name: 'Reddit', value: textsToAnalyze.length }]
+        : [{ name: 'Text/Other', value: textsToAnalyze.length }];
+      setSources(sourceData);
       const analysisResults = await analyzeSentiment(textsToAnalyze, nodes, setProgress);
       setResults(analysisResults);
 
@@ -240,37 +251,79 @@ const Index = () => {
               </div>
             ) : (
               <>
-                {/* Top Row - Score and Chart */}
-                <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                {/* BIG SCORE - Full Width Banner */}
+                <div className="w-full">
                   <SentimentScore 
                     score={overallSentiment} 
-                    label={overallSentiment > 0 ? 'Positive' : overallSentiment < 0 ? 'Negative' : 'Neutral'} 
+                    label="Overall Sentiment Index" 
                   />
-                  <div className="lg:col-span-3">
-                    {timeSeriesData.length > 0 && (
-                      <SentimentChart
-                        data={timeSeriesData}
-                        title="Sentiment and Volume over time"
-                      />
-                    )}
-                  </div>
                 </div>
 
-                {/* Middle Row - Participants, Topics, Themes */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Time Series Chart */}
+                {timeSeriesData.length > 0 && (
+                  <SentimentChart
+                    data={timeSeriesData}
+                    title="Sentiment and Volume over time"
+                  />
+                )}
+
+                {/* KPI Sortable Table */}
+                {nodeAnalysis.length > 0 && (
+                  <KPISortableTable data={nodeAnalysis} />
+                )}
+
+                {/* Two Column Grid for Visualizations */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Radar Chart */}
+                  {nodeAnalysis.length > 0 && (
+                    <KPIRadarChart data={nodeAnalysis} />
+                  )}
+
+                  {/* Source Distribution */}
+                  {sources.length > 0 && (
+                    <SourceDistribution sources={sources} />
+                  )}
+
+                  {/* Heatmap spans full width if odd number */}
+                  {nodeAnalysis.length > 0 && (
+                    <div className="lg:col-span-2">
+                      <KPIHeatmap data={nodeAnalysis} />
+                    </div>
+                  )}
+
+                  {/* Confidence Distribution */}
+                  {results.length > 0 && (
+                    <ConfidenceDistribution results={results} />
+                  )}
+
+                  {/* Trending Themes */}
+                  {trendingThemes.length > 0 && (
+                    <TrendingThemes themes={trendingThemes} />
+                  )}
+
+                  {/* Participants */}
                   {participants.length > 0 && (
                     <ParticipantsList
                       participants={participants}
                       title="Top Participants"
                     />
                   )}
+
+                  {/* Topics */}
                   {nodeAnalysis.length > 0 && (
                     <TopicsList topics={nodeAnalysis} />
                   )}
-                  {trendingThemes.length > 0 && (
-                    <TrendingThemes themes={trendingThemes} />
-                  )}
                 </div>
+
+                {/* Exemplar Quotes - Show top 3 nodes */}
+                {nodeAnalysis.slice(0, 3).map((node) => (
+                  <ExemplarQuotes
+                    key={node.nodeId}
+                    results={results}
+                    nodeId={node.nodeId}
+                    nodeName={node.nodeName}
+                  />
+                ))}
               </>
             )}
           </TabsContent>
