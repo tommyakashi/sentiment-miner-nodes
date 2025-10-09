@@ -1,0 +1,142 @@
+import { pipeline } from '@huggingface/transformers';
+import type { Node, SentimentResult, KPIScore } from '@/types/sentiment';
+
+let sentimentPipeline: any = null;
+
+export async function initializeSentimentAnalyzer() {
+  if (!sentimentPipeline) {
+    sentimentPipeline = await pipeline('sentiment-analysis', 'Xenova/distilbert-base-uncased-finetuned-sst-2-english');
+  }
+  return sentimentPipeline;
+}
+
+function calculateKPIScores(text: string, polarity: number): KPIScore {
+  // Simple heuristic-based KPI calculation
+  // In a real system, this would use more sophisticated NLP
+  const lowerText = text.toLowerCase();
+  
+  const trustWords = ['reliable', 'trust', 'honest', 'transparent', 'credible'];
+  const optimismWords = ['hope', 'positive', 'optimistic', 'promising', 'bright'];
+  const frustrationWords = ['frustrated', 'annoyed', 'difficult', 'problem', 'issue'];
+  const clarityWords = ['clear', 'understand', 'obvious', 'transparent', 'straightforward'];
+  const accessWords = ['accessible', 'available', 'open', 'easy', 'reach'];
+  const fairnessWords = ['fair', 'equal', 'just', 'equitable', 'balanced'];
+
+  const countWords = (words: string[]) => 
+    words.reduce((count, word) => count + (lowerText.includes(word) ? 1 : 0), 0);
+
+  const trust = (countWords(trustWords) / 5) * polarity;
+  const optimism = (countWords(optimismWords) / 5) * polarity;
+  const frustration = -(countWords(frustrationWords) / 5) * Math.abs(polarity);
+  const clarity = (countWords(clarityWords) / 5) * polarity;
+  const access = (countWords(accessWords) / 5) * polarity;
+  const fairness = (countWords(fairnessWords) / 5) * polarity;
+
+  // Normalize to -1 to 1 range
+  const normalize = (score: number) => Math.max(-1, Math.min(1, score));
+
+  return {
+    trust: normalize(trust),
+    optimism: normalize(optimism),
+    frustration: normalize(frustration),
+    clarity: normalize(clarity),
+    access: normalize(access),
+    fairness: normalize(fairness),
+  };
+}
+
+function findBestMatchingNode(text: string, nodes: Node[]): { nodeId: string; nodeName: string; confidence: number } {
+  const lowerText = text.toLowerCase();
+  let bestMatch = { nodeId: nodes[0].id, nodeName: nodes[0].name, confidence: 0 };
+
+  for (const node of nodes) {
+    const matchCount = node.keywords.reduce((count, keyword) => {
+      const keywordLower = keyword.toLowerCase();
+      return count + (lowerText.includes(keywordLower) ? 1 : 0);
+    }, 0);
+
+    const confidence = matchCount / Math.max(1, node.keywords.length);
+    if (confidence > bestMatch.confidence) {
+      bestMatch = { nodeId: node.id, nodeName: node.name, confidence };
+    }
+  }
+
+  // If no good match, use first node with low confidence
+  if (bestMatch.confidence === 0) {
+    bestMatch.confidence = 0.1;
+  }
+
+  return bestMatch;
+}
+
+export async function analyzeSentiment(
+  texts: string[],
+  nodes: Node[],
+  onProgress?: (progress: number) => void
+): Promise<SentimentResult[]> {
+  const analyzer = await initializeSentimentAnalyzer();
+  const results: SentimentResult[] = [];
+
+  for (let i = 0; i < texts.length; i++) {
+    const text = texts[i];
+    if (!text.trim()) continue;
+
+    // Get sentiment
+    const sentiment = await analyzer(text);
+    const label = sentiment[0].label.toLowerCase();
+    const score = sentiment[0].score;
+
+    // Convert to polarity score (-1 to 1)
+    const polarityScore = label === 'positive' ? score : label === 'negative' ? -score : 0;
+    const polarity = polarityScore > 0.3 ? 'positive' : polarityScore < -0.3 ? 'negative' : 'neutral';
+
+    // Find matching node
+    const { nodeId, nodeName, confidence } = findBestMatchingNode(text, nodes);
+
+    // Calculate KPI scores
+    const kpiScores = calculateKPIScores(text, polarityScore);
+
+    results.push({
+      text,
+      nodeId,
+      nodeName,
+      polarity,
+      polarityScore,
+      kpiScores,
+      confidence,
+    });
+
+    if (onProgress) {
+      onProgress(((i + 1) / texts.length) * 100);
+    }
+  }
+
+  return results;
+}
+
+export function extractKeywords(text: string, maxKeywords: number = 10): string[] {
+  // Simple keyword extraction using word frequency
+  const commonWords = new Set([
+    'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
+    'of', 'with', 'by', 'from', 'up', 'about', 'into', 'through', 'during',
+    'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had',
+    'do', 'does', 'did', 'will', 'would', 'should', 'could', 'may', 'might',
+    'can', 'this', 'that', 'these', 'those', 'i', 'you', 'he', 'she', 'it',
+    'we', 'they', 'what', 'which', 'who', 'when', 'where', 'why', 'how'
+  ]);
+
+  const words = text.toLowerCase()
+    .replace(/[^\w\s]/g, ' ')
+    .split(/\s+/)
+    .filter(word => word.length > 3 && !commonWords.has(word));
+
+  const frequency: Record<string, number> = {};
+  words.forEach(word => {
+    frequency[word] = (frequency[word] || 0) + 1;
+  });
+
+  return Object.entries(frequency)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, maxKeywords)
+    .map(([word]) => word);
+}
