@@ -2,3 +2,6 @@ project_id = "ncdzzczhjxkyjimkrgub"
 
 [functions.generate-keywords]
 verify_jwt = false
+
+[functions.scrape-reddit]
+verify_jwt = false

@@ -2,9 +2,11 @@ import { useState, useRef } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Upload, FileJson, FileText, X, Trash2 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Upload, FileJson, FileText, X, Trash2, Link as LinkIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { supabase } from '@/integrations/supabase/client';
 
 interface UploadedFile {
   name: string;
@@ -20,6 +22,8 @@ interface FileUploaderProps {
 
 export function FileUploader({ onFilesChange, disabled }: FileUploaderProps) {
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+  const [redditUrl, setRedditUrl] = useState('');
+  const [isScrapingUrl, setIsScrapingUrl] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -136,6 +140,46 @@ export function FileUploader({ onFilesChange, disabled }: FileUploaderProps) {
     });
   };
 
+  const handleRedditUrl = async () => {
+    if (!redditUrl.trim()) return;
+    
+    setIsScrapingUrl(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('scrape-reddit', {
+        body: { url: redditUrl }
+      });
+      
+      if (error) throw error;
+      if (!data.success) throw new Error(data.error);
+      
+      const newFile: UploadedFile = {
+        name: `Reddit: ${new URL(redditUrl).pathname}`,
+        content: data.texts,
+        itemCount: data.itemCount,
+        type: 'reddit'
+      };
+      
+      const updatedFiles = [...uploadedFiles, newFile];
+      setUploadedFiles(updatedFiles);
+      mergeAndNotify(updatedFiles);
+      setRedditUrl('');
+      
+      toast({
+        title: "Reddit data scraped",
+        description: `Extracted ${data.itemCount} items from Reddit`,
+      });
+    } catch (error) {
+      console.error('Error scraping Reddit:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to scrape Reddit URL",
+        variant: "destructive",
+      });
+    } finally {
+      setIsScrapingUrl(false);
+    }
+  };
+
   return (
     <Card className="p-6">
       <div className="space-y-4">
@@ -174,6 +218,31 @@ export function FileUploader({ onFilesChange, disabled }: FileUploaderProps) {
                 Supports: JSON, TXT, PDF, CSV • Multiple files allowed
               </p>
             </div>
+          </div>
+
+          <div className="border-t pt-4">
+            <p className="text-sm font-medium mb-3">Or scrape from Reddit URL (Free!)</p>
+            <div className="flex gap-2">
+              <Input
+                placeholder="https://www.reddit.com/r/science/..."
+                value={redditUrl}
+                onChange={(e) => setRedditUrl(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && !disabled && handleRedditUrl()}
+                disabled={disabled || isScrapingUrl}
+                className="flex-1"
+              />
+              <Button
+                onClick={handleRedditUrl}
+                disabled={!redditUrl.trim() || disabled || isScrapingUrl}
+                variant="secondary"
+              >
+                <LinkIcon className="w-4 h-4 mr-2" />
+                {isScrapingUrl ? 'Scraping...' : 'Scrape'}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground mt-2">
+              Enter a Reddit post, subreddit, or user URL to extract text data
+            </p>
           </div>
 
           {/* Uploaded Files List */}
