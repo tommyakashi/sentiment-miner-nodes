@@ -49,10 +49,24 @@ serve(async (req) => {
     }
 
     const data = await response.json();
-    const content = data.choices[0].message.content;
+    let content = data.choices[0].message.content;
+    
+    // Remove markdown code block formatting if present
+    content = content.trim();
+    if (content.startsWith('```')) {
+      // Extract content between code fences
+      const lines = content.split('\n');
+      // Remove first line (```json or ```)
+      lines.shift();
+      // Remove last line (```)
+      if (lines[lines.length - 1].trim() === '```') {
+        lines.pop();
+      }
+      content = lines.join('\n').trim();
+    }
     
     // Parse the JSON array from the response
-    const keywords = JSON.parse(content.trim());
+    const keywords = JSON.parse(content);
     
     console.log(`Generated ${keywords.length} keywords for ${nodeName}`);
 
