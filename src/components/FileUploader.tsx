@@ -7,6 +7,7 @@ import { Upload, FileJson, FileText, X, Trash2, Link as LinkIcon } from 'lucide-
 import { useToast } from '@/hooks/use-toast';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { supabase } from '@/integrations/supabase/client';
+import { extractTextFromPDF } from '@/utils/pdfParser';
 
 interface UploadedFile {
   name: string;
@@ -44,17 +45,27 @@ export function FileUploader({ onFilesChange, disabled }: FileUploaderProps) {
             description: `Extracting text from ${file.name}...`,
           });
 
-          // Create a temporary file path for the PDF
-          const tempPath = `user-uploads://${file.name}`;
-          
-          // Note: This is a placeholder - in a real implementation, 
-          // you would need to upload the file first or use a proper PDF parser
-          // For now, we'll show an error message
-          toast({
-            title: 'PDF Support Coming Soon',
-            description: 'PDF parsing requires additional setup. Please convert to TXT for now.',
-            variant: 'destructive',
-          });
+          try {
+            const pdfTexts = await extractTextFromPDF(file);
+            newFiles.push({
+              name: file.name,
+              type: 'text',
+              content: pdfTexts,
+              itemCount: pdfTexts.length,
+            });
+            
+            toast({
+              title: 'PDF processed',
+              description: `Extracted ${pdfTexts.length} pages from ${file.name}`,
+            });
+          } catch (pdfError) {
+            console.error('PDF parsing error:', pdfError);
+            toast({
+              title: 'PDF parsing failed',
+              description: `Could not extract text from ${file.name}`,
+              variant: 'destructive',
+            });
+          }
           continue;
         }
 
@@ -236,8 +247,7 @@ export function FileUploader({ onFilesChange, disabled }: FileUploaderProps) {
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                Supports: JSON, TXT, CSV • Multiple files allowed<br/>
-                <span className="text-destructive">PDF support coming soon - please convert to TXT for now</span>
+                Supports: PDF, JSON, TXT, CSV • Multiple files allowed
               </p>
             </div>
           </div>
