@@ -1,13 +1,29 @@
-import { pipeline } from '@huggingface/transformers';
+import { pipeline, cos_sim } from '@huggingface/transformers';
 import type { Node, SentimentResult, KPIScore } from '@/types/sentiment';
 
 let sentimentPipeline: any = null;
+let keyphraseExtractor: any = null;
+let embeddingModel: any = null;
 
 export async function initializeSentimentAnalyzer() {
   if (!sentimentPipeline) {
     sentimentPipeline = await pipeline('sentiment-analysis', 'Xenova/distilbert-base-uncased-finetuned-sst-2-english');
   }
   return sentimentPipeline;
+}
+
+async function initializeKeyphraseExtractor() {
+  if (!keyphraseExtractor) {
+    keyphraseExtractor = await pipeline('text2text-generation', 'Xenova/keyphrase-generation-t5-small-inspec');
+  }
+  return keyphraseExtractor;
+}
+
+async function initializeEmbeddingModel() {
+  if (!embeddingModel) {
+    embeddingModel = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
+  }
+  return embeddingModel;
 }
 
 function calculateKPIScores(text: string, polarity: number): KPIScore {
@@ -114,8 +130,90 @@ export async function analyzeSentiment(
   return results;
 }
 
-export function extractKeywords(text: string, maxKeywords: number = 10): string[] {
-  // Simple keyword extraction using word frequency
+export async function extractKeywords(text: string, maxKeywords: number = 10): Promise<string[]> {
+  try {
+    // Initialize models
+    const extractor = await initializeKeyphraseExtractor();
+    const embedder = await initializeEmbeddingModel();
+
+    // Normalize text - remove extra whitespace and truncate if too long
+    const normalizedText = text
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 2000); // Limit to 2000 chars for performance
+
+    if (normalizedText.length < 20) {
+      return [];
+    }
+
+    // Extract keyphrases using T5 model
+    const result = await extractor(normalizedText, {
+      max_new_tokens: 50,
+      num_beams: 3,
+    });
+
+    // Parse the generated keyphrases (comma-separated)
+    let keyphrases: string[] = [];
+    if (result && result.length > 0) {
+      const generatedText = result[0].generated_text || '';
+      keyphrases = generatedText
+        .split(',')
+        .map((phrase: string) => phrase.trim().toLowerCase())
+        .filter((phrase: string) => phrase.length > 2);
+    }
+
+    // If we got keyphrases, cluster similar ones using embeddings
+    if (keyphrases.length > 0) {
+      const embeddings = await embedder(keyphrases, { pooling: 'mean', normalize: true });
+      
+      // Simple clustering: keep diverse keyphrases
+      const selected: string[] = [];
+      const embeddingArray = embeddings.tolist();
+      
+      for (let i = 0; i < keyphrases.length && selected.length < maxKeywords; i++) {
+        const currentEmbed = embeddingArray[i];
+        
+        // Check if this keyphrase is diverse enough from already selected ones
+        let isDiverse = true;
+        for (const selectedIdx of selected.map((_, idx) => idx)) {
+          const similarity = cosineSimilarity(currentEmbed, embeddingArray[selectedIdx]);
+          if (similarity > 0.8) {
+            isDiverse = false;
+            break;
+          }
+        }
+        
+        if (isDiverse) {
+          selected.push(keyphrases[i]);
+        }
+      }
+      
+      return selected.slice(0, maxKeywords);
+    }
+
+    // Fallback to simple frequency-based extraction
+    return fallbackKeywordExtraction(text, maxKeywords);
+  } catch (error) {
+    console.error('Keyphrase extraction error:', error);
+    return fallbackKeywordExtraction(text, maxKeywords);
+  }
+}
+
+function cosineSimilarity(a: number[], b: number[]): number {
+  let dotProduct = 0;
+  let normA = 0;
+  let normB = 0;
+  
+  for (let i = 0; i < a.length; i++) {
+    dotProduct += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+  
+  return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
+function fallbackKeywordExtraction(text: string, maxKeywords: number): string[] {
   const commonWords = new Set([
     'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
     'of', 'with', 'by', 'from', 'up', 'about', 'into', 'through', 'during',

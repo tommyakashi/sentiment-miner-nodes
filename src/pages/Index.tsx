@@ -157,9 +157,9 @@ const Index = () => {
         setParticipants(participantsWithSentiment);
       }
 
-      // Extract trending themes
+      // Extract trending themes with AI
       const allText = textsToAnalyze.join(' ');
-      const keywords = extractKeywords(allText, 20);
+      const keywords = await extractKeywords(allText, 20);
       const themes = keywords.map(word => {
         const wordTexts = analysisResults.filter(r => r.text.toLowerCase().includes(word));
         const sentiment = wordTexts.length > 0
