@@ -1,15 +1,14 @@
 import { pipeline, cos_sim } from '@huggingface/transformers';
 import type { Node, SentimentResult, KPIScore } from '@/types/sentiment';
-import SentimentIntensityAnalyzer from 'vader-sentiment';
+import vader from 'vader-sentiment';
 
 let sentimentPipeline: any = null;
 let keyphraseExtractor: any = null;
 let embeddingModel: any = null;
-const vaderAnalyzer = new SentimentIntensityAnalyzer();
 
 export async function initializeSentimentAnalyzer() {
   // VADER doesn't need initialization, but keeping for compatibility
-  return vaderAnalyzer;
+  return vader.SentimentIntensityAnalyzer;
 }
 
 async function initializeKeyphraseExtractor() {
@@ -90,7 +89,7 @@ export async function analyzeSentiment(
   nodes: Node[],
   onProgress?: (progress: number) => void
 ): Promise<SentimentResult[]> {
-  await initializeSentimentAnalyzer();
+  const analyzer = await initializeSentimentAnalyzer();
   const results: SentimentResult[] = [];
 
   for (let i = 0; i < texts.length; i++) {
@@ -98,7 +97,7 @@ export async function analyzeSentiment(
     if (!text.trim()) continue;
 
     // Use VADER for sentiment analysis
-    const vaderScores = vaderAnalyzer.polarity_scores(text);
+    const vaderScores = analyzer.polarity_scores(text);
     
     // VADER compound score ranges from -1 to 1
     const polarityScore = vaderScores.compound;
