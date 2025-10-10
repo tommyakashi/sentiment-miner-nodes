@@ -147,20 +147,24 @@ const Index = () => {
         setParticipants(participantsWithSentiment);
       }
 
-      // Extract trending themes with AI
-      const keywords = await extractKeywords(textsToAnalyze, 20);
-      const themes = keywords.map(word => {
-        const wordTexts = analysisResults.filter(r => r.text.toLowerCase().includes(word));
-        const sentiment = wordTexts.length > 0
-          ? wordTexts.reduce((sum, r) => sum + r.polarityScore, 0) / wordTexts.length
-          : 0;
-        return {
-          word,
-          frequency: wordTexts.length,
-          sentiment,
-        };
+      // Extract trending themes with AI (non-blocking, runs in background)
+      extractKeywords(textsToAnalyze, 20).then(keywords => {
+        const themes = keywords.map(word => {
+          const wordTexts = analysisResults.filter(r => r.text.toLowerCase().includes(word));
+          const sentiment = wordTexts.length > 0
+            ? wordTexts.reduce((sum, r) => sum + r.polarityScore, 0) / wordTexts.length
+            : 0;
+          return {
+            word,
+            frequency: wordTexts.length,
+            sentiment,
+          };
+        });
+        setTrendingThemes(themes);
+      }).catch(error => {
+        console.error('Error extracting keywords:', error);
+        setTrendingThemes([]);
       });
-      setTrendingThemes(themes);
 
       toast({
         title: 'Analysis complete',

@@ -6,6 +6,9 @@ import { extractKeywords } from '../extractors/keywordExtractor';
 // Cache for node keyword embeddings
 const nodeEmbeddingCache = new Map<string, number[]>();
 
+// Cache for text embeddings to avoid redundant generation
+const textEmbeddingCache = new Map<string, number[]>();
+
 // KPI concept definitions
 const KPI_CONCEPTS = {
   trust: ['trust', 'reliable', 'honest', 'transparent', 'credible', 'dependable', 'authentic'],
@@ -30,9 +33,9 @@ async function getKPIEmbeddings() {
   return kpiEmbeddingCache;
 }
 
-async function calculateKPIScores(text: string, polarity: number): Promise<KPIScore> {
+async function calculateKPIScores(text: string, polarity: number, textEmbedding?: number[]): Promise<KPIScore> {
   const kpiEmbeddings = await getKPIEmbeddings();
-  const textEmbedding = await generateEmbedding(text);
+  const embedding = textEmbedding || await generateEmbedding(text);
 
   const scores: KPIScore = {
     trust: 0,
@@ -43,8 +46,8 @@ async function calculateKPIScores(text: string, polarity: number): Promise<KPISc
     fairness: 0,
   };
 
-  for (const [kpi, embedding] of kpiEmbeddings.entries()) {
-    const similarity = cosineSimilarity(textEmbedding, embedding);
+  for (const [kpi, kpiEmbedding] of kpiEmbeddings.entries()) {
+    const similarity = cosineSimilarity(embedding, kpiEmbedding);
     
     // Combine semantic similarity with polarity
     let score = similarity;
@@ -63,10 +66,11 @@ async function calculateKPIScores(text: string, polarity: number): Promise<KPISc
 
 async function findBestMatchingNode(
   text: string,
-  nodes: Node[]
+  nodes: Node[],
+  textEmbedding?: number[]
 ): Promise<{ nodeId: string; nodeName: string; confidence: number }> {
   try {
-    const textEmbedding = await generateEmbedding(text);
+    const embedding = textEmbedding || await generateEmbedding(text);
     let bestMatch = { nodeId: nodes[0].id, nodeName: nodes[0].name, confidence: 0 };
 
     for (const node of nodes) {
@@ -79,7 +83,7 @@ async function findBestMatchingNode(
         nodeEmbeddingCache.set(node.id, nodeEmbedding);
       }
 
-      const similarity = cosineSimilarity(textEmbedding, nodeEmbedding);
+      const similarity = cosineSimilarity(embedding, nodeEmbedding);
 
       if (similarity > bestMatch.confidence) {
         bestMatch = {
@@ -106,7 +110,7 @@ export async function performSentimentAnalysis(
   console.log(`Starting sentiment analysis on ${texts.length} texts across ${nodes.length} nodes`);
   
   const results: SentimentResult[] = [];
-  const batchSize = 10;
+  const batchSize = 50;
 
   try {
     for (let i = 0; i < texts.length; i += batchSize) {
@@ -115,18 +119,23 @@ export async function performSentimentAnalysis(
       const batchResults = await Promise.all(
         batch.map(async (text, batchIndex) => {
           try {
-            // Sentiment analysis
-            const sentimentResult = await analyzeSentiment(text);
+            // Generate text embedding once and cache it
+            const textEmbedding = await generateEmbedding(text);
+            textEmbeddingCache.set(text, textEmbedding);
+
+            // Run sentiment analysis and node matching in parallel
+            const [sentimentResult, { nodeId, nodeName, confidence }] = await Promise.all([
+              analyzeSentiment(text),
+              findBestMatchingNode(text, nodes, textEmbedding)
+            ]);
+
             const { polarityScore, polarity } = calculatePolarityScore(
               sentimentResult.label,
               sentimentResult.score
             );
 
-            // Node matching
-            const { nodeId, nodeName, confidence } = await findBestMatchingNode(text, nodes);
-
-            // KPI scores
-            const kpiScores = await calculateKPIScores(text, polarityScore);
+            // Calculate KPI scores using cached embedding
+            const kpiScores = await calculateKPIScores(text, polarityScore, textEmbedding);
 
             return {
               text,
