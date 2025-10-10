@@ -81,22 +81,55 @@ async function fetchWithAuth(url: string, token: string): Promise<any> {
   return await response.json();
 }
 
-function extractTextsFromPost(post: RedditPost): string[] {
-  const texts: string[] = [];
-  
-  if (post.data.title) {
-    texts.push(post.data.title);
-  }
-  
-  if (post.data.selftext && post.data.selftext.length > 20) {
-    texts.push(post.data.selftext);
-  }
-  
-  return texts;
+function convertPostToRedditData(post: RedditPost): any {
+  return {
+    id: post.data.id,
+    parsedId: post.data.id,
+    url: `https://reddit.com${post.data.permalink}`,
+    username: post.data.author,
+    userId: post.data.author,
+    title: post.data.title,
+    communityName: post.data.subreddit,
+    parsedCommunityName: post.data.subreddit,
+    body: post.data.selftext || '',
+    html: '',
+    link: `https://reddit.com${post.data.permalink}`,
+    numberOfComments: post.data.num_comments,
+    upVotes: post.data.score,
+    upVoteRatio: 1,
+    isVideo: false,
+    isAd: false,
+    over18: false,
+    thumbnailUrl: '',
+    createdAt: new Date(post.data.created_utc * 1000).toISOString(),
+    scrapedAt: new Date().toISOString(),
+    dataType: 'post'
+  };
 }
 
-function extractTextsFromComments(comments: any[], maxDepth: number = 10): string[] {
-  const texts: string[] = [];
+function convertCommentToRedditData(comment: RedditComment, postId: string = ''): any {
+  return {
+    id: comment.data.id,
+    parsedId: comment.data.id,
+    url: `https://reddit.com/comments/${postId}/_/${comment.data.id}`,
+    postId: postId,
+    parentId: '',
+    username: comment.data.author,
+    userId: comment.data.author,
+    category: '',
+    communityName: '',
+    body: comment.data.body,
+    createdAt: new Date(comment.data.created_utc * 1000).toISOString(),
+    scrapedAt: new Date().toISOString(),
+    upVotes: comment.data.score,
+    numberOfreplies: 0,
+    html: '',
+    dataType: 'comment'
+  };
+}
+
+function extractCommentsFromTree(comments: any[], postId: string, maxDepth: number = 10): any[] {
+  const results: any[] = [];
   
   function traverse(comment: any, depth: number = 0) {
     if (depth > maxDepth) return;
@@ -104,7 +137,7 @@ function extractTextsFromComments(comments: any[], maxDepth: number = 10): strin
     if (comment.kind === 't1' && comment.data?.body) {
       const body = comment.data.body;
       if (body.length > 20 && !body.startsWith('[deleted]') && !body.startsWith('[removed]')) {
-        texts.push(body);
+        results.push(convertCommentToRedditData(comment as RedditComment, postId));
       }
     }
     
@@ -120,7 +153,7 @@ function extractTextsFromComments(comments: any[], maxDepth: number = 10): strin
     traverse(comment);
   }
   
-  return texts;
+  return results;
 }
 
 serve(async (req) => {
@@ -140,7 +173,7 @@ serve(async (req) => {
     // Get OAuth token
     const token = await getRedditAccessToken();
 
-    let texts: string[] = [];
+    let redditData: any[] = [];
 
     // Parse URL to determine if it's a post or subreddit listing
     const urlObj = new URL(url);
@@ -162,15 +195,16 @@ serve(async (req) => {
         // Extract post
         const postListing = data[0];
         if (postListing.data?.children?.[0]) {
-          const postTexts = extractTextsFromPost(postListing.data.children[0]);
-          texts.push(...postTexts);
+          const postData = convertPostToRedditData(postListing.data.children[0]);
+          redditData.push(postData);
         }
         
         // Extract comments
         const commentsListing = data[1];
         if (commentsListing.data?.children) {
-          const commentTexts = extractTextsFromComments(commentsListing.data.children);
-          texts.push(...commentTexts);
+          const postId = postListing.data?.children?.[0]?.data?.id || '';
+          const comments = extractCommentsFromTree(commentsListing.data.children, postId);
+          redditData.push(...comments);
         }
       }
     } else if (pathParts[0] === 'r' && pathParts.length >= 2) {
@@ -186,8 +220,8 @@ serve(async (req) => {
       if (data.data?.children) {
         for (const child of data.data.children) {
           if (child.kind === 't3') {
-            const postTexts = extractTextsFromPost(child);
-            texts.push(...postTexts);
+            const postData = convertPostToRedditData(child);
+            redditData.push(postData);
           }
         }
       }
@@ -204,8 +238,8 @@ serve(async (req) => {
       if (data.data?.children) {
         for (const child of data.data.children) {
           if (child.kind === 't3') {
-            const postTexts = extractTextsFromPost(child);
-            texts.push(...postTexts);
+            const postData = convertPostToRedditData(child);
+            redditData.push(postData);
           }
         }
       }
@@ -213,20 +247,17 @@ serve(async (req) => {
       throw new Error('Unsupported Reddit URL format. Please provide a post URL, subreddit URL, or user URL.');
     }
 
-    // Remove duplicates and empty texts
-    texts = [...new Set(texts)].filter(text => text.trim().length > 0);
+    console.log(`Extracted ${redditData.length} items from Reddit API`);
 
-    console.log(`Extracted ${texts.length} items from Reddit API`);
-
-    if (texts.length === 0) {
+    if (redditData.length === 0) {
       throw new Error('No content found. The URL might be invalid or have no accessible content.');
     }
 
     return new Response(
       JSON.stringify({ 
         success: true,
-        texts,
-        itemCount: texts.length,
+        data: redditData,
+        itemCount: redditData.length,
         source: 'reddit'
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }

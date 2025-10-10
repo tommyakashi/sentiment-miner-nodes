@@ -29,6 +29,7 @@ export function FileUploader({ onFilesChange, disabled }: FileUploaderProps) {
   const [redditUrls, setRedditUrls] = useState('');
   const [isScrapingUrl, setIsScrapingUrl] = useState(false);
   const [isLoadingSources, setIsLoadingSources] = useState(true);
+  const [sourcesLoaded, setSourcesLoaded] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -51,13 +52,13 @@ export function FileUploader({ onFilesChange, disabled }: FileUploaderProps) {
 
   // Load saved sources
   useEffect(() => {
-    if (user) {
+    if (user && !sourcesLoaded && !isLoadingSources) {
       loadSavedSources();
     }
-  }, [user]);
+  }, [user, sourcesLoaded, isLoadingSources]);
 
   const loadSavedSources = async () => {
-    if (!user) return;
+    if (!user || sourcesLoaded || isLoadingSources) return;
     
     setIsLoadingSources(true);
     try {
@@ -78,15 +79,33 @@ export function FileUploader({ onFilesChange, disabled }: FileUploaderProps) {
         }));
         
         setUploadedFiles(loadedFiles);
-        mergeAndNotify(loadedFiles);
+        
+        // Wrap in try-catch to prevent analysis errors from breaking the load
+        try {
+          mergeAndNotify(loadedFiles);
+        } catch (analysisError) {
+          console.error('Error during analysis of loaded sources:', analysisError);
+          toast({
+            title: 'Sources loaded with errors',
+            description: 'Some sources could not be analyzed. Please try re-uploading them.',
+            variant: 'destructive'
+          });
+        }
         
         toast({
           title: 'Sources loaded',
           description: `Loaded ${data.length} saved source(s)`,
         });
       }
+      
+      setSourcesLoaded(true);
     } catch (error) {
       console.error('Error loading sources:', error);
+      toast({
+        title: 'Error loading sources',
+        description: 'Failed to load saved sources. Please try refreshing.',
+        variant: 'destructive'
+      });
     } finally {
       setIsLoadingSources(false);
     }
@@ -315,7 +334,7 @@ export function FileUploader({ onFilesChange, disabled }: FileUploaderProps) {
         
         const newFile: UploadedFile = {
           name: `Reddit: ${new URL(url).pathname}`,
-          content: data.texts,
+          content: data.data, // Now returns structured Reddit data
           itemCount: data.itemCount,
           type: 'reddit'
         };

@@ -43,7 +43,19 @@ export function extractTimeSeriesData(data: RedditData[]) {
   const timeMap = new Map<string, { positive: number; negative: number; neutral: number; total: number }>();
 
   data.forEach(item => {
-    const date = new Date(item.createdAt).toISOString().split('T')[0];
+    // Handle both ISO strings and invalid dates
+    let date: string;
+    try {
+      const dateObj = new Date(item.createdAt);
+      if (isNaN(dateObj.getTime())) {
+        // Invalid date, use current date
+        date = new Date().toISOString().split('T')[0];
+      } else {
+        date = dateObj.toISOString().split('T')[0];
+      }
+    } catch {
+      date = new Date().toISOString().split('T')[0];
+    }
     const existing = timeMap.get(date) || { positive: 0, negative: 0, neutral: 0, total: 0 };
     
     // Simple sentiment heuristic based on upvotes
