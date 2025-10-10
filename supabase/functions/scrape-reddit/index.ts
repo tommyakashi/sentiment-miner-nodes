@@ -19,23 +19,34 @@ serve(async (req) => {
 
     console.log(`Scraping Reddit URL: ${url}`);
 
-    // Convert Reddit URL to JSON endpoint
-    const jsonUrl = url.endsWith('.json') ? url : `${url}.json`;
+    // Add small delay to avoid rate limiting
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    // Convert Reddit URL to JSON endpoint and add query params
+    let jsonUrl = url.endsWith('.json') ? url : `${url}.json`;
     
-    // Use more realistic browser headers to avoid 403
+    // Add query parameters to make request look more legitimate
+    const urlObj = new URL(jsonUrl);
+    urlObj.searchParams.set('raw_json', '1');
+    urlObj.searchParams.set('limit', '100');
+    jsonUrl = urlObj.toString();
+    
+    // Use realistic browser headers with referer
     const response = await fetch(jsonUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept': 'application/json, text/javascript, */*; q=0.01',
+        'Accept-Language': 'en-US,en;q=0.9',
         'Accept-Encoding': 'gzip, deflate, br',
+        'Referer': 'https://www.reddit.com/',
+        'Origin': 'https://www.reddit.com',
         'DNT': '1',
         'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
-        'Cache-Control': 'max-age=0',
+        'Sec-Fetch-Dest': 'empty',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Site': 'same-origin',
+        'Pragma': 'no-cache',
+        'Cache-Control': 'no-cache',
       },
     });
 
