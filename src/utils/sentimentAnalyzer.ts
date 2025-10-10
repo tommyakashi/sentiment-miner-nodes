@@ -1,66 +1,194 @@
 import { pipeline, cos_sim } from '@huggingface/transformers';
 import type { Node, SentimentResult, KPIScore } from '@/types/sentiment';
-import vader from 'vader-sentiment';
 
-let sentimentPipeline: any = null;
-let keyphraseExtractor: any = null;
+let sentimentClassifier: any = null;
 let embeddingModel: any = null;
+let keyphraseExtractor: any = null;
+
+// KPI concept definitions for semantic similarity
+const KPI_CONCEPTS = {
+  trust: "trustworthy reliable honest credible dependable authentic genuine",
+  optimism: "hopeful positive optimistic promising bright future encouraging confident",
+  frustration: "frustrated annoyed angry difficult problem issue obstacle challenge barrier",
+  clarity: "clear understandable obvious straightforward transparent simple plain explicit",
+  access: "accessible available easy reach obtain open usable convenient attainable",
+  fairness: "fair equal just equitable balanced unbiased impartial even-handed"
+};
+
+// Cache for concept embeddings
+let conceptEmbeddings: Record<string, number[]> | null = null;
 
 export async function initializeSentimentAnalyzer() {
-  // VADER doesn't need initialization, but keeping for compatibility
-  return vader.SentimentIntensityAnalyzer;
-}
-
-async function initializeKeyphraseExtractor() {
-  if (!keyphraseExtractor) {
-    keyphraseExtractor = await pipeline('text2text-generation', 'Xenova/keyphrase-generation-t5-small-inspec');
+  console.log('Initializing modern sentiment analyzer...');
+  
+  // Initialize RoBERTa sentiment model (trained on 58M tweets)
+  if (!sentimentClassifier) {
+    console.log('Loading RoBERTa sentiment model...');
+    sentimentClassifier = await pipeline(
+      'sentiment-analysis',
+      'Xenova/twitter-roberta-base-sentiment-latest',
+      { device: 'webgpu' }
+    );
   }
-  return keyphraseExtractor;
+  
+  return sentimentClassifier;
 }
 
 async function initializeEmbeddingModel() {
   if (!embeddingModel) {
-    embeddingModel = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
+    console.log('Loading embedding model for semantic analysis...');
+    embeddingModel = await pipeline(
+      'feature-extraction',
+      'Xenova/all-MiniLM-L6-v2',
+      { device: 'webgpu' }
+    );
   }
   return embeddingModel;
 }
 
-function calculateKPIScores(text: string, polarity: number): KPIScore {
-  // Simple heuristic-based KPI calculation
-  // In a real system, this would use more sophisticated NLP
-  const lowerText = text.toLowerCase();
-  
-  const trustWords = ['reliable', 'trust', 'honest', 'transparent', 'credible'];
-  const optimismWords = ['hope', 'positive', 'optimistic', 'promising', 'bright'];
-  const frustrationWords = ['frustrated', 'annoyed', 'difficult', 'problem', 'issue'];
-  const clarityWords = ['clear', 'understand', 'obvious', 'transparent', 'straightforward'];
-  const accessWords = ['accessible', 'available', 'open', 'easy', 'reach'];
-  const fairnessWords = ['fair', 'equal', 'just', 'equitable', 'balanced'];
-
-  const countWords = (words: string[]) => 
-    words.reduce((count, word) => count + (lowerText.includes(word) ? 1 : 0), 0);
-
-  const trust = (countWords(trustWords) / 5) * polarity;
-  const optimism = (countWords(optimismWords) / 5) * polarity;
-  const frustration = -(countWords(frustrationWords) / 5) * Math.abs(polarity);
-  const clarity = (countWords(clarityWords) / 5) * polarity;
-  const access = (countWords(accessWords) / 5) * polarity;
-  const fairness = (countWords(fairnessWords) / 5) * polarity;
-
-  // Normalize to -1 to 1 range
-  const normalize = (score: number) => Math.max(-1, Math.min(1, score));
-
-  return {
-    trust: normalize(trust),
-    optimism: normalize(optimism),
-    frustration: normalize(frustration),
-    clarity: normalize(clarity),
-    access: normalize(access),
-    fairness: normalize(fairness),
-  };
+async function initializeKeyphraseExtractor() {
+  if (!keyphraseExtractor) {
+    console.log('Loading keyphrase extraction model...');
+    keyphraseExtractor = await pipeline(
+      'text2text-generation',
+      'Xenova/keyphrase-generation-t5-small-inspec'
+    );
+  }
+  return keyphraseExtractor;
 }
 
-function findBestMatchingNode(text: string, nodes: Node[]): { nodeId: string; nodeName: string; confidence: number } {
+async function generateConceptEmbeddings() {
+  if (conceptEmbeddings) return conceptEmbeddings;
+  
+  const embedder = await initializeEmbeddingModel();
+  const concepts = Object.values(KPI_CONCEPTS);
+  
+  console.log('Generating KPI concept embeddings...');
+  const embeddings = await embedder(concepts, { pooling: 'mean', normalize: true });
+  const embeddingsList = embeddings.tolist();
+  
+  conceptEmbeddings = {
+    trust: embeddingsList[0],
+    optimism: embeddingsList[1],
+    frustration: embeddingsList[2],
+    clarity: embeddingsList[3],
+    access: embeddingsList[4],
+    fairness: embeddingsList[5]
+  };
+  
+  return conceptEmbeddings;
+}
+
+function cosineSimilarity(a: number[], b: number[]): number {
+  let dotProduct = 0;
+  let normA = 0;
+  let normB = 0;
+  
+  for (let i = 0; i < a.length; i++) {
+    dotProduct += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+  
+  return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
+async function calculateSemanticKPIScores(text: string, polarity: number): Promise<KPIScore> {
+  try {
+    const embedder = await initializeEmbeddingModel();
+    const concepts = await generateConceptEmbeddings();
+    
+    // Get embedding for the text
+    const textEmbedding = await embedder(text, { pooling: 'mean', normalize: true });
+    const textEmbed = textEmbedding.tolist()[0];
+    
+    // Calculate semantic similarity with each KPI concept
+    const trustSim = cosineSimilarity(textEmbed, concepts.trust);
+    const optimismSim = cosineSimilarity(textEmbed, concepts.optimism);
+    const frustrationSim = cosineSimilarity(textEmbed, concepts.frustration);
+    const claritySim = cosineSimilarity(textEmbed, concepts.clarity);
+    const accessSim = cosineSimilarity(textEmbed, concepts.access);
+    const fairnessSim = cosineSimilarity(textEmbed, concepts.fairness);
+    
+    // Combine semantic similarity with polarity
+    // Positive polarity amplifies positive KPIs, negative amplifies frustration
+    const polarityFactor = polarity;
+    
+    // Normalize scores to -1 to 1 range
+    const normalize = (similarity: number, isNegative: boolean = false) => {
+      // Similarity ranges from 0 to 1, map to -1 to 1 based on polarity
+      const score = isNegative 
+        ? -(similarity * Math.abs(polarityFactor))
+        : (similarity * polarityFactor);
+      return Math.max(-1, Math.min(1, score));
+    };
+    
+    return {
+      trust: normalize(trustSim),
+      optimism: normalize(optimismSim),
+      frustration: normalize(frustrationSim, true), // Negative KPI
+      clarity: normalize(claritySim),
+      access: normalize(accessSim),
+      fairness: normalize(fairnessSim),
+    };
+  } catch (error) {
+    console.error('Error calculating semantic KPI scores:', error);
+    // Fallback to simple calculation
+    return {
+      trust: polarity * 0.5,
+      optimism: polarity * 0.5,
+      frustration: -polarity * 0.5,
+      clarity: polarity * 0.3,
+      access: polarity * 0.3,
+      fairness: polarity * 0.4,
+    };
+  }
+}
+
+async function findBestMatchingNodeSemantic(
+  text: string,
+  nodes: Node[]
+): Promise<{ nodeId: string; nodeName: string; confidence: number }> {
+  try {
+    const embedder = await initializeEmbeddingModel();
+    
+    // Get text embedding
+    const textEmbedding = await embedder(text, { pooling: 'mean', normalize: true });
+    const textEmbed = textEmbedding.tolist()[0];
+    
+    // Get embeddings for all node keywords
+    let bestMatch = { nodeId: nodes[0].id, nodeName: nodes[0].name, confidence: 0 };
+    
+    for (const node of nodes) {
+      const keywordsText = node.keywords.join(' ');
+      const nodeEmbedding = await embedder(keywordsText, { pooling: 'mean', normalize: true });
+      const nodeEmbed = nodeEmbedding.tolist()[0];
+      
+      const similarity = cosineSimilarity(textEmbed, nodeEmbed);
+      
+      if (similarity > bestMatch.confidence) {
+        bestMatch = {
+          nodeId: node.id,
+          nodeName: node.name,
+          confidence: similarity
+        };
+      }
+    }
+    
+    // If no good match, use first node with low confidence
+    if (bestMatch.confidence < 0.1) {
+      bestMatch.confidence = 0.1;
+    }
+    
+    return bestMatch;
+  } catch (error) {
+    console.error('Error in semantic node matching:', error);
+    // Fallback to keyword matching
+    return findBestMatchingNodeKeyword(text, nodes);
+  }
+}
+
+function findBestMatchingNodeKeyword(text: string, nodes: Node[]): { nodeId: string; nodeName: string; confidence: number } {
   const lowerText = text.toLowerCase();
   let bestMatch = { nodeId: nodes[0].id, nodeName: nodes[0].name, confidence: 0 };
 
@@ -76,7 +204,6 @@ function findBestMatchingNode(text: string, nodes: Node[]): { nodeId: string; no
     }
   }
 
-  // If no good match, use first node with low confidence
   if (bestMatch.confidence === 0) {
     bestMatch.confidence = 0.1;
   }
@@ -89,58 +216,104 @@ export async function analyzeSentiment(
   nodes: Node[],
   onProgress?: (progress: number) => void
 ): Promise<SentimentResult[]> {
-  const analyzer = await initializeSentimentAnalyzer();
+  console.log(`Analyzing sentiment for ${texts.length} texts with modern AI models...`);
+  
+  // Initialize models
+  const classifier = await initializeSentimentAnalyzer();
+  await initializeEmbeddingModel();
+  await generateConceptEmbeddings();
+  
   const results: SentimentResult[] = [];
+  const batchSize = 10; // Process in batches for better performance
 
-  for (let i = 0; i < texts.length; i++) {
-    const text = texts[i];
-    if (!text.trim()) continue;
-
-    // Use VADER for sentiment analysis
-    const vaderScores = analyzer.polarity_scores(text);
+  for (let i = 0; i < texts.length; i += batchSize) {
+    const batch = texts.slice(i, Math.min(i + batchSize, texts.length));
     
-    // VADER compound score ranges from -1 to 1
-    const polarityScore = vaderScores.compound;
-    
-    // Classify polarity based on compound score
-    // VADER standard thresholds: >= 0.05 positive, <= -0.05 negative
-    const polarity = polarityScore >= 0.05 ? 'positive' : polarityScore <= -0.05 ? 'negative' : 'neutral';
+    for (let j = 0; j < batch.length; j++) {
+      const text = batch[j];
+      const globalIndex = i + j;
+      
+      if (!text.trim()) continue;
 
-    // Find matching node
-    const { nodeId, nodeName, confidence } = findBestMatchingNode(text, nodes);
+      try {
+        // Use RoBERTa for sentiment classification
+        const sentimentResult = await classifier(text.slice(0, 512)); // RoBERTa max length
+        
+        // Map RoBERTa output to our format
+        // RoBERTa returns: { label: 'positive'|'negative'|'neutral', score: 0-1 }
+        const label = sentimentResult[0].label.toLowerCase();
+        const score = sentimentResult[0].score;
+        
+        // Convert to polarity score: -1 (negative) to 1 (positive)
+        let polarityScore: number;
+        if (label === 'positive') {
+          polarityScore = score * 0.5 + 0.5; // Map to 0.5 to 1
+        } else if (label === 'negative') {
+          polarityScore = -(score * 0.5 + 0.5); // Map to -1 to -0.5
+        } else {
+          polarityScore = 0; // Neutral
+        }
+        
+        const polarity: 'positive' | 'neutral' | 'negative' = 
+          label === 'positive' ? 'positive' : 
+          label === 'negative' ? 'negative' : 'neutral';
 
-    // Calculate KPI scores using VADER's compound score
-    const kpiScores = calculateKPIScores(text, polarityScore);
+        // Find matching node using semantic similarity
+        const { nodeId, nodeName, confidence } = await findBestMatchingNodeSemantic(text, nodes);
 
-    results.push({
-      text,
-      nodeId,
-      nodeName,
-      polarity,
-      polarityScore,
-      kpiScores,
-      confidence,
-    });
+        // Calculate KPI scores using semantic similarity
+        const kpiScores = await calculateSemanticKPIScores(text, polarityScore);
 
-    if (onProgress) {
-      onProgress(((i + 1) / texts.length) * 100);
+        results.push({
+          text,
+          nodeId,
+          nodeName,
+          polarity,
+          polarityScore,
+          kpiScores,
+          confidence,
+        });
+      } catch (error) {
+        console.error(`Error analyzing text at index ${globalIndex}:`, error);
+        // Add a neutral result as fallback
+        results.push({
+          text,
+          nodeId: nodes[0].id,
+          nodeName: nodes[0].name,
+          polarity: 'neutral',
+          polarityScore: 0,
+          kpiScores: {
+            trust: 0,
+            optimism: 0,
+            frustration: 0,
+            clarity: 0,
+            access: 0,
+            fairness: 0,
+          },
+          confidence: 0.1,
+        });
+      }
+
+      if (onProgress) {
+        onProgress(((globalIndex + 1) / texts.length) * 100);
+      }
     }
   }
 
+  console.log(`Sentiment analysis complete. Processed ${results.length} texts.`);
   return results;
 }
 
 export async function extractKeywords(text: string, maxKeywords: number = 10): Promise<string[]> {
   try {
-    // Initialize models
     const extractor = await initializeKeyphraseExtractor();
     const embedder = await initializeEmbeddingModel();
 
-    // Normalize text - remove extra whitespace and truncate if too long
+    // Normalize and truncate text
     const normalizedText = text
       .replace(/\s+/g, ' ')
       .trim()
-      .slice(0, 2000); // Limit to 2000 chars for performance
+      .slice(0, 2000);
 
     if (normalizedText.length < 20) {
       return [];
@@ -148,36 +321,36 @@ export async function extractKeywords(text: string, maxKeywords: number = 10): P
 
     // Extract keyphrases using T5 model
     const result = await extractor(normalizedText, {
-      max_new_tokens: 50,
-      num_beams: 3,
+      max_new_tokens: 60,
+      num_beams: 4,
+      do_sample: false,
     });
 
-    // Parse the generated keyphrases (comma-separated)
     let keyphrases: string[] = [];
     if (result && result.length > 0) {
       const generatedText = result[0].generated_text || '';
       keyphrases = generatedText
         .split(',')
         .map((phrase: string) => phrase.trim().toLowerCase())
-        .filter((phrase: string) => phrase.length > 2);
+        .filter((phrase: string) => phrase.length > 2 && phrase.split(' ').length <= 4);
     }
 
-    // If we got keyphrases, cluster similar ones using embeddings
+    // Use embeddings to cluster and diversify keyphrases
     if (keyphrases.length > 0) {
       const embeddings = await embedder(keyphrases, { pooling: 'mean', normalize: true });
-      
-      // Simple clustering: keep diverse keyphrases
-      const selected: string[] = [];
       const embeddingArray = embeddings.tolist();
+      
+      const selected: string[] = [];
+      const selectedIndices: number[] = [];
       
       for (let i = 0; i < keyphrases.length && selected.length < maxKeywords; i++) {
         const currentEmbed = embeddingArray[i];
         
-        // Check if this keyphrase is diverse enough from already selected ones
+        // Check diversity
         let isDiverse = true;
-        for (const selectedIdx of selected.map((_, idx) => idx)) {
+        for (const selectedIdx of selectedIndices) {
           const similarity = cosineSimilarity(currentEmbed, embeddingArray[selectedIdx]);
-          if (similarity > 0.8) {
+          if (similarity > 0.75) {
             isDiverse = false;
             break;
           }
@@ -185,32 +358,18 @@ export async function extractKeywords(text: string, maxKeywords: number = 10): P
         
         if (isDiverse) {
           selected.push(keyphrases[i]);
+          selectedIndices.push(i);
         }
       }
       
       return selected.slice(0, maxKeywords);
     }
 
-    // Fallback to simple frequency-based extraction
     return fallbackKeywordExtraction(text, maxKeywords);
   } catch (error) {
     console.error('Keyphrase extraction error:', error);
     return fallbackKeywordExtraction(text, maxKeywords);
   }
-}
-
-function cosineSimilarity(a: number[], b: number[]): number {
-  let dotProduct = 0;
-  let normA = 0;
-  let normB = 0;
-  
-  for (let i = 0; i < a.length; i++) {
-    dotProduct += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-  
-  return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
 function fallbackKeywordExtraction(text: string, maxKeywords: number): string[] {
