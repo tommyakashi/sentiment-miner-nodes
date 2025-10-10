@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { DOMParser } from "https://deno.land/x/deno_dom@v0.1.38/deno-dom-wasm.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -19,92 +20,127 @@ serve(async (req) => {
 
     console.log(`Scraping Reddit URL: ${url}`);
 
-    // Add small delay to avoid rate limiting
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    // Convert Reddit URL to JSON endpoint and add query params
-    let jsonUrl = url.endsWith('.json') ? url : `${url}.json`;
+    // Convert to old.reddit.com for better accessibility
+    let targetUrl = url.replace('www.reddit.com', 'old.reddit.com');
     
-    // Add query parameters to make request look more legitimate
-    const urlObj = new URL(jsonUrl);
-    urlObj.searchParams.set('raw_json', '1');
-    urlObj.searchParams.set('limit', '100');
-    jsonUrl = urlObj.toString();
+    // Try JSON endpoint first (old.reddit.com is more permissive)
+    const jsonUrl = targetUrl.endsWith('.json') ? targetUrl : `${targetUrl}.json`;
     
-    // Use realistic browser headers with referer
+    console.log(`Attempting JSON fetch from: ${jsonUrl}`);
+    
     const response = await fetch(jsonUrl, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        'Accept': 'application/json, text/javascript, */*; q=0.01',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Referer': 'https://www.reddit.com/',
-        'Origin': 'https://www.reddit.com',
-        'DNT': '1',
-        'Connection': 'keep-alive',
-        'Sec-Fetch-Dest': 'empty',
-        'Sec-Fetch-Mode': 'cors',
-        'Sec-Fetch-Site': 'same-origin',
-        'Pragma': 'no-cache',
-        'Cache-Control': 'no-cache',
+        'User-Agent': 'Mozilla/5.0 (compatible; RedditScraper/1.0)',
+        'Accept': 'application/json',
       },
     });
 
-    if (!response.ok) {
-      throw new Error(`Reddit API returned ${response.status}: ${response.statusText}`);
-    }
+    if (response.ok) {
+      // JSON approach worked
+      const data = await response.json();
+      console.log('Successfully fetched Reddit JSON data');
 
-    const data = await response.json();
-    console.log('Successfully fetched Reddit data');
+      let texts: string[] = [];
 
-    // Parse Reddit data structure
-    let texts: string[] = [];
-    let itemCount = 0;
+      // Handle different Reddit data structures
+      if (Array.isArray(data)) {
+        // Post with comments structure [post, comments]
+        const postData = data[0]?.data?.children?.[0]?.data;
+        if (postData) {
+          texts.push(`${postData.title}\n\n${postData.selftext || ''}`);
+        }
 
-    // Handle different Reddit data structures
-    if (Array.isArray(data)) {
-      // Post with comments structure [post, comments]
-      const postData = data[0]?.data?.children?.[0]?.data;
-      if (postData) {
-        // Add post title and selftext
-        texts.push(`${postData.title}\n\n${postData.selftext || ''}`);
-        itemCount++;
-      }
-
-      // Extract comments from second array
-      const commentsData = data[1]?.data?.children || [];
-      for (const comment of commentsData) {
-        if (comment.kind === 't1' && comment.data?.body) {
-          texts.push(comment.data.body);
-          itemCount++;
+        // Extract comments from second array
+        const commentsData = data[1]?.data?.children || [];
+        for (const comment of commentsData) {
+          if (comment.kind === 't1' && comment.data?.body) {
+            texts.push(comment.data.body);
+          }
+        }
+      } else if (data?.data?.children) {
+        // Subreddit or user posts listing
+        for (const child of data.data.children) {
+          if (child.kind === 't3' && child.data) {
+            texts.push(`${child.data.title}\n\n${child.data.selftext || ''}`);
+          } else if (child.kind === 't1' && child.data) {
+            texts.push(child.data.body);
+          }
         }
       }
-    } else if (data?.data?.children) {
-      // Subreddit or user posts listing
-      for (const child of data.data.children) {
-        if (child.kind === 't3' && child.data) {
-          // It's a post
-          const post = child.data;
-          texts.push(`${post.title}\n\n${post.selftext || ''}`);
-          itemCount++;
-        } else if (child.kind === 't1' && child.data) {
-          // It's a comment
-          texts.push(child.data.body);
-          itemCount++;
-        }
+
+      texts = texts.filter(text => text.trim().length > 0);
+      
+      if (texts.length > 0) {
+        console.log(`Extracted ${texts.length} items from JSON`);
+        return new Response(
+          JSON.stringify({ 
+            success: true,
+            texts,
+            itemCount: texts.length,
+            source: 'reddit'
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
       }
     }
 
-    // Filter out empty texts
-    texts = texts.filter(text => text.trim().length > 0);
+    // JSON failed, try HTML scraping as fallback
+    console.log('JSON failed, trying HTML scraping...');
+    
+    const htmlResponse = await fetch(targetUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; RedditScraper/1.0)',
+        'Accept': 'text/html',
+      },
+    });
 
-    console.log(`Extracted ${texts.length} items from Reddit`);
+    if (!htmlResponse.ok) {
+      throw new Error(`Reddit returned ${htmlResponse.status}: ${htmlResponse.statusText}`);
+    }
+
+    const html = await htmlResponse.text();
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    
+    if (!doc) {
+      throw new Error('Failed to parse HTML');
+    }
+
+    const texts: string[] = [];
+
+    // Extract post title and content from old.reddit.com HTML
+    const titleElement = doc.querySelector('.title h1') || doc.querySelector('h1');
+    if (titleElement) {
+      texts.push(titleElement.textContent.trim());
+    }
+
+    // Extract post body
+    const postBody = doc.querySelector('.usertext-body');
+    if (postBody) {
+      texts.push(postBody.textContent.trim());
+    }
+
+    // Extract comments
+    const comments = doc.querySelectorAll('.usertext-body');
+    comments.forEach((comment) => {
+      const text = comment.textContent.trim();
+      if (text.length > 20) {
+        texts.push(text);
+      }
+    });
+
+    const filteredTexts = [...new Set(texts)].filter(text => text.length > 0);
+
+    console.log(`Extracted ${filteredTexts.length} items from HTML`);
+
+    if (filteredTexts.length === 0) {
+      throw new Error('No content found. The URL might be invalid or the page structure has changed.');
+    }
 
     return new Response(
       JSON.stringify({ 
         success: true,
-        texts,
-        itemCount: texts.length,
+        texts: filteredTexts,
+        itemCount: filteredTexts.length,
         source: 'reddit'
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
