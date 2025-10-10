@@ -92,7 +92,6 @@ const Index = () => {
 
     setIsAnalyzing(true);
     setProgress(0);
-    setActiveTab('dashboard');
 
     try {
       let textsToAnalyze: string[] = [];
@@ -205,6 +204,9 @@ const Index = () => {
         title: 'Analysis complete',
         description: `Successfully analyzed ${textsToAnalyze.length} texts across ${nodeMap.size} topics.`,
       });
+      
+      // Switch to dashboard only after analysis is complete
+      setActiveTab('dashboard');
     } catch (error) {
       console.error('Analysis error:', error);
       toast({

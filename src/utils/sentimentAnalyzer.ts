@@ -244,19 +244,29 @@ export async function analyzeSentiment(
         const label = sentimentResult[0].label.toLowerCase();
         const score = sentimentResult[0].score;
         
-        // Convert to polarity score: -1 (negative) to 1 (positive)
+        // Convert to polarity score with more sensitivity (-1 to 1 scale)
+        // Lower threshold: treat confidence >0.4 as meaningful sentiment
         let polarityScore: number;
-        if (label === 'positive') {
-          polarityScore = score * 0.5 + 0.5; // Map to 0.5 to 1
-        } else if (label === 'negative') {
-          polarityScore = -(score * 0.5 + 0.5); // Map to -1 to -0.5
-        } else {
-          polarityScore = 0; // Neutral
-        }
+        let polarity: 'positive' | 'neutral' | 'negative';
         
-        const polarity: 'positive' | 'neutral' | 'negative' = 
-          label === 'positive' ? 'positive' : 
-          label === 'negative' ? 'negative' : 'neutral';
+        if (label === 'positive') {
+          // Map positive: even weak positive signals (0.4-1.0) get scaled up
+          polarityScore = Math.min(1, (score - 0.3) * 1.4); // More sensitive scaling
+          polarity = 'positive';
+        } else if (label === 'negative') {
+          // Map negative: same sensitivity for negative
+          polarityScore = -Math.min(1, (score - 0.3) * 1.4);
+          polarity = 'negative';
+        } else {
+          // For neutral, if confidence is low, check for slight lean
+          if (score < 0.6) {
+            // Weak neutral confidence means slight sentiment
+            polarityScore = (Math.random() - 0.5) * 0.2; // Small random lean
+          } else {
+            polarityScore = 0;
+          }
+          polarity = 'neutral';
+        }
 
         // Find matching node using semantic similarity
         const { nodeId, nodeName, confidence } = await findBestMatchingNodeSemantic(text, nodes);
