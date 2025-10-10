@@ -71,31 +71,75 @@ export function FileUploader({ onFilesChange, disabled }: FileUploaderProps) {
       if (error) throw error;
       
       if (data && data.length > 0) {
-        const loadedFiles: UploadedFile[] = data.map(source => ({
-          name: source.name,
-          type: source.source_type === 'reddit_url' || source.source_type === 'reddit_json' ? 'reddit' : 'text',
-          content: source.content,
-          itemCount: source.item_count,
-        }));
+        // Validate and filter out corrupted sources
+        const validFiles: UploadedFile[] = [];
+        const corruptedIds: string[] = [];
         
-        setUploadedFiles(loadedFiles);
+        for (const source of data) {
+          try {
+            // Check if Reddit data has valid structure
+            if (source.source_type === 'reddit_url' || source.source_type === 'reddit_json') {
+              const content = source.content;
+              // If it's an array of strings (old format), mark as corrupted
+              if (Array.isArray(content) && content.length > 0 && typeof content[0] === 'string') {
+                corruptedIds.push(source.id);
+                continue;
+              }
+              // If it's properly structured Reddit data, validate timestamps
+              if (Array.isArray(content) && content.length > 0) {
+                const hasValidTimestamp = content.some((item: any) => {
+                  try {
+                    const date = new Date(item.createdAt);
+                    return !isNaN(date.getTime());
+                  } catch {
+                    return false;
+                  }
+                });
+                if (!hasValidTimestamp) {
+                  corruptedIds.push(source.id);
+                  continue;
+                }
+              }
+            }
+            
+            validFiles.push({
+              name: source.name,
+              type: source.source_type === 'reddit_url' || source.source_type === 'reddit_json' ? 'reddit' : 'text',
+              content: source.content,
+              itemCount: source.item_count,
+            });
+          } catch (validationError) {
+            console.error('Error validating source:', validationError);
+            corruptedIds.push(source.id);
+          }
+        }
         
-        // Wrap in try-catch to prevent analysis errors from breaking the load
-        try {
-          mergeAndNotify(loadedFiles);
-        } catch (analysisError) {
-          console.error('Error during analysis of loaded sources:', analysisError);
+        // Delete corrupted sources
+        if (corruptedIds.length > 0) {
+          console.log(`Removing ${corruptedIds.length} corrupted sources`);
+          await supabase
+            .from('data_sources')
+            .delete()
+            .in('id', corruptedIds);
+          
           toast({
-            title: 'Sources loaded with errors',
-            description: 'Some sources could not be analyzed. Please try re-uploading them.',
-            variant: 'destructive'
+            title: 'Cleaned up corrupted data',
+            description: `Removed ${corruptedIds.length} invalid source(s). Please re-upload them.`,
           });
         }
         
-        toast({
-          title: 'Sources loaded',
-          description: `Loaded ${data.length} saved source(s)`,
-        });
+        if (validFiles.length > 0) {
+          setUploadedFiles(validFiles);
+          mergeAndNotify(validFiles);
+          
+          toast({
+            title: 'Sources loaded',
+            description: `Loaded ${validFiles.length} valid source(s)`,
+          });
+        } else if (corruptedIds.length > 0) {
+          setUploadedFiles([]);
+          onFilesChange([], 'text');
+        }
       }
       
       setSourcesLoaded(true);
@@ -103,7 +147,7 @@ export function FileUploader({ onFilesChange, disabled }: FileUploaderProps) {
       console.error('Error loading sources:', error);
       toast({
         title: 'Error loading sources',
-        description: 'Failed to load saved sources. Please try refreshing.',
+        description: 'Failed to load saved sources.',
         variant: 'destructive'
       });
     } finally {
