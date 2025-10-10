@@ -105,16 +105,37 @@ async function findBestMatchingNode(
 export async function performSentimentAnalysis(
   texts: string[],
   nodes: Node[],
-  onProgress?: (progress: number) => void
+  onProgress?: (progress: number) => void,
+  onStatus?: (status: string) => void
 ): Promise<SentimentResult[]> {
   console.log(`Starting sentiment analysis on ${texts.length} texts across ${nodes.length} nodes`);
   
   const results: SentimentResult[] = [];
   const batchSize = 50;
+  const startTime = Date.now();
 
   try {
+    if (onStatus) onStatus('Initializing analysis models...');
+    
     for (let i = 0; i < texts.length; i += batchSize) {
       const batch = texts.slice(i, Math.min(i + batchSize, texts.length));
+      const batchNum = Math.floor(i / batchSize) + 1;
+      const totalBatches = Math.ceil(texts.length / batchSize);
+      
+      // Calculate ETA
+      if (results.length > 0) {
+        const elapsed = Date.now() - startTime;
+        const rate = results.length / elapsed;
+        const remaining = texts.length - results.length;
+        const etaMs = remaining / rate;
+        const etaSeconds = Math.round(etaMs / 1000);
+        
+        if (onStatus) {
+          onStatus(`Processing batch ${batchNum}/${totalBatches} • ETA: ${etaSeconds}s`);
+        }
+      } else {
+        if (onStatus) onStatus(`Processing batch ${batchNum}/${totalBatches}...`);
+      }
       
       const batchResults = await Promise.all(
         batch.map(async (text, batchIndex) => {
@@ -177,6 +198,7 @@ export async function performSentimentAnalysis(
       }
     }
 
+    if (onStatus) onStatus('Finalizing results...');
     console.log('Sentiment analysis complete');
     return results;
   } catch (error) {

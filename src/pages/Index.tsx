@@ -38,6 +38,7 @@ const Index = () => {
   const [overallSentiment, setOverallSentiment] = useState<number>(0);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [analysisStatus, setAnalysisStatus] = useState<string>('');
   const [activeTab, setActiveTab] = useState('dashboard');
   const [sources, setSources] = useState<Array<{ name: string; value: number }>>([]);
   const { toast } = useToast();
@@ -122,9 +123,12 @@ const Index = () => {
       setSources(sourceData);
 
       // Analyze sentiment with new modular system
-      const analysisResults = await performSentimentAnalysis(textsToAnalyze, nodes, (progress) => {
-        setProgress(progress);
-      });
+      const analysisResults = await performSentimentAnalysis(
+        textsToAnalyze, 
+        nodes, 
+        (progress) => setProgress(progress),
+        (status) => setAnalysisStatus(status)
+      );
       setResults(analysisResults);
 
       // Calculate overall sentiment
@@ -148,6 +152,7 @@ const Index = () => {
       }
 
       // Extract trending themes with AI (non-blocking, runs in background)
+      setAnalysisStatus('Extracting keywords and themes...');
       extractKeywords(textsToAnalyze, 20).then(keywords => {
         const themes = keywords.map(word => {
           const wordTexts = analysisResults.filter(r => r.text.toLowerCase().includes(word));
@@ -183,6 +188,7 @@ const Index = () => {
     } finally {
       setIsAnalyzing(false);
       setProgress(0);
+      setAnalysisStatus('');
     }
   };
 
@@ -221,9 +227,14 @@ const Index = () => {
         {isAnalyzing && (
           <div className="mb-6">
             <Progress value={progress} className="h-2" />
-            <p className="text-sm text-muted-foreground mt-2 text-center">
-              Analyzing sentiment... {Math.round(progress)}%
-            </p>
+            <div className="mt-2 text-center">
+              <p className="text-sm font-medium text-foreground">
+                {analysisStatus || 'Analyzing sentiment...'}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {Math.round(progress)}% complete
+              </p>
+            </div>
           </div>
         )}
 
