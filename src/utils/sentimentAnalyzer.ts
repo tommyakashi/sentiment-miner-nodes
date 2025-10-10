@@ -1,15 +1,15 @@
 import { pipeline, cos_sim } from '@huggingface/transformers';
 import type { Node, SentimentResult, KPIScore } from '@/types/sentiment';
+import SentimentIntensityAnalyzer from 'vader-sentiment';
 
 let sentimentPipeline: any = null;
 let keyphraseExtractor: any = null;
 let embeddingModel: any = null;
+const vaderAnalyzer = new SentimentIntensityAnalyzer();
 
 export async function initializeSentimentAnalyzer() {
-  if (!sentimentPipeline) {
-    sentimentPipeline = await pipeline('sentiment-analysis', 'Xenova/distilbert-base-uncased-finetuned-sst-2-english');
-  }
-  return sentimentPipeline;
+  // VADER doesn't need initialization, but keeping for compatibility
+  return vaderAnalyzer;
 }
 
 async function initializeKeyphraseExtractor() {
@@ -90,26 +90,27 @@ export async function analyzeSentiment(
   nodes: Node[],
   onProgress?: (progress: number) => void
 ): Promise<SentimentResult[]> {
-  const analyzer = await initializeSentimentAnalyzer();
+  await initializeSentimentAnalyzer();
   const results: SentimentResult[] = [];
 
   for (let i = 0; i < texts.length; i++) {
     const text = texts[i];
     if (!text.trim()) continue;
 
-    // Get sentiment
-    const sentiment = await analyzer(text);
-    const label = sentiment[0].label.toLowerCase();
-    const score = sentiment[0].score;
-
-    // Convert to polarity score (-1 to 1)
-    const polarityScore = label === 'positive' ? score : label === 'negative' ? -score : 0;
-    const polarity = polarityScore > 0.3 ? 'positive' : polarityScore < -0.3 ? 'negative' : 'neutral';
+    // Use VADER for sentiment analysis
+    const vaderScores = vaderAnalyzer.polarity_scores(text);
+    
+    // VADER compound score ranges from -1 to 1
+    const polarityScore = vaderScores.compound;
+    
+    // Classify polarity based on compound score
+    // VADER standard thresholds: >= 0.05 positive, <= -0.05 negative
+    const polarity = polarityScore >= 0.05 ? 'positive' : polarityScore <= -0.05 ? 'negative' : 'neutral';
 
     // Find matching node
     const { nodeId, nodeName, confidence } = findBestMatchingNode(text, nodes);
 
-    // Calculate KPI scores
+    // Calculate KPI scores using VADER's compound score
     const kpiScores = calculateKPIScores(text, polarityScore);
 
     results.push({
