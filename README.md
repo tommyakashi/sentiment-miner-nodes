@@ -1,22 +1,16 @@
-# Welcome to your Lovable project
+# Multi-Node Sentiment Analyzer
 
-## Project info
+## About
 
-**URL**: https://lovable.dev/projects/08ff0250-f208-40c3-ac71-4c6007279b6a
+An advanced sentiment analysis tool with KPI scoring and topic clustering across multiple nodes.
 
-## How can I edit this code?
+## How to edit this code
 
-There are several ways of editing your application.
+You can edit this application using your preferred IDE or text editor.
 
-**Use Lovable**
+**Local Development**
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/08ff0250-f208-40c3-ac71-4c6007279b6a) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+Clone this repo and push changes to your repository.
 
 The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
 
@@ -62,12 +56,4 @@ This project is built with:
 
 ## How can I deploy this project?
 
-Simply open [Lovable](https://lovable.dev/projects/08ff0250-f208-40c3-ac71-4c6007279b6a) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+Deploy using your preferred hosting platform (Vercel, Netlify, etc.).
