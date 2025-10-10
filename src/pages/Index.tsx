@@ -20,7 +20,7 @@ import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { analyzeSentiment, extractKeywords } from '@/utils/sentimentAnalyzer';
+import { performSentimentAnalysis, aggregateNodeAnalysis, extractKeywords } from '@/utils/sentiment/analyzers/sentimentAnalyzer';
 import { parseRedditJSON, extractTimeSeriesData } from '@/utils/redditParser';
 import type { Node, SentimentResult, NodeAnalysis } from '@/types/sentiment';
 import type { RedditData } from '@/types/reddit';
@@ -125,52 +125,20 @@ const Index = () => {
         ? [{ name: 'Reddit', value: textsToAnalyze.length }]
         : [{ name: 'Text/Other', value: textsToAnalyze.length }];
       setSources(sourceData);
-      const analysisResults = await analyzeSentiment(textsToAnalyze, nodes, setProgress);
+
+      // Analyze sentiment with new modular system
+      const analysisResults = await performSentimentAnalysis(textsToAnalyze, nodes, (progress) => {
+        setProgress(progress);
+      });
       setResults(analysisResults);
 
       // Calculate overall sentiment
       const avgSentiment = analysisResults.reduce((sum, r) => sum + r.polarityScore, 0) / analysisResults.length;
       setOverallSentiment(avgSentiment * 100);
 
-      // Calculate node-level aggregates
-      const nodeMap = new Map<string, SentimentResult[]>();
-      analysisResults.forEach(result => {
-        const existing = nodeMap.get(result.nodeId) || [];
-        nodeMap.set(result.nodeId, [...existing, result]);
-      });
-
-      const analysis: NodeAnalysis[] = Array.from(nodeMap.entries()).map(([nodeId, results]) => {
-        const node = nodes.find(n => n.id === nodeId)!;
-        const totalTexts = results.length;
-        
-        const avgPolarity = results.reduce((sum, r) => sum + r.polarityScore, 0) / totalTexts;
-        
-        const avgKpiScores = {
-          trust: results.reduce((sum, r) => sum + r.kpiScores.trust, 0) / totalTexts,
-          optimism: results.reduce((sum, r) => sum + r.kpiScores.optimism, 0) / totalTexts,
-          frustration: results.reduce((sum, r) => sum + r.kpiScores.frustration, 0) / totalTexts,
-          clarity: results.reduce((sum, r) => sum + r.kpiScores.clarity, 0) / totalTexts,
-          access: results.reduce((sum, r) => sum + r.kpiScores.access, 0) / totalTexts,
-          fairness: results.reduce((sum, r) => sum + r.kpiScores.fairness, 0) / totalTexts,
-        };
-
-        const sentimentDistribution = {
-          positive: results.filter(r => r.polarity === 'positive').length,
-          neutral: results.filter(r => r.polarity === 'neutral').length,
-          negative: results.filter(r => r.polarity === 'negative').length,
-        };
-
-        return {
-          nodeId,
-          nodeName: node.name,
-          totalTexts,
-          avgPolarity,
-          avgKpiScores,
-          sentimentDistribution,
-        };
-      });
-
-      setNodeAnalysis(analysis);
+      // Calculate node-level analysis using new aggregation
+      const nodeAnalysisData = aggregateNodeAnalysis(analysisResults);
+      setNodeAnalysis(nodeAnalysisData);
 
       // Update participant sentiments
       if (participants.length > 0) {
@@ -185,8 +153,7 @@ const Index = () => {
       }
 
       // Extract trending themes with AI
-      const allText = textsToAnalyze.join(' ');
-      const keywords = await extractKeywords(allText, 20);
+      const keywords = await extractKeywords(textsToAnalyze, 20);
       const themes = keywords.map(word => {
         const wordTexts = analysisResults.filter(r => r.text.toLowerCase().includes(word));
         const sentiment = wordTexts.length > 0
@@ -202,7 +169,7 @@ const Index = () => {
 
       toast({
         title: 'Analysis complete',
-        description: `Successfully analyzed ${textsToAnalyze.length} texts across ${nodeMap.size} topics.`,
+        description: `Successfully analyzed ${textsToAnalyze.length} texts across ${nodeAnalysisData.length} topics.`,
       });
       
       // Switch to dashboard only after analysis is complete
