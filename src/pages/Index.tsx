@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { supabase } from '@/integrations/supabase/client';
 import { NodeManager } from '@/components/NodeManager';
 import { FileUploader } from '@/components/FileUploader';
 import { SentimentScore } from '@/components/SentimentScore';
@@ -25,6 +27,7 @@ import type { RedditData } from '@/types/reddit';
 import { Brain, BarChart3, Settings, Download } from 'lucide-react';
 
 const Index = () => {
+  const navigate = useNavigate();
   const [nodes, setNodes] = useState<Node[]>([
     { id: '1', name: 'Market Sentiment', keywords: ['bullish', 'bearish', 'rally', 'crash', 'gain', 'loss'] },
     { id: '2', name: 'Tech Stocks', keywords: ['tech', 'tsla', 'aapl', 'nvda', 'meta', 'googl'] },
@@ -42,6 +45,25 @@ const Index = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [sources, setSources] = useState<Array<{ name: string; value: number }>>([]);
   const { toast } = useToast();
+
+  // Check auth status
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) {
+        navigate('/auth');
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        if (!session) {
+          navigate('/auth');
+        }
+      }
+    );
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
 
   const handleFilesChange = async (content: any[], fileType: 'reddit' | 'text') => {
     if (content.length === 0) {

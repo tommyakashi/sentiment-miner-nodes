@@ -1,13 +1,16 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Upload, FileJson, FileText, X, Trash2, Link as LinkIcon } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import { Upload, FileJson, FileText, X, Trash2, Link as LinkIcon, LogOut } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { supabase } from '@/integrations/supabase/client';
 import { extractTextFromPDF } from '@/utils/pdfParser';
+import { useNavigate } from 'react-router-dom';
+import type { User, Session } from '@supabase/supabase-js';
 
 interface UploadedFile {
   name: string;
@@ -23,10 +26,106 @@ interface FileUploaderProps {
 
 export function FileUploader({ onFilesChange, disabled }: FileUploaderProps) {
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
-  const [redditUrl, setRedditUrl] = useState('');
+  const [redditUrls, setRedditUrls] = useState('');
   const [isScrapingUrl, setIsScrapingUrl] = useState(false);
+  const [isLoadingSources, setIsLoadingSources] = useState(true);
+  const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  const navigate = useNavigate();
+
+  // Auth state management
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        setSession(session);
+        setUser(session?.user ?? null);
+        
+        if (!session?.user) {
+          setTimeout(() => navigate('/auth'), 0);
+        }
+      }
+    );
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      if (!session?.user) {
+        navigate('/auth');
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
+
+  // Load saved sources
+  useEffect(() => {
+    if (user) {
+      loadSavedSources();
+    }
+  }, [user]);
+
+  const loadSavedSources = async () => {
+    if (!user) return;
+    
+    setIsLoadingSources(true);
+    try {
+      const { data, error } = await supabase
+        .from('data_sources')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      
+      if (data && data.length > 0) {
+        const loadedFiles: UploadedFile[] = data.map(source => ({
+          name: source.name,
+          type: source.source_type === 'reddit_url' || source.source_type === 'reddit_json' ? 'reddit' : 'text',
+          content: source.content,
+          itemCount: source.item_count,
+        }));
+        
+        setUploadedFiles(loadedFiles);
+        mergeAndNotify(loadedFiles);
+        
+        toast({
+          title: 'Sources loaded',
+          description: `Loaded ${data.length} saved source(s)`,
+        });
+      }
+    } catch (error) {
+      console.error('Error loading sources:', error);
+    } finally {
+      setIsLoadingSources(false);
+    }
+  };
+
+  const saveSource = async (file: UploadedFile) => {
+    if (!user) return;
+    
+    try {
+      const { error } = await supabase
+        .from('data_sources')
+        .insert({
+          user_id: user.id,
+          name: file.name,
+          source_type: file.type === 'reddit' ? 'reddit_url' : 'text',
+          content: file.content,
+          item_count: file.itemCount,
+        });
+      
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error saving source:', error);
+    }
+  };
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    navigate('/auth');
+  };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -111,6 +210,11 @@ export function FileUploader({ onFilesChange, disabled }: FileUploaderProps) {
       const updatedFiles = [...uploadedFiles, ...newFiles];
       setUploadedFiles(updatedFiles);
       
+      // Save each file to database
+      for (const file of newFiles) {
+        await saveSource(file);
+      }
+      
       // Merge all content and notify parent
       mergeAndNotify(updatedFiles);
 
@@ -149,77 +253,137 @@ export function FileUploader({ onFilesChange, disabled }: FileUploaderProps) {
     onFilesChange(mergedContent, fileType);
   };
 
-  const removeFile = (index: number) => {
+  const removeFile = async (index: number) => {
+    const fileName = uploadedFiles[index].name;
     const updatedFiles = uploadedFiles.filter((_, i) => i !== index);
     setUploadedFiles(updatedFiles);
     mergeAndNotify(updatedFiles);
     
+    // Remove from database
+    if (user) {
+      try {
+        await supabase
+          .from('data_sources')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('name', fileName);
+      } catch (error) {
+        console.error('Error removing source:', error);
+      }
+    }
+    
     toast({
       title: 'File removed',
-      description: `${uploadedFiles[index].name} removed`,
+      description: `${fileName} removed`,
     });
   };
 
-  const clearAllFiles = () => {
+  const clearAllFiles = async () => {
     setUploadedFiles([]);
     onFilesChange([], 'text');
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+    
+    // Clear from database
+    if (user) {
+      try {
+        await supabase
+          .from('data_sources')
+          .delete()
+          .eq('user_id', user.id);
+      } catch (error) {
+        console.error('Error clearing sources:', error);
+      }
+    }
+    
     toast({
       title: 'All files cleared',
       description: 'Upload new files to begin analysis',
     });
   };
 
-  const handleRedditUrl = async () => {
-    if (!redditUrl.trim()) return;
+  const handleRedditUrls = async () => {
+    const urls = redditUrls
+      .split('\n')
+      .map(url => url.trim())
+      .filter(url => url.length > 0);
+    
+    if (urls.length === 0) return;
     
     setIsScrapingUrl(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('scrape-reddit', {
-        body: { url: redditUrl }
-      });
-      
-      if (error) throw error;
-      if (!data.success) throw new Error(data.error);
-      
-      const newFile: UploadedFile = {
-        name: `Reddit: ${new URL(redditUrl).pathname}`,
-        content: data.texts,
-        itemCount: data.itemCount,
-        type: 'reddit'
-      };
-      
-      const updatedFiles = [...uploadedFiles, newFile];
-      setUploadedFiles(updatedFiles);
-      mergeAndNotify(updatedFiles);
-      setRedditUrl('');
-      
+    let successCount = 0;
+    
+    for (const url of urls) {
+      try {
+        const { data, error } = await supabase.functions.invoke('scrape-reddit', {
+          body: { url }
+        });
+        
+        if (error) throw error;
+        if (!data.success) throw new Error(data.error);
+        
+        const newFile: UploadedFile = {
+          name: `Reddit: ${new URL(url).pathname}`,
+          content: data.texts,
+          itemCount: data.itemCount,
+          type: 'reddit'
+        };
+        
+        const updatedFiles = [...uploadedFiles, newFile];
+        setUploadedFiles(updatedFiles);
+        await saveSource(newFile);
+        mergeAndNotify(updatedFiles);
+        successCount++;
+      } catch (error) {
+        console.error(`Error scraping ${url}:`, error);
+        toast({
+          title: "Error",
+          description: `Failed to scrape: ${url}`,
+          variant: "destructive",
+        });
+      }
+    }
+    
+    setRedditUrls('');
+    
+    if (successCount > 0) {
       toast({
         title: "Reddit data scraped",
-        description: `Extracted ${data.itemCount} items from Reddit`,
+        description: `Successfully extracted data from ${successCount} of ${urls.length} URL(s)`,
       });
-    } catch (error) {
-      console.error('Error scraping Reddit:', error);
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to scrape Reddit URL",
-        variant: "destructive",
-      });
-    } finally {
-      setIsScrapingUrl(false);
     }
+    
+    setIsScrapingUrl(false);
   };
+
+  if (!user) {
+    return (
+      <Card className="p-6 text-center">
+        <p className="text-muted-foreground">Loading authentication...</p>
+      </Card>
+    );
+  }
 
   return (
     <Card className="p-6">
       <div className="space-y-4">
-        <div>
-          <h3 className="text-lg font-semibold mb-2">Upload Data</h3>
-          <p className="text-sm text-muted-foreground">
-            Upload Reddit JSON files, research papers (PDF), or plain text data
-          </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold mb-2">Upload Data</h3>
+            <p className="text-sm text-muted-foreground">
+              Upload Reddit JSON files, research papers (PDF), or plain text data
+            </p>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleSignOut}
+            className="gap-2"
+          >
+            <LogOut className="w-4 h-4" />
+            Sign Out
+          </Button>
         </div>
 
         <div className="space-y-4">
@@ -253,27 +417,27 @@ export function FileUploader({ onFilesChange, disabled }: FileUploaderProps) {
           </div>
 
           <div className="border-t pt-4">
-            <p className="text-sm font-medium mb-3">Or scrape from Reddit URL (Free!)</p>
-            <div className="flex gap-2">
-              <Input
-                placeholder="https://www.reddit.com/r/science/..."
-                value={redditUrl}
-                onChange={(e) => setRedditUrl(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && !disabled && handleRedditUrl()}
+            <p className="text-sm font-medium mb-3">Or scrape from Reddit URLs (Free!)</p>
+            <div className="space-y-2">
+              <Textarea
+                placeholder="Paste multiple Reddit URLs (one per line):&#10;https://www.reddit.com/r/science/...&#10;https://www.reddit.com/r/technology/..."
+                value={redditUrls}
+                onChange={(e) => setRedditUrls(e.target.value)}
                 disabled={disabled || isScrapingUrl}
-                className="flex-1"
+                className="min-h-[100px] font-mono text-sm"
               />
               <Button
-                onClick={handleRedditUrl}
-                disabled={!redditUrl.trim() || disabled || isScrapingUrl}
+                onClick={handleRedditUrls}
+                disabled={!redditUrls.trim() || disabled || isScrapingUrl}
                 variant="secondary"
+                className="w-full"
               >
                 <LinkIcon className="w-4 h-4 mr-2" />
-                {isScrapingUrl ? 'Scraping...' : 'Scrape'}
+                {isScrapingUrl ? 'Scraping...' : `Scrape ${redditUrls.split('\n').filter(u => u.trim()).length} URL(s)`}
               </Button>
             </div>
             <p className="text-xs text-muted-foreground mt-2">
-              Enter a Reddit post, subreddit, or user URL to extract text data
+              Enter Reddit post, subreddit, or user URLs to extract text data (one per line)
             </p>
           </div>
 
