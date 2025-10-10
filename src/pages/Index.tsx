@@ -29,12 +29,7 @@ import { Brain, BarChart3, Settings, Download } from 'lucide-react';
 const Index = () => {
   const navigate = useNavigate();
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
-  const [nodes, setNodes] = useState<Node[]>([
-    { id: '1', name: 'Market Sentiment', keywords: ['bullish', 'bearish', 'rally', 'crash', 'gain', 'loss'] },
-    { id: '2', name: 'Tech Stocks', keywords: ['tech', 'tsla', 'aapl', 'nvda', 'meta', 'googl'] },
-    { id: '3', name: 'Economic Policy', keywords: ['fed', 'interest', 'inflation', 'economy', 'policy', 'rates'] },
-    { id: '4', name: 'Trading Strategy', keywords: ['calls', 'puts', 'yolo', 'strategy', 'trade', 'option'] },
-  ]);
+  const [nodes, setNodes] = useState<Node[]>([]);
   const [results, setResults] = useState<SentimentResult[]>([]);
   const [nodeAnalysis, setNodeAnalysis] = useState<NodeAnalysis[]>([]);
   const [timeSeriesData, setTimeSeriesData] = useState<any[]>([]);

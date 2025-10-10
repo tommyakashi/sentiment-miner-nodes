@@ -24,17 +24,28 @@ export function NodeManager({ nodes, onNodesChange }: NodeManagerProps) {
   // Load nodes from localStorage on mount
   useEffect(() => {
     const savedNodes = localStorage.getItem('sentiment-nodes');
-    if (savedNodes && nodes.length === 0) {
+    if (savedNodes) {
       try {
         const parsed = JSON.parse(savedNodes);
-        onNodesChange(parsed);
-        toast({
-          title: "Nodes loaded",
-          description: `Loaded ${parsed.length} saved nodes`,
-        });
+        if (parsed.length > 0) {
+          onNodesChange(parsed);
+          toast({
+            title: "Nodes loaded",
+            description: `Loaded ${parsed.length} saved nodes from previous session`,
+          });
+        }
       } catch (error) {
         console.error('Error loading saved nodes:', error);
       }
+    } else {
+      // Set default nodes if nothing saved
+      const defaultNodes: Node[] = [
+        { id: '1', name: 'Market Sentiment', keywords: ['bullish', 'bearish', 'rally', 'crash', 'gain', 'loss'] },
+        { id: '2', name: 'Tech Stocks', keywords: ['tech', 'tsla', 'aapl', 'nvda', 'meta', 'googl'] },
+        { id: '3', name: 'Economic Policy', keywords: ['fed', 'interest', 'inflation', 'economy', 'policy', 'rates'] },
+        { id: '4', name: 'Trading Strategy', keywords: ['calls', 'puts', 'yolo', 'strategy', 'trade', 'option'] },
+      ];
+      onNodesChange(defaultNodes);
     }
   }, []);
 
