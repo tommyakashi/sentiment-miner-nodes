@@ -28,6 +28,7 @@ import { Brain, BarChart3, Settings, Download } from 'lucide-react';
 
 const Index = () => {
   const navigate = useNavigate();
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [nodes, setNodes] = useState<Node[]>([
     { id: '1', name: 'Market Sentiment', keywords: ['bullish', 'bearish', 'rally', 'crash', 'gain', 'loss'] },
     { id: '2', name: 'Tech Stocks', keywords: ['tech', 'tsla', 'aapl', 'nvda', 'meta', 'googl'] },
@@ -51,6 +52,8 @@ const Index = () => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!session) {
         navigate('/auth');
+      } else {
+        setIsCheckingAuth(false);
       }
     });
 
@@ -58,6 +61,8 @@ const Index = () => {
       (event, session) => {
         if (!session) {
           navigate('/auth');
+        } else {
+          setIsCheckingAuth(false);
         }
       }
     );
@@ -212,6 +217,17 @@ const Index = () => {
       setProgress(0);
     }
   };
+
+  if (isCheckingAuth) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted flex items-center justify-center">
+        <div className="text-center">
+          <Brain className="w-16 h-16 mx-auto text-primary mb-4 animate-pulse" />
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted">

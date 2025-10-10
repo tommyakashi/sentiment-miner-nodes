@@ -30,34 +30,24 @@ export function FileUploader({ onFilesChange, disabled }: FileUploaderProps) {
   const [isScrapingUrl, setIsScrapingUrl] = useState(false);
   const [isLoadingSources, setIsLoadingSources] = useState(true);
   const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  // Auth state management
+  // Get current user
   useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+    });
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
-        setSession(session);
         setUser(session?.user ?? null);
-        
-        if (!session?.user) {
-          setTimeout(() => navigate('/auth'), 0);
-        }
       }
     );
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (!session?.user) {
-        navigate('/auth');
-      }
-    });
-
     return () => subscription.unsubscribe();
-  }, [navigate]);
+  }, []);
 
   // Load saved sources
   useEffect(() => {
@@ -360,7 +350,7 @@ export function FileUploader({ onFilesChange, disabled }: FileUploaderProps) {
   if (!user) {
     return (
       <Card className="p-6 text-center">
-        <p className="text-muted-foreground">Loading authentication...</p>
+        <p className="text-muted-foreground">Loading...</p>
       </Card>
     );
   }
