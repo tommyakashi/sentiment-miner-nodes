@@ -7,6 +7,9 @@ export function parseRedditJSON(jsonData: RedditData[]): ParsedRedditData {
   const participants = new Map<string, { username: string; count: number; totalUpvotes: number }>();
 
   jsonData.forEach(item => {
+    // Skip undefined/null items
+    if (!item || typeof item !== 'object') return;
+    
     if (item.dataType === 'post') {
       posts.push(item as RedditPost);
       if (item.body && item.body.length > 20) {
@@ -43,6 +46,9 @@ export function extractTimeSeriesData(data: RedditData[]) {
   const timeMap = new Map<string, { positive: number; negative: number; neutral: number; total: number }>();
 
   data.forEach(item => {
+    // Skip undefined/null items
+    if (!item || typeof item !== 'object') return;
+    
     // Handle both ISO strings and invalid dates
     let date: string;
     try {

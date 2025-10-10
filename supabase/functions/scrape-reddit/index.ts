@@ -132,28 +132,33 @@ function extractCommentsFromTree(comments: any[], postId: string, maxDepth: numb
   const results: any[] = [];
   
   function traverse(comment: any, depth: number = 0) {
-    if (depth > maxDepth) return;
+    if (!comment || depth > maxDepth) return;
     
     if (comment.kind === 't1' && comment.data?.body) {
       const body = comment.data.body;
       if (body.length > 20 && !body.startsWith('[deleted]') && !body.startsWith('[removed]')) {
-        results.push(convertCommentToRedditData(comment as RedditComment, postId));
+        const converted = convertCommentToRedditData(comment as RedditComment, postId);
+        if (converted) results.push(converted);
       }
     }
     
     // Recursively traverse replies
     if (comment.data?.replies?.data?.children) {
       for (const reply of comment.data.replies.data.children) {
-        traverse(reply, depth + 1);
+        if (reply && typeof reply === 'object') {
+          traverse(reply, depth + 1);
+        }
       }
     }
   }
   
   for (const comment of comments) {
-    traverse(comment);
+    if (comment && typeof comment === 'object') {
+      traverse(comment);
+    }
   }
   
-  return results;
+  return results.filter(item => item && item.dataType);
 }
 
 serve(async (req) => {
@@ -248,6 +253,9 @@ serve(async (req) => {
     }
 
     console.log(`Extracted ${redditData.length} items from Reddit API`);
+
+    // Filter out any undefined/null items
+    redditData = redditData.filter(item => item && typeof item === 'object' && item.dataType);
 
     if (redditData.length === 0) {
       throw new Error('No content found. The URL might be invalid or have no accessible content.');
