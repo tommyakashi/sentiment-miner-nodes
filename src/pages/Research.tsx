@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,16 +6,21 @@ import { Badge } from "@/components/ui/badge";
 import { ResearchFiltersComponent } from "@/components/ResearchFilters";
 import { PaperCard } from "@/components/PaperCard";
 import { PaperUploadDialog } from "@/components/PaperUploadDialog";
+import { ProjectSelector } from "@/components/ProjectSelector";
+import { ProjectManager } from "@/components/ProjectManager";
 import { ResearchPaper, ResearchFilters } from "@/types/consensus";
-import { Upload, Download, Trash2, Search, FileText } from "lucide-react";
+import { Upload, Download, Trash2, Search, FileText, Settings } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
+import { useResearchProject } from "@/hooks/useResearchProject";
 
 const Research = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [papers, setPapers] = useState<ResearchPaper[]>([]);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [projectManagerOpen, setProjectManagerOpen] = useState(false);
+  const [projectManagerMode, setProjectManagerMode] = useState<'create' | 'edit'>('create');
+  const [selectedPaperIds, setSelectedPaperIds] = useState<Set<string>>(new Set());
   const [filters, setFilters] = useState<ResearchFilters>({
     yearMin: 2015,
     yearMax: new Date().getFullYear(),
@@ -23,6 +28,35 @@ const Research = () => {
     domains: [],
     searchQuery: "",
   });
+
+  const {
+    projects,
+    currentProject,
+    isLoading,
+    fetchProjectWithPapers,
+    createProject,
+    updateProject,
+    deleteProject,
+    addPaperToProject,
+    removePapersFromProject,
+  } = useResearchProject();
+
+  // Auto-select first project on load
+  useEffect(() => {
+    if (projects.length > 0 && !currentProject) {
+      fetchProjectWithPapers(projects[0].id);
+    }
+  }, [projects, currentProject]);
+
+  // Clear selection when project changes
+  useEffect(() => {
+    setSelectedPaperIds(new Set());
+  }, [currentProject?.id]);
+
+  const papers = currentProject?.papers.map(pp => ({
+    ...pp.paper_data,
+    selected: selectedPaperIds.has(pp.paper_data.id),
+  })) || [];
 
   const filteredPapers = useMemo(() => {
     return papers.filter((paper) => {
@@ -68,17 +102,34 @@ const Research = () => {
   const selectedCount = selectedPapers.length;
 
   const handleToggleSelect = (id: string) => {
-    setPapers(papers.map(p => p.id === id ? { ...p, selected: !p.selected } : p));
+    setSelectedPaperIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
   };
 
   const handleSelectAll = () => {
-    const allSelected = filteredPapers.every(p => p.selected);
-    setPapers(papers.map(p => {
-      if (filteredPapers.find(fp => fp.id === p.id)) {
-        return { ...p, selected: !allSelected };
-      }
-      return p;
-    }));
+    const allSelected = filteredPapers.every(p => selectedPaperIds.has(p.id));
+    if (allSelected) {
+      // Deselect all filtered papers
+      setSelectedPaperIds(prev => {
+        const newSet = new Set(prev);
+        filteredPapers.forEach(p => newSet.delete(p.id));
+        return newSet;
+      });
+    } else {
+      // Select all filtered papers
+      setSelectedPaperIds(prev => {
+        const newSet = new Set(prev);
+        filteredPapers.forEach(p => newSet.add(p.id));
+        return newSet;
+      });
+    }
   };
 
   const handleClearFilters = () => {
@@ -91,16 +142,29 @@ const Research = () => {
     });
   };
 
-  const handlePaperAdd = (paper: ResearchPaper) => {
-    setPapers([...papers, paper]);
+  const handlePaperAdd = async (paper: ResearchPaper) => {
+    if (!currentProject) {
+      // Auto-create a project if none exists
+      const newProject = await createProject("My Research Project");
+      if (newProject) {
+        await addPaperToProject(newProject.id, paper);
+      }
+    } else {
+      await addPaperToProject(currentProject.id, paper);
+    }
   };
 
-  const handleDeleteSelected = () => {
-    setPapers(papers.filter(p => !p.selected));
-    toast({
-      title: "Papers deleted",
-      description: `${selectedCount} paper(s) removed`,
-    });
+  const handleDeleteSelected = async () => {
+    if (!currentProject) return;
+    
+    const selectedPaperDbIds = currentProject.papers
+      .filter(pp => selectedPaperIds.has(pp.paper_data.id))
+      .map(pp => pp.id);
+    
+    if (selectedPaperDbIds.length > 0) {
+      await removePapersFromProject(selectedPaperDbIds);
+      setSelectedPaperIds(new Set());
+    }
   };
 
   const handleExportCSV = () => {
@@ -176,10 +240,56 @@ const Research = () => {
     <div className="min-h-screen bg-background">
       <div className="container mx-auto py-8 px-4">
         <div className="mb-8">
-          <h1 className="text-4xl font-bold mb-2">Research Paper Library</h1>
-          <p className="text-muted-foreground">
-            Upload, organize, and analyze research papers for your sentiment analysis
-          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-4xl font-bold mb-2">Research Paper Library</h1>
+              <p className="text-muted-foreground">
+                Upload, organize, and analyze research papers for your sentiment analysis
+              </p>
+            </div>
+          </div>
+
+          {/* Project Selector */}
+          <Card className="mt-6">
+            <CardHeader>
+              <CardTitle>Current Project</CardTitle>
+              <CardDescription>
+                {currentProject 
+                  ? `${currentProject.paper_count} papers in this project` 
+                  : "Select or create a project to get started"}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center gap-2">
+                <ProjectSelector
+                  projects={projects}
+                  currentProjectId={currentProject?.id}
+                  onProjectChange={fetchProjectWithPapers}
+                  onCreateNew={() => {
+                    setProjectManagerMode('create');
+                    setProjectManagerOpen(true);
+                  }}
+                />
+                {currentProject && (
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => {
+                      setProjectManagerMode('edit');
+                      setProjectManagerOpen(true);
+                    }}
+                  >
+                    <Settings className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+              {currentProject && currentProject.description && (
+                <p className="text-sm text-muted-foreground">
+                  {currentProject.description}
+                </p>
+              )}
+            </CardContent>
+          </Card>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
@@ -202,7 +312,9 @@ const Research = () => {
             {/* Search and Actions */}
             <Card>
               <CardHeader>
-                <CardTitle>Paper Management</CardTitle>
+                <CardTitle>
+                  Papers in {currentProject?.name || "Project"}
+                </CardTitle>
                 <CardDescription>
                   Upload PDFs manually or add paper details from Consensus.app
                 </CardDescription>
@@ -218,7 +330,10 @@ const Research = () => {
                       className="pl-10"
                     />
                   </div>
-                  <Button onClick={() => setUploadDialogOpen(true)}>
+                  <Button 
+                    onClick={() => setUploadDialogOpen(true)}
+                    disabled={!currentProject}
+                  >
                     <Upload className="h-4 w-4 mr-2" />
                     Add Paper
                   </Button>
@@ -311,6 +426,24 @@ const Research = () => {
           open={uploadDialogOpen}
           onOpenChange={setUploadDialogOpen}
           onPaperAdd={handlePaperAdd}
+        />
+
+        <ProjectManager
+          open={projectManagerOpen}
+          onOpenChange={setProjectManagerOpen}
+          mode={projectManagerMode}
+          project={projectManagerMode === 'edit' ? currentProject : undefined}
+          onSave={async (name, description) => {
+            if (projectManagerMode === 'create') {
+              const newProject = await createProject(name, description);
+              if (newProject) {
+                await fetchProjectWithPapers(newProject.id);
+              }
+            } else if (currentProject) {
+              await updateProject(currentProject.id, { name, description });
+            }
+          }}
+          onDelete={currentProject ? () => deleteProject(currentProject.id) : undefined}
         />
       </div>
     </div>

@@ -74,6 +74,62 @@ export type Database = {
         }
         Relationships: []
       }
+      project_papers: {
+        Row: {
+          added_at: string
+          id: string
+          paper_data: Json
+          project_id: string
+        }
+        Insert: {
+          added_at?: string
+          id?: string
+          paper_data: Json
+          project_id: string
+        }
+        Update: {
+          added_at?: string
+          id?: string
+          paper_data?: Json
+          project_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_papers_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "research_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      research_projects: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
