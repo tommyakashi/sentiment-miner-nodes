@@ -47,35 +47,89 @@ export const AIResearchSearch = ({ onAddToProject, disabled }: AIResearchSearchP
         description: 'Querying Lovable AI and OpenAI for research papers',
       });
 
-      // Call both edge functions in parallel
+      // Call both edge functions in parallel with graceful failure handling
       const [lovableRes, openaiRes] = await Promise.all([
         supabase.functions.invoke('search-consensus-lovable', {
           body: { query: query.trim() },
-        }),
+        }).catch(e => ({ error: e, data: null })),
         supabase.functions.invoke('search-consensus-openai', {
           body: { query: query.trim() },
-        }),
+        }).catch(e => ({ error: e, data: null })),
       ]);
 
-      if (lovableRes.error) throw new Error(`Lovable AI search failed: ${lovableRes.error.message}`);
-      if (openaiRes.error) throw new Error(`OpenAI search failed: ${openaiRes.error.message}`);
+      // Collect successful results
+      const lovablePapers = lovableRes.error ? [] : (lovableRes.data?.papers || []);
+      const openaiPapers = openaiRes.error ? [] : (openaiRes.data?.papers || []);
 
-      // Merge and deduplicate
-      const mergeRes = await supabase.functions.invoke('merge-research-results', {
-        body: {
-          setA: lovableRes.data.papers,
-          setB: openaiRes.data.papers,
-        },
-      });
+      // Check if at least one search succeeded
+      if (lovablePapers.length === 0 && openaiPapers.length === 0) {
+        const errors = [];
+        if (lovableRes.error) errors.push(`Lovable AI: ${lovableRes.error.message || 'Failed'}`);
+        if (openaiRes.error) errors.push(`OpenAI: ${openaiRes.error.message || 'Failed'}`);
+        
+        throw new Error(`Both searches failed:\n${errors.join('\n')}`);
+      }
 
-      if (mergeRes.error) throw new Error(`Merge failed: ${mergeRes.error.message}`);
+      // Show warnings for partial failures
+      if (lovableRes.error) {
+        toast({
+          title: 'Lovable AI search failed',
+          description: 'Using OpenAI results only',
+          variant: 'destructive',
+        });
+      }
+      if (openaiRes.error) {
+        const errorMsg = openaiRes.error.message || '';
+        const isQuotaError = errorMsg.includes('429') || errorMsg.includes('quota') || errorMsg.includes('insufficient');
+        
+        toast({
+          title: 'OpenAI search failed',
+          description: isQuotaError 
+            ? 'OpenAI quota exceeded. Using Lovable AI results (still free during promo!)' 
+            : 'Using Lovable AI results only',
+          variant: 'default',
+        });
+      }
 
-      setResults(mergeRes.data.papers);
-      setStats(mergeRes.data.stats);
+      // Merge and deduplicate if we have results from both, otherwise use what we have
+      if (lovablePapers.length > 0 && openaiPapers.length > 0) {
+        const mergeRes = await supabase.functions.invoke('merge-research-results', {
+          body: {
+            setA: lovablePapers,
+            setB: openaiPapers,
+          },
+        });
+
+        if (mergeRes.error) {
+          // If merge fails, just concatenate
+          setResults([...lovablePapers, ...openaiPapers]);
+          setStats({
+            lovableAI: lovablePapers.length,
+            openAI: openaiPapers.length,
+            merged: lovablePapers.length + openaiPapers.length,
+            duplicatesRemoved: 0,
+            foundByBoth: 0,
+          });
+        } else {
+          setResults(mergeRes.data.papers);
+          setStats(mergeRes.data.stats);
+        }
+      } else {
+        // Only one source worked
+        const allPapers = [...lovablePapers, ...openaiPapers];
+        setResults(allPapers);
+        setStats({
+          lovableAI: lovablePapers.length,
+          openAI: openaiPapers.length,
+          merged: allPapers.length,
+          duplicatesRemoved: 0,
+          foundByBoth: 0,
+        });
+      }
 
       toast({
         title: 'Search complete',
-        description: `Found ${mergeRes.data.papers.length} unique papers (${mergeRes.data.stats.duplicatesRemoved} duplicates removed)`,
+        description: `Found ${results.length || (lovablePapers.length + openaiPapers.length)} papers`,
       });
     } catch (error: any) {
       console.error('Search error:', error);
