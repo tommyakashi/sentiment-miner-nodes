@@ -4,13 +4,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Search, Sparkles, Plus, Loader2 } from 'lucide-react';
+import { Search, Plus, Loader2, Globe } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { ResearchPaper } from '@/types/consensus';
 
 interface AISearchResult extends Omit<ResearchPaper, 'selected' | 'uploadedAt'> {
-  source: 'lovable-ai' | 'openai' | 'both';
+  source: 'perplexity';
   relevanceScore?: number;
 }
 
@@ -24,14 +24,13 @@ export const AIResearchSearch = ({ onAddToProject, disabled }: AIResearchSearchP
   const [isSearching, setIsSearching] = useState(false);
   const [results, setResults] = useState<AISearchResult[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [stats, setStats] = useState<any>(null);
   const { toast } = useToast();
 
   const handleSearch = async () => {
     if (!query.trim()) {
       toast({
         title: 'Empty query',
-        description: 'Please enter a research topic to search',
+        description: 'Please enter a research question to search',
         variant: 'destructive',
       });
       return;
@@ -44,93 +43,33 @@ export const AIResearchSearch = ({ onAddToProject, disabled }: AIResearchSearchP
     try {
       toast({
         title: 'Searching...',
-        description: 'Querying Lovable AI and OpenAI for research papers',
+        description: 'Using Perplexity AI to search the web for research papers',
       });
 
-      // Call both edge functions in parallel with graceful failure handling
-      const [lovableRes, openaiRes] = await Promise.all([
-        supabase.functions.invoke('search-consensus-lovable', {
-          body: { query: query.trim() },
-        }).catch(e => ({ error: e, data: null })),
-        supabase.functions.invoke('search-consensus-openai', {
-          body: { query: query.trim() },
-        }).catch(e => ({ error: e, data: null })),
-      ]);
+      const searchRes = await supabase.functions.invoke('search-papers-perplexity', {
+        body: { query: query.trim() },
+      });
 
-      // Collect successful results
-      const lovablePapers = lovableRes.error ? [] : (lovableRes.data?.papers || []);
-      const openaiPapers = openaiRes.error ? [] : (openaiRes.data?.papers || []);
-
-      // Check if at least one search succeeded
-      if (lovablePapers.length === 0 && openaiPapers.length === 0) {
-        const errors = [];
-        if (lovableRes.error) errors.push(`Lovable AI: ${lovableRes.error.message || 'Failed'}`);
-        if (openaiRes.error) errors.push(`OpenAI: ${openaiRes.error.message || 'Failed'}`);
-        
-        throw new Error(`Both searches failed:\n${errors.join('\n')}`);
+      if (searchRes.error) {
+        throw new Error(`Search failed: ${searchRes.error.message}`);
       }
 
-      // Show warnings for partial failures
-      if (lovableRes.error) {
+      const papers = searchRes.data?.papers || [];
+      
+      if (papers.length === 0) {
         toast({
-          title: 'Lovable AI search failed',
-          description: 'Using OpenAI results only',
-          variant: 'destructive',
-        });
-      }
-      if (openaiRes.error) {
-        const errorMsg = openaiRes.error.message || '';
-        const isQuotaError = errorMsg.includes('429') || errorMsg.includes('quota') || errorMsg.includes('insufficient');
-        
-        toast({
-          title: 'OpenAI search failed',
-          description: isQuotaError 
-            ? 'OpenAI quota exceeded. Using Lovable AI results (still free during promo!)' 
-            : 'Using Lovable AI results only',
+          title: 'No results',
+          description: 'No papers found. Try rephrasing your query.',
           variant: 'default',
         });
-      }
-
-      // Merge and deduplicate if we have results from both, otherwise use what we have
-      if (lovablePapers.length > 0 && openaiPapers.length > 0) {
-        const mergeRes = await supabase.functions.invoke('merge-research-results', {
-          body: {
-            setA: lovablePapers,
-            setB: openaiPapers,
-          },
-        });
-
-        if (mergeRes.error) {
-          // If merge fails, just concatenate
-          setResults([...lovablePapers, ...openaiPapers]);
-          setStats({
-            lovableAI: lovablePapers.length,
-            openAI: openaiPapers.length,
-            merged: lovablePapers.length + openaiPapers.length,
-            duplicatesRemoved: 0,
-            foundByBoth: 0,
-          });
-        } else {
-          setResults(mergeRes.data.papers);
-          setStats(mergeRes.data.stats);
-        }
       } else {
-        // Only one source worked
-        const allPapers = [...lovablePapers, ...openaiPapers];
-        setResults(allPapers);
-        setStats({
-          lovableAI: lovablePapers.length,
-          openAI: openaiPapers.length,
-          merged: allPapers.length,
-          duplicatesRemoved: 0,
-          foundByBoth: 0,
+        toast({
+          title: 'Search complete',
+          description: `Found ${papers.length} papers`,
         });
       }
 
-      toast({
-        title: 'Search complete',
-        description: `Found ${results.length || (lovablePapers.length + openaiPapers.length)} papers`,
-      });
+      setResults(papers);
     } catch (error: any) {
       console.error('Search error:', error);
       toast({
@@ -181,24 +120,21 @@ export const AIResearchSearch = ({ onAddToProject, disabled }: AIResearchSearchP
   };
 
   const getSourceBadge = (source: string) => {
-    if (source === 'both') {
-      return <Badge variant="default">Both AI</Badge>;
-    } else if (source === 'lovable-ai') {
-      return <Badge variant="secondary">Lovable AI</Badge>;
-    } else {
-      return <Badge variant="outline">OpenAI</Badge>;
-    }
+    return <Badge variant="default" className="flex items-center gap-1">
+      <Globe className="h-3 w-3" />
+      Perplexity
+    </Badge>;
   };
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Sparkles className="h-5 w-5" />
-          AI-Powered Research Search
+          <Globe className="h-5 w-5" />
+          Research Paper Search
         </CardTitle>
         <CardDescription>
-          Search 200M+ papers using dual AI models (Lovable AI + OpenAI) with automatic deduplication
+          Search the web for research papers using Perplexity AI with real-time web access
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -206,7 +142,7 @@ export const AIResearchSearch = ({ onAddToProject, disabled }: AIResearchSearchP
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="e.g., 'postdoc funding challenges in AI research'"
+              placeholder="e.g., 'What does recent research show about AI/ML fellowships?'"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
@@ -222,21 +158,12 @@ export const AIResearchSearch = ({ onAddToProject, disabled }: AIResearchSearchP
               </>
             ) : (
               <>
-                <Sparkles className="h-4 w-4 mr-2" />
-                AI Search
+                <Globe className="h-4 w-4 mr-2" />
+                Search Web
               </>
             )}
           </Button>
         </div>
-
-        {stats && (
-          <div className="flex gap-2 text-sm text-muted-foreground">
-            <Badge variant="secondary">Lovable AI: {stats.lovableAI}</Badge>
-            <Badge variant="outline">OpenAI: {stats.openAI}</Badge>
-            <Badge variant="default">Both: {stats.foundByBoth}</Badge>
-            <Badge>Total: {stats.merged}</Badge>
-          </div>
-        )}
 
         {results.length > 0 && (
           <>
