@@ -23,7 +23,9 @@ serve(async (req) => {
 
     const systemPrompt = `You are a research paper search assistant with access to Consensus.app, a database of 200M+ academic papers.
 
-Search for academic papers matching the user's query and return structured results.
+CRITICAL INSTRUCTION: You MUST return ONLY a valid JSON array. Never return explanatory text, apologies, or suggestions.
+
+Search for academic papers matching the user's query. If the query is vague or contains sentiment words, interpret it as best you can and find relevant papers about the underlying research topics.
 
 For each paper found, extract:
 - title (string): Full paper title
@@ -31,21 +33,21 @@ For each paper found, extract:
 - year (number): Publication year
 - abstract (string): Paper abstract/summary
 - journal (string): Journal or venue name
-- citations (number): Citation count if available
-- url (string): Link to paper if available
-- doi (string): DOI if available
+- citations (number): Citation count if available, or 0
+- url (string): Link to paper if available, or empty string
+- doi (string): DOI if available, or empty string
 - studyType (string): One of: Meta-Analysis, Systematic Review, RCT, Observational, Case Study, Literature Review, Other
 - domain (string): One of: Computer Science, Psychology, Medicine, Biology, Economics, Education, Engineering, Other
 - relevanceScore (number): 0-100 score for query relevance
 
-Return ONLY a JSON array of papers, no other text. Example:
+REQUIRED FORMAT - Return ONLY this, no other text:
 [
   {
-    "title": "The Impact of AI on Research",
-    "authors": ["Smith, J.", "Doe, A."],
+    "title": "Paper Title",
+    "authors": ["Author A", "Author B"],
     "year": 2023,
-    "abstract": "This study examines...",
-    "journal": "Nature",
+    "abstract": "Abstract text...",
+    "journal": "Journal Name",
     "citations": 45,
     "url": "https://...",
     "doi": "10.1234/...",
@@ -53,7 +55,10 @@ Return ONLY a JSON array of papers, no other text. Example:
     "domain": "Computer Science",
     "relevanceScore": 95
   }
-]`;
+]
+
+If you cannot find papers, return an empty array: []
+NEVER return explanatory text. ONLY return the JSON array.`;
 
     const userPrompt = filters 
       ? `Search query: "${query}"\n\nFilters:\n- Year range: ${filters.yearMin}-${filters.yearMax}\n- Study types: ${filters.studyTypes.join(', ') || 'any'}\n- Domains: ${filters.domains.join(', ') || 'any'}\n\nFind 20-30 highly relevant papers.`
@@ -86,13 +91,26 @@ Return ONLY a JSON array of papers, no other text. Example:
     // Parse JSON from response
     let papers = [];
     try {
-      // Extract JSON array from markdown code blocks if present
+      // Try to extract JSON array from markdown code blocks if present
       const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
       const jsonStr = jsonMatch ? jsonMatch[1] : content;
       papers = JSON.parse(jsonStr);
+      
+      // Ensure it's an array
+      if (!Array.isArray(papers)) {
+        console.error('AI response is not an array:', papers);
+        papers = [];
+      }
     } catch (e) {
-      console.error('Failed to parse AI response as JSON:', content);
-      throw new Error('Failed to parse AI response');
+      console.error('Failed to parse AI response as JSON. Raw content:', content.substring(0, 500));
+      
+      // If AI refused to return JSON, return empty array with helpful message
+      if (content.includes('cannot fulfill') || content.includes('sorry') || content.includes('rephrase')) {
+        console.log('AI refused to search - returning empty results');
+        papers = [];
+      } else {
+        throw new Error('Failed to parse AI response - AI did not return valid JSON');
+      }
     }
 
     // Add source tag
