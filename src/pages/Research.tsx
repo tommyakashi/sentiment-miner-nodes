@@ -8,6 +8,7 @@ import { PaperCard } from "@/components/PaperCard";
 import { PaperUploadDialog } from "@/components/PaperUploadDialog";
 import { ProjectSelector } from "@/components/ProjectSelector";
 import { ProjectManager } from "@/components/ProjectManager";
+import { AIResearchSearch } from "@/components/AIResearchSearch";
 import { ResearchPaper, ResearchFilters } from "@/types/consensus";
 import { Upload, Download, Trash2, Search, FileText, Settings } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -38,6 +39,7 @@ const Research = () => {
     updateProject,
     deleteProject,
     addPaperToProject,
+    addPapersToProject,
     removePapersFromProject,
   } = useResearchProject();
 
@@ -309,6 +311,16 @@ const Research = () => {
 
           {/* Main Content */}
           <div className="lg:col-span-3 space-y-6">
+            {/* AI Research Search */}
+            <AIResearchSearch
+              onAddToProject={async (papers) => {
+                if (currentProject) {
+                  await addPapersToProject(currentProject.id, papers);
+                }
+              }}
+              disabled={!currentProject}
+            />
+
             {/* Search and Actions */}
             <Card>
               <CardHeader>

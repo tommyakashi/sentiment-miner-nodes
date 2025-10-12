@@ -5,3 +5,12 @@ verify_jwt = false
 
 [functions.scrape-reddit]
 verify_jwt = false
+
+[functions.search-consensus-lovable]
+verify_jwt = false
+
+[functions.search-consensus-openai]
+verify_jwt = false
+
+[functions.merge-research-results]
+verify_jwt = false
