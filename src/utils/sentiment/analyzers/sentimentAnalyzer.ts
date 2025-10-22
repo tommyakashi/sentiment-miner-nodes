@@ -10,14 +10,50 @@ const nodeEmbeddingCache = new Map<string, number[]>();
 // Cache for text embeddings to avoid redundant generation
 const textEmbeddingCache = new Map<string, number[]>();
 
-// KPI concept definitions
+// KPI concept definitions - based on NRC emotion lexicon, VADER, and LIWC research lexicons
 const KPI_CONCEPTS = {
-  trust: ['trust', 'reliable', 'honest', 'transparent', 'credible', 'dependable', 'authentic'],
-  optimism: ['hope', 'optimistic', 'positive', 'encouraging', 'promising', 'bright', 'confident'],
-  frustration: ['frustration', 'annoying', 'difficult', 'problem', 'issue', 'struggle', 'challenging'],
-  clarity: ['clear', 'understand', 'simple', 'obvious', 'transparent', 'straightforward', 'explicit'],
-  access: ['access', 'available', 'easy', 'convenient', 'reachable', 'obtainable', 'open'],
-  fairness: ['fair', 'equal', 'just', 'equitable', 'balanced', 'impartial', 'unbiased'],
+  trust: [
+    'trust', 'reliable', 'honest', 'transparent', 'credible', 'dependable', 'authentic',
+    'trustworthy', 'confidence', 'faith', 'integrity', 'truthful', 'genuine', 'legitimate',
+    'reputable', 'believable', 'verified', 'validated', 'secure', 'safe', 'consistent',
+    'accountability', 'responsible', 'ethical', 'sincere', 'loyal', 'faithful'
+  ],
+  optimism: [
+    'hope', 'optimistic', 'positive', 'encouraging', 'promising', 'bright', 'confident',
+    'hopeful', 'upbeat', 'favorable', 'beneficial', 'advantageous', 'constructive',
+    'enthusiastic', 'motivated', 'inspired', 'excited', 'eager', 'cheerful', 'happy',
+    'joy', 'pleased', 'satisfied', 'success', 'improve', 'progress', 'forward', 'better',
+    'opportunity', 'potential', 'possible', 'achieve', 'accomplish', 'thrive', 'flourish'
+  ],
+  frustration: [
+    'frustration', 'annoying', 'difficult', 'problem', 'issue', 'struggle', 'challenging',
+    'frustrated', 'irritating', 'aggravating', 'exasperating', 'troublesome', 'bothersome',
+    'obstacle', 'barrier', 'hindrance', 'impediment', 'setback', 'delay', 'stuck',
+    'blocked', 'prevented', 'limited', 'constrained', 'restricted', 'complicated',
+    'confusing', 'unclear', 'ambiguous', 'vague', 'uncertain', 'inconsistent', 'unreliable',
+    'fail', 'failure', 'error', 'mistake', 'wrong', 'broken', 'ineffective', 'inadequate'
+  ],
+  clarity: [
+    'clear', 'understand', 'simple', 'obvious', 'transparent', 'straightforward', 'explicit',
+    'understandable', 'comprehensible', 'intelligible', 'lucid', 'coherent', 'logical',
+    'rational', 'reasonable', 'sensible', 'plain', 'evident', 'apparent', 'manifest',
+    'unambiguous', 'precise', 'accurate', 'exact', 'specific', 'defined', 'explained',
+    'articulated', 'expressed', 'communicated', 'distinct', 'definite', 'certain'
+  ],
+  access: [
+    'access', 'available', 'easy', 'convenient', 'reachable', 'obtainable', 'open',
+    'accessible', 'usable', 'approachable', 'attainable', 'achievable', 'feasible',
+    'practical', 'simple', 'effortless', 'straightforward', 'user-friendly', 'intuitive',
+    'navigate', 'find', 'locate', 'retrieve', 'get', 'obtain', 'acquire', 'procure',
+    'enable', 'permit', 'allow', 'facilitate', 'support', 'accommodate', 'inclusive'
+  ],
+  fairness: [
+    'fair', 'equal', 'just', 'equitable', 'balanced', 'impartial', 'unbiased',
+    'justice', 'equality', 'equity', 'fairness', 'objectivity', 'neutral', 'evenhanded',
+    'unprejudiced', 'nondiscriminatory', 'inclusive', 'representative', 'diverse',
+    'proportional', 'reasonable', 'appropriate', 'legitimate', 'lawful', 'rightful',
+    'ethical', 'moral', 'principled', 'integrity', 'honest', 'truthful', 'transparent'
+  ],
 };
 
 const kpiEmbeddingCache = new Map<string, number[]>();
@@ -40,20 +76,38 @@ async function getKPIEmbeddings() {
 }
 
 // Pre-build keyword frequency map for efficient matching
-function buildKeywordFrequencyMap(text: string, kpiConcepts: Record<string, string[]> = KPI_CONCEPTS): Map<string, number> {
+function buildKeywordFrequencyMap(text: string): Map<string, number> {
   const normalized = normalizeText(text);
   const frequencyMap = new Map<string, number>();
   
   const domainWeights: Record<string, Record<string, number>> = {
-    trust: { reliable: 1.2, honest: 1.3, credible: 1.2 },
-    optimism: { hope: 1.3, positive: 1.2, encouraging: 1.2 },
-    frustration: { frustration: 1.3, annoying: 1.2, difficult: 1.2 },
-    clarity: { clear: 1.3, simple: 1.2, obvious: 1.2 },
-    access: { access: 1.3, available: 1.2, easy: 1.2 },
-    fairness: { fair: 1.3, equal: 1.2, just: 1.2 },
+    trust: { 
+      trustworthy: 1.4, credible: 1.3, reliable: 1.3, authentic: 1.2, verified: 1.2,
+      integrity: 1.3, accountability: 1.2, ethical: 1.2
+    },
+    optimism: { 
+      hope: 1.4, optimistic: 1.3, hopeful: 1.3, promising: 1.2, encouraging: 1.2,
+      potential: 1.2, opportunity: 1.2, progress: 1.2, thrive: 1.3
+    },
+    frustration: { 
+      frustration: 1.4, frustrated: 1.3, obstacle: 1.3, barrier: 1.3, blocked: 1.3,
+      fail: 1.4, failure: 1.3, error: 1.2, broken: 1.2, inadequate: 1.2
+    },
+    clarity: { 
+      clear: 1.4, understandable: 1.3, comprehensible: 1.3, explicit: 1.2,
+      unambiguous: 1.3, precise: 1.2, coherent: 1.2, logical: 1.2
+    },
+    access: { 
+      accessible: 1.4, available: 1.3, reachable: 1.3, usable: 1.3,
+      'user-friendly': 1.3, intuitive: 1.2, facilitate: 1.2, inclusive: 1.2
+    },
+    fairness: { 
+      fair: 1.4, equitable: 1.3, just: 1.3, impartial: 1.3, unbiased: 1.3,
+      equality: 1.3, justice: 1.3, inclusive: 1.2, representative: 1.2
+    },
   };
   
-  for (const [kpi, keywords] of Object.entries(kpiConcepts)) {
+  for (const [kpi, keywords] of Object.entries(KPI_CONCEPTS)) {
     for (const keyword of keywords) {
       if (normalized.includes(keyword)) {
         const weight = domainWeights[kpi]?.[keyword] || 1.0;
@@ -165,14 +219,10 @@ function findBestMatchingNodeVectorized(
 export async function performSentimentAnalysis(
   texts: string[],
   nodes: Node[],
-  customKpiKeywords?: Record<string, string[]>,
   onProgress?: (progress: number) => void,
   onStatus?: (status: string) => void
 ): Promise<SentimentResult[]> {
   console.log(`Starting sentiment analysis on ${texts.length} texts across ${nodes.length} nodes`);
-  
-  // Use custom KPI keywords if provided
-  const activeKpiConcepts = customKpiKeywords || KPI_CONCEPTS;
   
   const results: SentimentResult[] = [];
   const batchSize = 250;
@@ -205,7 +255,7 @@ export async function performSentimentAnalysis(
       const normalized = normalizeText(text);
       normalizedTextCache.set(text, normalized);
       normalizedTextsArray.push(normalized);
-      keywordFrequencyCache.set(text, buildKeywordFrequencyMap(text, activeKpiConcepts));
+      keywordFrequencyCache.set(text, buildKeywordFrequencyMap(text));
       
       if (isLongText(text)) {
         longTextIndices.add(index);
