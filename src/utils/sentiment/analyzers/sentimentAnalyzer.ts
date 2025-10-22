@@ -193,17 +193,21 @@ export async function performSentimentAnalysis(
     const normalizedTextCache = new Map<string, string>();
     const keywordFrequencyCache = new Map<string, Map<string, number>>();
     const longTextIndices = new Set<number>();
+    const longTextChunks = new Map<number, string[]>(); // Cache chunk lists
     const allTextsToEmbed: string[] = [];
+    const normalizedTextsArray: string[] = []; // For batch sentiment
     
     texts.forEach((text, index) => {
       const normalized = normalizeText(text);
       normalizedTextCache.set(text, normalized);
+      normalizedTextsArray.push(normalized);
       keywordFrequencyCache.set(text, buildKeywordFrequencyMap(text));
       
       if (isLongText(text)) {
         longTextIndices.add(index);
-        const chunks = chunkLongText(text, 500);
-        allTextsToEmbed.push(...chunks.map(normalizeText));
+        const chunks = chunkLongText(text, 500).map(normalizeText);
+        longTextChunks.set(index, chunks); // Cache the chunks
+        allTextsToEmbed.push(...chunks);
       }
       
       allTextsToEmbed.push(normalized);
@@ -215,7 +219,7 @@ export async function performSentimentAnalysis(
     
     // PHASE 5: Batch analyze sentiment for all texts
     if (onStatus) onStatus('Analyzing sentiment (batch mode)...');
-    const allSentimentResults = await analyzeSentimentBatch(texts.map(t => normalizedTextCache.get(t)!));
+    const allSentimentResults = await analyzeSentimentBatch(normalizedTextsArray);
     
     // PHASE 6: Process results in batches
     for (let i = 0; i < texts.length; i += batchSize) {
@@ -253,15 +257,17 @@ export async function performSentimentAnalysis(
 
             // Use pre-computed chunk embeddings for long texts
             if (longTextIndices.has(globalIndex)) {
-              const chunks = chunkLongText(text, 500).map(normalizeText);
-              const chunkEmbeddings = chunks
-                .map(chunk => textEmbeddings.get(chunk))
-                .filter((emb): emb is number[] => emb !== undefined);
-              
-              if (chunkEmbeddings.length > 0) {
-                finalEmbedding = chunkEmbeddings[0].map((_, idx) => 
-                  chunkEmbeddings.reduce((sum, emb) => sum + emb[idx], 0) / chunkEmbeddings.length
-                );
+              const cachedChunks = longTextChunks.get(globalIndex);
+              if (cachedChunks && cachedChunks.length > 0) {
+                const chunkEmbeddings = cachedChunks
+                  .map(chunk => textEmbeddings.get(chunk))
+                  .filter((emb): emb is number[] => emb !== undefined);
+                
+                if (chunkEmbeddings.length > 0) {
+                  finalEmbedding = chunkEmbeddings[0].map((_, idx) => 
+                    chunkEmbeddings.reduce((sum, emb) => sum + emb[idx], 0) / chunkEmbeddings.length
+                  );
+                }
               }
             }
 
@@ -319,7 +325,7 @@ export async function performSentimentAnalysis(
       results.push(...validResults);
 
       if (onProgress) {
-        const progress = Math.min(100, Math.round((i + batch.length) / texts.length * 100));
+        const progress = Math.min(100, Math.round((results.length) / texts.length * 100));
         onProgress(progress);
       }
     }

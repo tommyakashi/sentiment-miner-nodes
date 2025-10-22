@@ -15,7 +15,7 @@ import { KPIHeatmap } from '@/components/KPIHeatmap';
 import { ExemplarQuotes } from '@/components/ExemplarQuotes';
 import { SourceDistribution } from '@/components/SourceDistribution';
 import { ConfidenceDistribution } from '@/components/ConfidenceDistribution';
-import { InsightBox } from '@/components/InsightBox';
+import { InsightButton } from '@/components/InsightButton';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -339,29 +339,33 @@ const Index = () => {
 
                 {/* KPI Sortable Table */}
                 {nodeAnalysis.length > 0 && (
-                  <>
-                    <InsightBox
-                      title="Understanding Node-Level KPI Analysis"
-                      insights={[
-                        'Each row represents one of your analysis topics with quantitative scores',
-                        'Polarity ranges from -1 (negative) to +1 (positive) - shows overall sentiment',
-                        'KPI scores measure specific qualities: Trust, Optimism, Frustration, Clarity, Access, and Fairness',
-                        'Distribution shows count of positive (+), neutral (=), and negative (-) mentions',
-                        'Click column headers to sort and find strongest/weakest areas'
-                      ]}
-                    />
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-lg font-semibold">Node-Level KPI Analysis</h3>
+                      <InsightButton
+                        title="How to read this"
+                        insights={[
+                          'Each row represents one of your analysis topics with quantitative scores',
+                          'Polarity ranges from -1 (negative) to +1 (positive) - shows overall sentiment',
+                          'KPI scores measure specific qualities: Trust, Optimism, Frustration, Clarity, Access, and Fairness',
+                          'Distribution shows count of positive (+), neutral (=), and negative (-) mentions',
+                          'Click column headers to sort and find strongest/weakest areas'
+                        ]}
+                      />
+                    </div>
                     <KPISortableTable data={nodeAnalysis} />
-                  </>
+                  </div>
                 )}
 
                 {/* Two Column Grid for Visualizations */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {/* Radar Chart */}
                   {nodeAnalysis.length > 0 && (
-                    <>
-                      <div className="lg:col-span-2">
-                        <InsightBox
-                          title="Understanding KPI Comparison"
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-lg font-semibold">KPI Comparison</h3>
+                        <InsightButton
+                          title="How to read this"
                           insights={[
                             'The radar chart shows how your top 5 topics perform across all 6 KPIs',
                             'Larger, more filled shapes indicate stronger scores across multiple metrics',
@@ -371,38 +375,44 @@ const Index = () => {
                         />
                       </div>
                       <KPIRadarChart data={nodeAnalysis} />
-                    </>
+                    </div>
                   )}
 
                   {/* Source Distribution */}
                   {sources.length > 0 && (
-                    <>
-                      <InsightBox
-                        title="Understanding Data Sources"
-                        insights={[
-                          'Shows where your analyzed content came from (Reddit, PDFs, text files, etc.)',
-                          'Useful for understanding if sentiment patterns differ by source type',
-                          'Larger slices indicate more data from that source',
-                          'Consider balancing sources if one dominates the analysis'
-                        ]}
-                      />
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-lg font-semibold">Data Sources</h3>
+                        <InsightButton
+                          title="How to read this"
+                          insights={[
+                            'Shows where your analyzed content came from (Reddit, PDFs, text files, etc.)',
+                            'Useful for understanding if sentiment patterns differ by source type',
+                            'Larger slices indicate more data from that source',
+                            'Consider balancing sources if one dominates the analysis'
+                          ]}
+                        />
+                      </div>
                       <SourceDistribution sources={sources} />
-                    </>
+                    </div>
                   )}
 
                   {/* Heatmap spans full width if odd number */}
                   {nodeAnalysis.length > 0 && (
-                    <div className="lg:col-span-2">
-                      <InsightBox
-                        title="Understanding KPI Heatmap"
-                        insights={[
-                          'Color-coded grid for quick visual comparison of all topics and KPIs',
-                          'Green cells = positive/strong scores, Red = negative/weak, Gray = neutral',
-                          'Scan rows to see topic strengths/weaknesses across all metrics',
-                          'Scan columns to compare how all topics perform on a specific KPI',
-                          'Look for patterns: Are certain KPIs consistently high/low across topics?'
-                        ]}
-                      />
+                    <div className="lg:col-span-2 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-lg font-semibold">KPI Heatmap</h3>
+                        <InsightButton
+                          title="How to read this"
+                          insights={[
+                            'Color-coded grid for quick visual comparison of all topics and KPIs',
+                            'Green cells = positive/strong scores, Red = negative/weak, Gray = neutral',
+                            'Scan rows to see topic strengths/weaknesses across all metrics',
+                            'Scan columns to compare how all topics perform on a specific KPI',
+                            'Look for patterns: Are certain KPIs consistently high/low across topics?'
+                          ]}
+                        />
+                      </div>
                       <KPIHeatmap data={nodeAnalysis} />
                     </div>
                   )}
