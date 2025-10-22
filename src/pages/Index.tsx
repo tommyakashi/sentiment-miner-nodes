@@ -15,6 +15,7 @@ import { KPIHeatmap } from '@/components/KPIHeatmap';
 import { ExemplarQuotes } from '@/components/ExemplarQuotes';
 import { SourceDistribution } from '@/components/SourceDistribution';
 import { ConfidenceDistribution } from '@/components/ConfidenceDistribution';
+import { KPIKeywordsManager } from '@/components/KPIKeywordsManager';
 import { InsightButton } from '@/components/InsightButton';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
@@ -46,6 +47,7 @@ const Index = () => {
   const [stagedFileCount, setStagedFileCount] = useState<number>(0);
   const [isDataReady, setIsDataReady] = useState(false);
   const [modelsPreloaded, setModelsPreloaded] = useState(false);
+  const [kpiKeywords, setKpiKeywords] = useState<Record<string, string[]> | null>(null);
   const { toast } = useToast();
 
   // Check auth status
@@ -177,7 +179,8 @@ const Index = () => {
       setAnalysisStatus('Initializing sentiment analysis models...');
       const analysisResults = await performSentimentAnalysis(
         textsToAnalyze, 
-        nodes, 
+        nodes,
+        kpiKeywords || undefined,
         (progress) => setProgress(progress),
         (status) => setAnalysisStatus(status)
       );
@@ -486,6 +489,8 @@ const Index = () => {
               <FileUploader onFilesLoaded={handleFilesLoaded} disabled={isAnalyzing} />
               <NodeManager nodes={nodes} onNodesChange={setNodes} />
             </div>
+
+            <KPIKeywordsManager onKeywordsChange={setKpiKeywords} />
           </TabsContent>
 
           {/* Details Tab */}

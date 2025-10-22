@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ArrowUpDown, ArrowUp, ArrowDown, Info } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import type { NodeAnalysis } from '@/types/sentiment';
 import {
   Table,
@@ -104,30 +103,6 @@ export function KPISortableTable({ data }: KPISortableTableProps) {
 
   return (
     <Card className="p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold">Node-Level KPI Analysis</h3>
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger>
-              <Info className="w-4 h-4 text-muted-foreground" />
-            </TooltipTrigger>
-            <TooltipContent className="max-w-md">
-              <div className="space-y-2 text-sm">
-                <p><strong>Polarity:</strong> Overall sentiment from -1 (negative) to +1 (positive)</p>
-                <p><strong>KPI Scores:</strong> Each metric ranges from -1 to +1:</p>
-                <ul className="ml-4 space-y-1">
-                  <li>• <strong>Trust:</strong> Reliability and credibility signals</li>
-                  <li>• <strong>Optimism:</strong> Hopeful and positive outlook</li>
-                  <li>• <strong>Frustration:</strong> Negative emotions and difficulties (lower is better)</li>
-                  <li>• <strong>Clarity:</strong> Clear and understandable content</li>
-                  <li>• <strong>Access:</strong> Accessibility and availability signals</li>
-                  <li>• <strong>Fairness:</strong> Equity and balance indicators</li>
-                </ul>
-              </div>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      </div>
       <div className="border rounded-lg overflow-hidden">
         <Table>
           <TableHeader>

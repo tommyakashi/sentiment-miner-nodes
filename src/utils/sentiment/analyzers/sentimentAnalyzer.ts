@@ -40,7 +40,7 @@ async function getKPIEmbeddings() {
 }
 
 // Pre-build keyword frequency map for efficient matching
-function buildKeywordFrequencyMap(text: string): Map<string, number> {
+function buildKeywordFrequencyMap(text: string, kpiConcepts: Record<string, string[]> = KPI_CONCEPTS): Map<string, number> {
   const normalized = normalizeText(text);
   const frequencyMap = new Map<string, number>();
   
@@ -53,7 +53,7 @@ function buildKeywordFrequencyMap(text: string): Map<string, number> {
     fairness: { fair: 1.3, equal: 1.2, just: 1.2 },
   };
   
-  for (const [kpi, keywords] of Object.entries(KPI_CONCEPTS)) {
+  for (const [kpi, keywords] of Object.entries(kpiConcepts)) {
     for (const keyword of keywords) {
       if (normalized.includes(keyword)) {
         const weight = domainWeights[kpi]?.[keyword] || 1.0;
@@ -165,13 +165,17 @@ function findBestMatchingNodeVectorized(
 export async function performSentimentAnalysis(
   texts: string[],
   nodes: Node[],
+  customKpiKeywords?: Record<string, string[]>,
   onProgress?: (progress: number) => void,
   onStatus?: (status: string) => void
 ): Promise<SentimentResult[]> {
   console.log(`Starting sentiment analysis on ${texts.length} texts across ${nodes.length} nodes`);
   
+  // Use custom KPI keywords if provided
+  const activeKpiConcepts = customKpiKeywords || KPI_CONCEPTS;
+  
   const results: SentimentResult[] = [];
-  const batchSize = 250; // Increased from 50
+  const batchSize = 250;
   const startTime = Date.now();
   let successCount = 0;
 
@@ -201,12 +205,12 @@ export async function performSentimentAnalysis(
       const normalized = normalizeText(text);
       normalizedTextCache.set(text, normalized);
       normalizedTextsArray.push(normalized);
-      keywordFrequencyCache.set(text, buildKeywordFrequencyMap(text));
+      keywordFrequencyCache.set(text, buildKeywordFrequencyMap(text, activeKpiConcepts));
       
       if (isLongText(text)) {
         longTextIndices.add(index);
         const chunks = chunkLongText(text, 500).map(normalizeText);
-        longTextChunks.set(index, chunks); // Cache the chunks
+        longTextChunks.set(index, chunks);
         allTextsToEmbed.push(...chunks);
       }
       

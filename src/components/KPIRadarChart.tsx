@@ -1,7 +1,5 @@
 import { useMemo } from 'react';
 import { Card } from '@/components/ui/card';
-import { Info } from 'lucide-react';
-import { Tooltip as UiTooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   RadarChart,
   PolarGrid,
@@ -46,23 +44,6 @@ export function KPIRadarChart({ data }: KPIRadarChartProps) {
 
   return (
     <Card className="p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold">KPI Comparison (Top 5 Nodes)</h3>
-        <TooltipProvider>
-          <UiTooltip>
-            <TooltipTrigger>
-              <Info className="w-4 h-4 text-muted-foreground" />
-            </TooltipTrigger>
-            <TooltipContent className="max-w-xs">
-              <p className="text-sm">
-                Visualizes how different topics score across 6 KPIs. 
-                Larger shapes indicate stronger presence of those qualities. 
-                Values shown on 0-100 scale for easier comparison.
-              </p>
-            </TooltipContent>
-          </UiTooltip>
-        </TooltipProvider>
-      </div>
       <ResponsiveContainer width="100%" height={400}>
         <RadarChart data={radarData}>
           <PolarGrid stroke="hsl(var(--border))" />
