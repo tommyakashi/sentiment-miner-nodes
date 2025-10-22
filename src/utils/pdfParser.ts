@@ -41,14 +41,29 @@ export async function extractTextFromPDF(file: File): Promise<string[]> {
   const id = ++jobCounter;
 
   return new Promise<string[]>((resolve, reject) => {
+    // Set timeout for PDF processing (30 seconds per file)
+    const timeout = setTimeout(() => {
+      pendingJobs.delete(id);
+      reject(new Error('PDF processing timeout - file may be too large or complex'));
+    }, 30000);
+
     pendingJobs.set(id, { 
       resolve: (texts: string[]) => {
-        // Optimize PDF processing: chunk pages for better semantic grouping
-        const optimizedTexts = chunkPDFPages(texts);
-        resolve(optimizedTexts);
+        clearTimeout(timeout);
+        try {
+          // Optimize PDF processing: chunk pages for better semantic grouping
+          const optimizedTexts = chunkPDFPages(texts);
+          resolve(optimizedTexts);
+        } catch (err) {
+          reject(new Error('Failed to process extracted PDF text'));
+        }
       }, 
-      reject 
+      reject: (error: Error) => {
+        clearTimeout(timeout);
+        reject(error);
+      }
     });
+    
     worker.postMessage({ arrayBuffer, id });
   });
 }

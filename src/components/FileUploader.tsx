@@ -185,101 +185,145 @@ export function FileUploader({ onFilesLoaded, disabled }: FileUploaderProps) {
     if (!files || files.length === 0) return;
 
     const newFiles: UploadedFile[] = [];
+    let processedCount = 0;
+    let failedCount = 0;
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      
-      try {
-        // Handle PDF files
-        if (file.name.endsWith('.pdf')) {
-          toast({
-            title: 'Processing PDF',
-            description: `Extracting text from ${file.name}...`,
-          });
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        
+        try {
+          // Handle PDF files
+          if (file.name.endsWith('.pdf')) {
+            toast({
+              title: 'Processing PDF',
+              description: `Extracting text from ${file.name} (${i + 1}/${files.length})...`,
+            });
 
-          try {
-            const pdfTexts = await extractTextFromPDF(file);
+            try {
+              const pdfTexts = await extractTextFromPDF(file);
+              
+              // Validate extracted text
+              if (!pdfTexts || pdfTexts.length === 0) {
+                throw new Error('No text extracted from PDF');
+              }
+              
+              newFiles.push({
+                name: file.name,
+                type: 'text',
+                content: pdfTexts,
+                itemCount: pdfTexts.length,
+              });
+              
+              processedCount++;
+              
+              toast({
+                title: 'PDF processed',
+                description: `Extracted ${pdfTexts.length} pages from ${file.name}`,
+              });
+              
+              // Small delay between PDFs to prevent memory overflow
+              if (i < files.length - 1 && files[i + 1]?.name.endsWith('.pdf')) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+              }
+            } catch (pdfError) {
+              console.error('PDF parsing error:', pdfError);
+              failedCount++;
+              toast({
+                title: 'PDF parsing failed',
+                description: `Could not extract text from ${file.name}. ${pdfError instanceof Error ? pdfError.message : 'Unknown error'}`,
+                variant: 'destructive',
+              });
+            }
+            continue;
+          }
+
+          const text = await file.text();
+          
+          // Try to parse as JSON (Reddit format)
+          if (file.name.endsWith('.json')) {
+            try {
+              const json = JSON.parse(text);
+              newFiles.push({
+                name: file.name,
+                type: 'reddit',
+                content: json,
+                itemCount: json.length || 0,
+              });
+              processedCount++;
+            } catch (err) {
+              failedCount++;
+              toast({
+                title: 'Invalid JSON',
+                description: `Could not parse ${file.name}. Skipping.`,
+                variant: 'destructive',
+              });
+            }
+          } else {
+            // Handle as text file
+            const lines = text.split('\n\n').filter(l => l.trim());
             newFiles.push({
               name: file.name,
               type: 'text',
-              content: pdfTexts,
-              itemCount: pdfTexts.length,
+              content: lines,
+              itemCount: lines.length,
             });
-            
-            toast({
-              title: 'PDF processed',
-              description: `Extracted ${pdfTexts.length} pages from ${file.name}`,
-            });
-          } catch (pdfError) {
-            console.error('PDF parsing error:', pdfError);
-            toast({
-              title: 'PDF parsing failed',
-              description: `Could not extract text from ${file.name}`,
-              variant: 'destructive',
-            });
+            processedCount++;
           }
-          continue;
-        }
-
-        const text = await file.text();
-        
-        // Try to parse as JSON (Reddit format)
-        if (file.name.endsWith('.json')) {
-          try {
-            const json = JSON.parse(text);
-            newFiles.push({
-              name: file.name,
-              type: 'reddit',
-              content: json,
-              itemCount: json.length || 0,
-            });
-          } catch (err) {
-            toast({
-              title: 'Invalid JSON',
-              description: `Could not parse ${file.name}. Skipping.`,
-              variant: 'destructive',
-            });
-          }
-        } else {
-          // Handle as text file
-          const lines = text.split('\n\n').filter(l => l.trim());
-          newFiles.push({
-            name: file.name,
-            type: 'text',
-            content: lines,
-            itemCount: lines.length,
+        } catch (err) {
+          failedCount++;
+          console.error(`Error processing ${file.name}:`, err);
+          toast({
+            title: 'Upload failed',
+            description: `Could not read ${file.name}. ${err instanceof Error ? err.message : 'Unknown error'}`,
+            variant: 'destructive',
           });
         }
-      } catch (err) {
+      }
+
+      if (newFiles.length > 0) {
+        const updatedFiles = [...uploadedFiles, ...newFiles];
+        setUploadedFiles(updatedFiles);
+        
+        // Save each file to database
+        for (const file of newFiles) {
+          try {
+            await saveSource(file);
+          } catch (saveError) {
+            console.error('Error saving source:', saveError);
+          }
+        }
+        
+        // Notify parent without triggering analysis
+        notifyParent(updatedFiles);
+
+        const summary = failedCount > 0 
+          ? `Added ${newFiles.length} file(s), ${failedCount} failed. Total: ${updatedFiles.length} sources ready.`
+          : `Added ${newFiles.length} file(s). Total: ${updatedFiles.length} sources ready.`;
+
         toast({
-          title: 'Upload failed',
-          description: `Could not read ${file.name}`,
+          title: 'Upload complete',
+          description: summary + ' Click "Start Analysis" when ready.',
+        });
+      } else if (failedCount > 0) {
+        toast({
+          title: 'No files uploaded',
+          description: `All ${failedCount} file(s) failed to process.`,
           variant: 'destructive',
         });
       }
-    }
-
-    if (newFiles.length > 0) {
-      const updatedFiles = [...uploadedFiles, ...newFiles];
-      setUploadedFiles(updatedFiles);
-      
-      // Save each file to database
-      for (const file of newFiles) {
-        await saveSource(file);
-      }
-      
-      // Notify parent without triggering analysis
-      notifyParent(updatedFiles);
-
+    } catch (err) {
+      console.error('Critical error in file upload:', err);
       toast({
-        title: 'Files uploaded',
-        description: `Added ${newFiles.length} file(s). Total: ${updatedFiles.length} sources ready. Click "Start Analysis" when ready.`,
+        title: 'Upload error',
+        description: 'A critical error occurred during file upload. Please try again with fewer files.',
+        variant: 'destructive',
       });
-    }
-
-    // Reset input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+    } finally {
+      // Reset input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   };
 
