@@ -1,6 +1,7 @@
 import { pipeline } from '@huggingface/transformers';
 
 let sentimentPipeline: any = null;
+const sentimentCache = new Map<string, SentimentOutput>();
 
 export async function initializeSentimentModel() {
   if (!sentimentPipeline) {
@@ -8,7 +9,7 @@ export async function initializeSentimentModel() {
     try {
       sentimentPipeline = await pipeline(
         'sentiment-analysis',
-        'Xenova/distilbert-base-uncased-finetuned-sst-2-english',
+        'Xenova/twitter-roberta-base-sentiment-latest',
         { device: 'wasm' }
       );
       console.log('Sentiment model initialized successfully');
@@ -26,40 +27,59 @@ export interface SentimentOutput {
 }
 
 export async function analyzeSentiment(text: string): Promise<SentimentOutput> {
+  const cacheKey = text.slice(0, 200);
+  if (sentimentCache.has(cacheKey)) {
+    return sentimentCache.get(cacheKey)!;
+  }
+  
   const model = await initializeSentimentModel();
   const result = await model(text) as any;
-  return result[0];
+  const output = result[0];
+  sentimentCache.set(cacheKey, output);
+  return output;
+}
+
+export async function analyzeSentimentBatch(texts: string[]): Promise<SentimentOutput[]> {
+  const model = await initializeSentimentModel();
+  const results = await model(texts) as any;
+  return results.map((r: any) => r[0] || r);
 }
 
 export function calculatePolarityScore(label: string, score: number): { polarityScore: number; polarity: 'positive' | 'neutral' | 'negative' } {
-  // Improved scoring with lower threshold and logarithmic scaling
-  const threshold = 0.52; // Lower threshold for more nuanced detection
-  const neutralThreshold = 0.53; // Tighter neutral range
+  const threshold = 0.65;
+  const neutralThreshold = 0.70;
   
   let polarityScore: number;
   let polarity: 'positive' | 'neutral' | 'negative';
   
+  // Sigmoid smoothing for gradual transitions
+  const sigmoid = (x: number) => 2 / (1 + Math.exp(-5 * x)) - 1;
+  
   if (label === 'POSITIVE') {
-    // Logarithmic scaling for more nuanced positive sentiment
     if (score >= threshold) {
-      const normalized = (score - threshold) / (1 - threshold); // 0 to 1
-      polarityScore = Math.log10(1 + normalized * 9) / Math.log10(10); // Log scale
+      const normalized = (score - threshold) / (1 - threshold);
+      polarityScore = sigmoid(normalized * 2 - 1) * 0.7;
     } else {
-      polarityScore = (score - 0.5) / (threshold - 0.5) * 0.2; // Small positive
+      polarityScore = (score - 0.5) / (threshold - 0.5) * 0.15;
     }
     polarity = score >= neutralThreshold ? 'positive' : 'neutral';
   } else if (label === 'NEGATIVE') {
-    // Logarithmic scaling for negative sentiment
     if (score >= threshold) {
       const normalized = (score - threshold) / (1 - threshold);
-      polarityScore = -(Math.log10(1 + normalized * 9) / Math.log10(10));
+      polarityScore = sigmoid(normalized * 2 - 1) * -0.7;
     } else {
-      polarityScore = -((score - 0.5) / (threshold - 0.5) * 0.2);
+      polarityScore = -((score - 0.5) / (threshold - 0.5) * 0.15);
     }
     polarity = score >= neutralThreshold ? 'negative' : 'neutral';
   } else {
     polarityScore = 0;
     polarity = 'neutral';
+  }
+  
+  // Dampen polarity for low confidence scores
+  if (score < 0.75) {
+    const dampening = Math.max(0.3, (score - 0.5) / 0.25);
+    polarityScore *= dampening;
   }
   
   return { polarityScore, polarity };

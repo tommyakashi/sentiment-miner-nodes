@@ -15,13 +15,28 @@ export function isLongText(text: string): boolean {
   return text.trim().split(/\s+/).length > 500;
 }
 
-export function chunkLongText(text: string, chunkSize: number = 500): string[] {
-  const words = text.trim().split(/\s+/);
+export function chunkLongText(text: string, maxTokens: number = 400): string[] {
+  const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
   const chunks: string[] = [];
+  let currentChunk: string[] = [];
+  let tokenCount = 0;
   
-  for (let i = 0; i < words.length; i += chunkSize) {
-    chunks.push(words.slice(i, i + chunkSize).join(' '));
+  for (const sentence of sentences) {
+    const sentenceTokens = Math.ceil(sentence.length / 4);
+    
+    if (tokenCount + sentenceTokens > maxTokens && currentChunk.length > 0) {
+      chunks.push(currentChunk.join(' '));
+      currentChunk = [sentence];
+      tokenCount = sentenceTokens;
+    } else {
+      currentChunk.push(sentence);
+      tokenCount += sentenceTokens;
+    }
   }
   
-  return chunks;
+  if (currentChunk.length > 0) {
+    chunks.push(currentChunk.join(' '));
+  }
+  
+  return chunks.length > 0 ? chunks : [text];
 }

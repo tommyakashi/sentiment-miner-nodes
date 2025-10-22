@@ -1,5 +1,5 @@
 import type { Node, SentimentResult, KPIScore, NodeAnalysis } from '@/types/sentiment';
-import { analyzeSentiment, calculatePolarityScore, initializeSentimentModel } from '../models/sentimentModel';
+import { analyzeSentiment, analyzeSentimentBatch, calculatePolarityScore, initializeSentimentModel } from '../models/sentimentModel';
 import { generateEmbedding, generateBatchEmbeddings, cosineSimilarity, initializeEmbeddingModel } from '../models/embeddingModel';
 import { extractKeywords } from '../extractors/keywordExtractor';
 import { normalizeText, isShortText, isLongText, chunkLongText } from '../utils/textNormalizer';
@@ -87,7 +87,19 @@ async function calculateKPIScores(
   for (const [kpi, kpiEmbedding] of kpiEmbeddings.entries()) {
     const similarity = cosineSimilarity(textEmbedding, kpiEmbedding);
     
-    let score = similarity * (1 + Math.abs(polarity) * sentimentConfidence * 0.8);
+    // Base score from semantic similarity (decoupled from polarity)
+    let baseScore = similarity;
+    
+    // Apply polarity as directional adjustment, not amplification
+    if (kpi === 'optimism' && polarity > 0) {
+      baseScore += polarity * 0.2;
+    } else if (kpi === 'frustration' && polarity < 0) {
+      baseScore += Math.abs(polarity) * 0.2;
+    } else if (kpi === 'trust' && polarity > 0) {
+      baseScore += polarity * 0.15;
+    } else if (kpi === 'clarity' && Math.abs(polarity) < 0.2) {
+      baseScore += 0.1; // Neutral statements tend to be clear
+    }
     
     // Efficient keyword boost using pre-built frequency map
     const keywords = KPI_CONCEPTS[kpi as keyof typeof KPI_CONCEPTS];
@@ -95,16 +107,9 @@ async function calculateKPIScores(
       return count + (keywordFrequencyMap.get(`${kpi}:${keyword}`) || 0);
     }, 0);
     
-    if (keywordCount > 0) {
-      score *= (1 + Math.min(keywordCount * 0.15, 0.5));
-    }
-    
-    // Domain-specific polarity adjustments
-    if (kpi === 'optimism' && polarity > 0) {
-      score *= (1 + polarity * 0.6);
-    } else if (kpi === 'frustration' && polarity < 0) {
-      score *= (1 + Math.abs(polarity) * 0.6);
-    }
+    // Keyword boost as primary signal
+    const keywordBoost = Math.min(keywordCount * 0.25, 0.4);
+    const score = Math.min(1.0, baseScore + keywordBoost);
     
     scores[kpi as keyof KPIScore] = Math.max(0, Math.min(1, score));
   }
@@ -208,7 +213,11 @@ export async function performSentimentAnalysis(
     if (onStatus) onStatus('Generating text embeddings...');
     const textEmbeddings = await generateBatchEmbeddings(allTextsToEmbed);
     
-    // PHASE 5: Process sentiment in batches
+    // PHASE 5: Batch analyze sentiment for all texts
+    if (onStatus) onStatus('Analyzing sentiment (batch mode)...');
+    const allSentimentResults = await analyzeSentimentBatch(texts.map(t => normalizedTextCache.get(t)!));
+    
+    // PHASE 6: Process results in batches
     for (let i = 0; i < texts.length; i += batchSize) {
       const batch = texts.slice(i, Math.min(i + batchSize, texts.length));
       const batchNum = Math.floor(i / batchSize) + 1;
@@ -256,21 +265,20 @@ export async function performSentimentAnalysis(
               }
             }
 
-            // Run sentiment analysis and node matching in parallel
-            const [sentimentResult, nodeMatch] = await Promise.all([
-              analyzeSentiment(text),
-              Promise.resolve(findBestMatchingNodeVectorized(finalEmbedding, nodes, nodeEmbeddingCache))
-            ]);
+            // Get cached sentiment result and find node match
+            const sentimentResult = allSentimentResults[globalIndex];
+            const nodeMatch = findBestMatchingNodeVectorized(finalEmbedding, nodes, nodeEmbeddingCache);
 
-            const { polarityScore, polarity } = calculatePolarityScore(
+            let { polarityScore, polarity } = calculatePolarityScore(
               sentimentResult.label,
               sentimentResult.score
             );
 
-            // Adjust confidence for short texts
+            // Dampen confidence and polarity for short texts
             let adjustedSentimentScore = sentimentResult.score;
             if (isShortText(text)) {
-              adjustedSentimentScore = Math.max(0.6, sentimentResult.score * 1.15);
+              adjustedSentimentScore = Math.min(0.75, sentimentResult.score * 0.85);
+              polarityScore *= 0.6;
             }
 
             // Calculate KPI scores with cached data
@@ -283,7 +291,11 @@ export async function performSentimentAnalysis(
               finalEmbedding
             );
 
-            const confidence = (adjustedSentimentScore * 0.6) + (nodeMatch.confidence * 0.4);
+            // Separate sentiment and node confidence, penalize disagreement
+            const sentimentConfidence = adjustedSentimentScore;
+            const nodeMatchConfidence = nodeMatch.confidence;
+            const agreement = 1 - Math.abs(sentimentConfidence - nodeMatchConfidence);
+            const confidence = (sentimentConfidence * 0.5 + nodeMatchConfidence * 0.5) * agreement;
 
             successCount++;
             return {
@@ -293,7 +305,7 @@ export async function performSentimentAnalysis(
               polarity,
               polarityScore,
               kpiScores,
-              confidence: Math.min(0.99, confidence),
+              confidence: Math.min(0.95, confidence),
             } as SentimentResult;
           } catch (error) {
             console.error(`Error analyzing text ${i + batchIndex}:`, error);
