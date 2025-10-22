@@ -141,27 +141,27 @@ const Index = () => {
     try {
       let textsToAnalyze: string[] = [];
       let rawData: RedditData[] = [];
+      let participantsList: any[] = [];
 
+      // Step 1: Parse and prepare data
       if (stagedFileType === 'reddit') {
         rawData = stagedContent as RedditData[];
         const parsed = parseRedditJSON(rawData);
         textsToAnalyze = parsed.allText;
 
-      // Process participants with initial data
-      const participantsList = Array.from(parsed.participants.values())
-        .sort((a, b) => b.totalUpvotes - a.totalUpvotes)
-        .slice(0, 10);
+        // Process participants
+        participantsList = Array.from(parsed.participants.values())
+          .sort((a, b) => b.totalUpvotes - a.totalUpvotes)
+          .slice(0, 10);
 
-      // Batch all state updates related to Reddit data
-      const timeSeries = extractTimeSeriesData(rawData);
-      const sourceData = [{ name: 'Reddit', value: textsToAnalyze.length }];
+        // Extract time series data
+        const timeSeries = extractTimeSeriesData(rawData);
+        const sourceData = [{ name: 'Reddit', value: textsToAnalyze.length }];
 
-      // Update all Reddit-related state in one batch
-      Promise.resolve().then(() => {
+        // Update Reddit-specific state synchronously
         setTimeSeriesData(timeSeries);
         setParticipants(participantsList);
         setSources(sourceData);
-      });
 
         toast({
           title: 'Reddit data loaded',
@@ -173,7 +173,7 @@ const Index = () => {
         setSources(sourceData);
       }
 
-      // Analyze sentiment using client-side browser models
+      // Step 2: Perform sentiment analysis
       setAnalysisStatus('Initializing sentiment analysis models...');
       const analysisResults = await performSentimentAnalysis(
         textsToAnalyze, 
@@ -182,19 +182,19 @@ const Index = () => {
         (status) => setAnalysisStatus(status)
       );
 
-      // Calculate all derived data before updating state
+      // Step 3: Calculate derived metrics
       const avgSentiment = analysisResults.reduce((sum, r) => sum + r.polarityScore, 0) / analysisResults.length;
       const nodeAnalysisData = aggregateNodeAnalysis(analysisResults);
 
-      // Optimize participant sentiment calculation with reverse index
-      let participantsWithSentiment = participants;
-      if (participants.length > 0) {
+      // Step 4: Calculate participant sentiment scores (if applicable)
+      let participantsWithSentiment = participantsList;
+      if (participantsList.length > 0) {
         // Build reverse index: username -> results (O(n) single pass)
         const participantIndex = new Map<string, SentimentResult[]>();
         
         analysisResults.forEach(result => {
           const lowerText = result.text.toLowerCase();
-          participants.forEach(p => {
+          participantsList.forEach(p => {
             if (lowerText.includes(p.username.toLowerCase())) {
               if (!participantIndex.has(p.username)) {
                 participantIndex.set(p.username, []);
@@ -204,8 +204,8 @@ const Index = () => {
           });
         });
 
-        // Map lookup instead of nested loops
-        participantsWithSentiment = participants.map(p => {
+        // Calculate sentiment scores using index
+        participantsWithSentiment = participantsList.map(p => {
           const userResults = participantIndex.get(p.username) || [];
           const avgSent = userResults.length > 0
             ? userResults.reduce((sum, r) => sum + r.polarityScore, 0) / userResults.length * 100
@@ -214,25 +214,21 @@ const Index = () => {
         });
       }
 
-      // Batch all core analysis state updates together
-      Promise.resolve().then(() => {
-        setResults(analysisResults);
-        setOverallSentiment(avgSentiment * 100);
-        setNodeAnalysis(nodeAnalysisData);
-        if (participantsWithSentiment.length > 0) {
-          setParticipants(participantsWithSentiment);
-        }
-      });
-
-      // Theme extraction removed
+      // Step 5: Update all analysis results synchronously
+      setResults(analysisResults);
+      setOverallSentiment(avgSentiment * 100);
+      setNodeAnalysis(nodeAnalysisData);
+      if (participantsWithSentiment.length > 0) {
+        setParticipants(participantsWithSentiment);
+      }
       setTrendingThemes([]);
 
+      // Step 6: Show completion and switch to dashboard
       toast({
         title: 'Analysis complete',
         description: `Successfully analyzed ${textsToAnalyze.length} texts across ${nodeAnalysisData.length} topics.`,
       });
       
-      // Switch to dashboard only after analysis is complete
       setActiveTab('dashboard');
     } catch (error) {
       console.error('Analysis error:', error);
