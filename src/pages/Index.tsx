@@ -21,7 +21,6 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { aggregateNodeAnalysis } from '@/utils/sentiment/analyzers/sentimentAnalyzer';
-import { extractKeywords } from '@/utils/sentiment/extractors/keywordExtractor';
 import { parseRedditJSON, extractTimeSeriesData } from '@/utils/redditParser';
 import type { Node, SentimentResult, NodeAnalysis } from '@/types/sentiment';
 import type { RedditData } from '@/types/reddit';
@@ -215,22 +214,18 @@ const Index = () => {
       }
 
       // Extract trending themes with AI (non-blocking, runs in background)
-      setAnalysisStatus('Extracting keywords and themes...');
-      extractKeywords(textsToAnalyze, 20).then(keywords => {
-        const themes = keywords.map(word => {
-          const wordTexts = analysisResults.filter(r => r.text.toLowerCase().includes(word));
-          const sentiment = wordTexts.length > 0
-            ? wordTexts.reduce((sum, r) => sum + r.polarityScore, 0) / wordTexts.length
-            : 0;
-          return {
-            word,
-            frequency: wordTexts.length,
-            sentiment,
-          };
-        });
-        setTrendingThemes(themes);
+      setAnalysisStatus('Extracting themes with AI...');
+      supabase.functions.invoke('extract-themes', {
+        body: { texts: textsToAnalyze }
+      }).then(({ data, error }) => {
+        if (error) {
+          console.error('Error extracting themes:', error);
+          setTrendingThemes([]);
+        } else if (data?.themes) {
+          setTrendingThemes(data.themes);
+        }
       }).catch(error => {
-        console.error('Error extracting keywords:', error);
+        console.error('Error extracting themes:', error);
         setTrendingThemes([]);
       });
 

@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.analyze-sentiment-batch]
 verify_jwt = false
+
+[functions.extract-themes]
+verify_jwt = false
