@@ -100,10 +100,20 @@ const Index = () => {
       try {
         const { initializeSentimentModel } = await import('@/utils/sentiment/models/sentimentModel');
         const { initializeEmbeddingModel } = await import('@/utils/sentiment/models/embeddingModel');
-        await Promise.all([
-          initializeSentimentModel(),
-          initializeEmbeddingModel(),
+        
+        // Initialize models with timeout
+        const modelTimeout = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Model loading timeout')), 60000)
+        );
+        
+        await Promise.race([
+          Promise.all([
+            initializeSentimentModel(),
+            initializeEmbeddingModel(),
+          ]),
+          modelTimeout
         ]);
+        
         setModelsPreloaded(true);
         setAnalysisStatus('');
         toast({
@@ -113,6 +123,12 @@ const Index = () => {
       } catch (error) {
         console.error('Failed to preload models:', error);
         setAnalysisStatus('');
+        setModelsPreloaded(false);
+        toast({
+          title: 'Model loading failed',
+          description: 'Models will load when you start analysis. This may take a moment.',
+          variant: 'destructive',
+        });
       }
     }
   };

@@ -9,7 +9,7 @@ export async function initializeEmbeddingModel() {
       embeddingPipeline = await pipeline(
         'feature-extraction',
         'Xenova/all-MiniLM-L6-v2',
-        { device: 'webgpu' }
+        { device: 'wasm', dtype: 'q8' }
       );
       console.log('Embedding model initialized successfully');
     } catch (error) {

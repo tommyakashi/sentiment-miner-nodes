@@ -10,7 +10,7 @@ export async function initializeSentimentModel() {
       sentimentPipeline = await pipeline(
         'sentiment-analysis',
         'Xenova/distilbert-base-uncased-finetuned-sst-2-english',
-        { device: 'webgpu' }
+        { device: 'wasm', dtype: 'q8' }
       );
       console.log('Sentiment model initialized successfully');
     } catch (error) {

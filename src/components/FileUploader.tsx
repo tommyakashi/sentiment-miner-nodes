@@ -50,12 +50,12 @@ export function FileUploader({ onFilesLoaded, disabled }: FileUploaderProps) {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Load saved sources
+  // Load saved sources once when user is available
   useEffect(() => {
-    if (user && !sourcesLoaded && !isLoadingSources) {
+    if (user && !sourcesLoaded) {
       loadSavedSources();
     }
-  }, [user, sourcesLoaded, isLoadingSources]);
+  }, [user]);
 
   const loadSavedSources = async () => {
     if (!user || sourcesLoaded || isLoadingSources) return;
