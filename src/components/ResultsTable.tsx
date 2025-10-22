@@ -1,3 +1,5 @@
+import { useRef, useMemo } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -70,6 +72,99 @@ export function ResultsTable({ results, nodeAnalysis }: ResultsTableProps) {
     link.click();
   };
 
+  // Virtual scrolling component
+  const VirtualizedTable = ({ 
+    results, 
+    getSentimentColor, 
+    getScoreColor 
+  }: { 
+    results: SentimentResult[]; 
+    getSentimentColor: (polarity: string) => string;
+    getScoreColor: (score: number) => string;
+  }) => {
+    const parentRef = useRef<HTMLDivElement>(null);
+
+    const rowVirtualizer = useVirtualizer({
+      count: results.length,
+      getScrollElement: () => parentRef.current,
+      estimateSize: () => 60,
+      overscan: 10,
+    });
+
+    return (
+      <div 
+        ref={parentRef} 
+        className="border rounded-lg overflow-auto" 
+        style={{ height: '600px' }}
+      >
+        <Table>
+          <TableHeader className="sticky top-0 bg-background z-10">
+            <TableRow>
+              <TableHead className="w-[40%]">Text</TableHead>
+              <TableHead>Node</TableHead>
+              <TableHead>Sentiment</TableHead>
+              <TableHead className="text-right">Trust</TableHead>
+              <TableHead className="text-right">Optimism</TableHead>
+              <TableHead className="text-right">Frustration</TableHead>
+              <TableHead className="text-right">Clarity</TableHead>
+              <TableHead className="text-right">Access</TableHead>
+              <TableHead className="text-right">Fairness</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody style={{ height: `${rowVirtualizer.getTotalSize()}px`, position: 'relative' }}>
+            {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+              const result = results[virtualRow.index];
+              return (
+                <TableRow 
+                  key={virtualRow.index}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: `${virtualRow.size}px`,
+                    transform: `translateY(${virtualRow.start}px)`,
+                  }}
+                >
+                  <TableCell className="font-mono text-xs">
+                    {result.text.slice(0, 100)}
+                    {result.text.length > 100 && '...'}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline">{result.nodeName}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Badge className={getSentimentColor(result.polarity)}>
+                      {result.polarity}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className={`text-right font-medium ${getScoreColor(result.kpiScores.trust)}`}>
+                    {result.kpiScores.trust.toFixed(2)}
+                  </TableCell>
+                  <TableCell className={`text-right font-medium ${getScoreColor(result.kpiScores.optimism)}`}>
+                    {result.kpiScores.optimism.toFixed(2)}
+                  </TableCell>
+                  <TableCell className={`text-right font-medium ${getScoreColor(result.kpiScores.frustration)}`}>
+                    {result.kpiScores.frustration.toFixed(2)}
+                  </TableCell>
+                  <TableCell className={`text-right font-medium ${getScoreColor(result.kpiScores.clarity)}`}>
+                    {result.kpiScores.clarity.toFixed(2)}
+                  </TableCell>
+                  <TableCell className={`text-right font-medium ${getScoreColor(result.kpiScores.access)}`}>
+                    {result.kpiScores.access.toFixed(2)}
+                  </TableCell>
+                  <TableCell className={`text-right font-medium ${getScoreColor(result.kpiScores.fairness)}`}>
+                    {result.kpiScores.fairness.toFixed(2)}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </div>
+    );
+  };
+
   if (results.length === 0) return null;
 
   return (
@@ -122,59 +217,11 @@ export function ResultsTable({ results, nodeAnalysis }: ResultsTableProps) {
           </div>
         </div>
 
-        <div className="border rounded-lg overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[40%]">Text</TableHead>
-                <TableHead>Node</TableHead>
-                <TableHead>Sentiment</TableHead>
-                <TableHead className="text-right">Trust</TableHead>
-                <TableHead className="text-right">Optimism</TableHead>
-                <TableHead className="text-right">Frustration</TableHead>
-                <TableHead className="text-right">Clarity</TableHead>
-                <TableHead className="text-right">Access</TableHead>
-                <TableHead className="text-right">Fairness</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {results.map((result, idx) => (
-                <TableRow key={idx}>
-                  <TableCell className="font-mono text-xs">
-                    {result.text.slice(0, 100)}
-                    {result.text.length > 100 && '...'}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{result.nodeName}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge className={getSentimentColor(result.polarity)}>
-                      {result.polarity}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className={`text-right font-medium ${getScoreColor(result.kpiScores.trust)}`}>
-                    {result.kpiScores.trust.toFixed(2)}
-                  </TableCell>
-                  <TableCell className={`text-right font-medium ${getScoreColor(result.kpiScores.optimism)}`}>
-                    {result.kpiScores.optimism.toFixed(2)}
-                  </TableCell>
-                  <TableCell className={`text-right font-medium ${getScoreColor(result.kpiScores.frustration)}`}>
-                    {result.kpiScores.frustration.toFixed(2)}
-                  </TableCell>
-                  <TableCell className={`text-right font-medium ${getScoreColor(result.kpiScores.clarity)}`}>
-                    {result.kpiScores.clarity.toFixed(2)}
-                  </TableCell>
-                  <TableCell className={`text-right font-medium ${getScoreColor(result.kpiScores.access)}`}>
-                    {result.kpiScores.access.toFixed(2)}
-                  </TableCell>
-                  <TableCell className={`text-right font-medium ${getScoreColor(result.kpiScores.fairness)}`}>
-                    {result.kpiScores.fairness.toFixed(2)}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+        <VirtualizedTable 
+          results={results}
+          getSentimentColor={getSentimentColor}
+          getScoreColor={getScoreColor}
+        />
       </Card>
     </div>
   );

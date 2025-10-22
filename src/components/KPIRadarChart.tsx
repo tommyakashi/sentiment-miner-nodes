@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Card } from '@/components/ui/card';
 import { Info } from 'lucide-react';
 import { Tooltip as UiTooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -18,28 +19,30 @@ interface KPIRadarChartProps {
 }
 
 export function KPIRadarChart({ data }: KPIRadarChartProps) {
-  // Prepare data for radar chart
-  const kpiNames = ['Trust', 'Optimism', 'Frustration', 'Clarity', 'Access', 'Fairness'];
-  
-  const radarData = kpiNames.map((kpi) => {
-    const dataPoint: any = { kpi };
+  // Memoize radar data preparation
+  const radarData = useMemo(() => {
+    const kpiNames = ['Trust', 'Optimism', 'Frustration', 'Clarity', 'Access', 'Fairness'];
     
-    data.slice(0, 5).forEach((node) => {
-      const kpiKey = kpi.toLowerCase() as keyof typeof node.avgKpiScores;
-      // Normalize to 0-100 scale for better visualization
-      dataPoint[node.nodeName] = ((node.avgKpiScores[kpiKey] + 1) / 2) * 100;
+    return kpiNames.map((kpi) => {
+      const dataPoint: any = { kpi };
+      
+      data.slice(0, 5).forEach((node) => {
+        const kpiKey = kpi.toLowerCase() as keyof typeof node.avgKpiScores;
+        // Normalize to 0-100 scale for better visualization
+        dataPoint[node.nodeName] = ((node.avgKpiScores[kpiKey] + 1) / 2) * 100;
+      });
+      
+      return dataPoint;
     });
-    
-    return dataPoint;
-  });
+  }, [data]);
 
-  const colors = [
+  const colors = useMemo(() => [
     'hsl(var(--chart-1))',
     'hsl(var(--chart-2))',
     'hsl(var(--chart-3))',
     'hsl(var(--chart-4))',
     'hsl(var(--chart-5))',
-  ];
+  ], []);
 
   return (
     <Card className="p-6">

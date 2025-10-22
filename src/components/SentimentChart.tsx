@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Card } from '@/components/ui/card';
 import {
   LineChart,
@@ -17,6 +18,13 @@ interface SentimentChartProps {
 }
 
 export function SentimentChart({ data, title }: SentimentChartProps) {
+  // Memoize tooltip and gradient configurations
+  const tooltipStyle = useMemo(() => ({
+    backgroundColor: 'hsl(var(--card))',
+    border: '1px solid hsl(var(--border))',
+    borderRadius: '8px',
+  }), []);
+
   return (
     <Card className="p-6">
       <h3 className="text-lg font-semibold mb-4">{title}</h3>
@@ -46,11 +54,7 @@ export function SentimentChart({ data, title }: SentimentChartProps) {
             tick={{ fontSize: 12 }}
           />
           <Tooltip 
-            contentStyle={{
-              backgroundColor: 'hsl(var(--card))',
-              border: '1px solid hsl(var(--border))',
-              borderRadius: '8px',
-            }}
+            contentStyle={tooltipStyle}
           />
           <Area
             yAxisId="right"

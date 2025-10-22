@@ -1,45 +1,47 @@
-import * as pdfjsLib from 'pdfjs-dist';
+let pdfWorker: Worker | null = null;
+let jobCounter = 0;
+const pendingJobs = new Map<number, { resolve: (texts: string[]) => void; reject: (error: Error) => void }>();
 
-// Configure PDF.js worker - use the bundled worker
-const workerUrl = new URL(
-  'pdfjs-dist/build/pdf.worker.min.mjs',
-  import.meta.url
-).toString();
+function getWorker(): Worker {
+  if (!pdfWorker) {
+    pdfWorker = new Worker(new URL('../workers/pdfWorker.ts', import.meta.url), {
+      type: 'module'
+    });
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
+    pdfWorker.onmessage = (e: MessageEvent) => {
+      const { type, id, texts, error, progress, currentPage, totalPages } = e.data;
+      const job = pendingJobs.get(id);
+
+      if (!job) return;
+
+      if (type === 'progress') {
+        console.log(`PDF parsing progress: ${progress.toFixed(1)}% (page ${currentPage}/${totalPages})`);
+      } else if (type === 'complete') {
+        job.resolve(texts);
+        pendingJobs.delete(id);
+      } else if (type === 'error') {
+        job.reject(new Error(error));
+        pendingJobs.delete(id);
+      }
+    };
+
+    pdfWorker.onerror = (error) => {
+      console.error('PDF Worker error:', error);
+      pendingJobs.forEach(job => job.reject(new Error('PDF worker crashed')));
+      pendingJobs.clear();
+      pdfWorker = null;
+    };
+  }
+  return pdfWorker;
+}
 
 export async function extractTextFromPDF(file: File): Promise<string[]> {
-  try {
-    // Read file as array buffer
-    const arrayBuffer = await file.arrayBuffer();
-    
-    // Load the PDF document
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    
-    console.log(`PDF loaded: ${pdf.numPages} pages`);
-    
-    const texts: string[] = [];
-    
-    // Extract text from each page
-    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-      const page = await pdf.getPage(pageNum);
-      const textContent = await page.getTextContent();
-      
-      // Combine text items into a single string
-      const pageText = textContent.items
-        .map((item: any) => item.str)
-        .join(' ')
-        .trim();
-      
-      if (pageText.length > 0) {
-        texts.push(pageText);
-      }
-    }
-    
-    console.log(`Extracted text from ${texts.length} pages`);
-    return texts;
-  } catch (error) {
-    console.error('Error parsing PDF:', error);
-    throw new Error('Failed to parse PDF file');
-  }
+  const arrayBuffer = await file.arrayBuffer();
+  const worker = getWorker();
+  const id = ++jobCounter;
+
+  return new Promise<string[]>((resolve, reject) => {
+    pendingJobs.set(id, { resolve, reject });
+    worker.postMessage({ arrayBuffer, id });
+  });
 }

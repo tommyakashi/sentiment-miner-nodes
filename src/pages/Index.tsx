@@ -159,15 +159,21 @@ const Index = () => {
         const parsed = parseRedditJSON(rawData);
         textsToAnalyze = parsed.allText;
 
-        // Extract time series
-        const timeSeries = extractTimeSeriesData(rawData);
-        setTimeSeriesData(timeSeries);
+      // Process participants with initial data
+      const participantsList = Array.from(parsed.participants.values())
+        .sort((a, b) => b.totalUpvotes - a.totalUpvotes)
+        .slice(0, 10);
 
-        // Process participants
-        const participantsList = Array.from(parsed.participants.values())
-          .sort((a, b) => b.totalUpvotes - a.totalUpvotes)
-          .slice(0, 10);
+      // Batch all state updates related to Reddit data
+      const timeSeries = extractTimeSeriesData(rawData);
+      const sourceData = [{ name: 'Reddit', value: textsToAnalyze.length }];
+
+      // Update all Reddit-related state in one batch
+      Promise.resolve().then(() => {
+        setTimeSeriesData(timeSeries);
         setParticipants(participantsList);
+        setSources(sourceData);
+      });
 
         toast({
           title: 'Reddit data loaded',
@@ -175,13 +181,9 @@ const Index = () => {
         });
       } else {
         textsToAnalyze = content;
+        const sourceData = [{ name: 'Text/Other', value: textsToAnalyze.length }];
+        setSources(sourceData);
       }
-
-      // Track sources
-      const sourceData = fileType === 'reddit' 
-        ? [{ name: 'Reddit', value: textsToAnalyze.length }]
-        : [{ name: 'Text/Other', value: textsToAnalyze.length }];
-      setSources(sourceData);
 
       // Analyze sentiment using Edge Function (server-side processing)
       setAnalysisStatus('Sending data to analysis server...');
@@ -191,27 +193,44 @@ const Index = () => {
         (progress) => setProgress(progress),
         (status) => setAnalysisStatus(status)
       );
-      setResults(analysisResults);
 
-      // Calculate overall sentiment
+      // Calculate all derived data before updating state
       const avgSentiment = analysisResults.reduce((sum, r) => sum + r.polarityScore, 0) / analysisResults.length;
-      setOverallSentiment(avgSentiment * 100);
-
-      // Calculate node-level analysis using new aggregation
       const nodeAnalysisData = aggregateNodeAnalysis(analysisResults);
-      setNodeAnalysis(nodeAnalysisData);
 
-      // Update participant sentiments
+      // Optimize participant sentiment calculation - build text-to-result map once
+      let participantsWithSentiment = participants;
       if (participants.length > 0) {
-        const participantsWithSentiment = participants.map(p => {
-          const userTexts = analysisResults.filter(r => r.text.includes(p.username));
-          const avgSent = userTexts.length > 0
-            ? userTexts.reduce((sum, r) => sum + r.polarityScore, 0) / userTexts.length * 100
+        // Create a Map for O(1) lookup by text
+        const textToResult = new Map(
+          analysisResults.map(r => [r.text, r])
+        );
+
+        participantsWithSentiment = participants.map(p => {
+          // Build list of relevant results for this participant
+          const userResults: SentimentResult[] = [];
+          for (const result of analysisResults) {
+            if (result.text.includes(p.username)) {
+              userResults.push(result);
+            }
+          }
+          
+          const avgSent = userResults.length > 0
+            ? userResults.reduce((sum, r) => sum + r.polarityScore, 0) / userResults.length * 100
             : 0;
           return { ...p, sentimentScore: avgSent };
         });
-        setParticipants(participantsWithSentiment);
       }
+
+      // Batch all core analysis state updates together
+      Promise.resolve().then(() => {
+        setResults(analysisResults);
+        setOverallSentiment(avgSentiment * 100);
+        setNodeAnalysis(nodeAnalysisData);
+        if (participantsWithSentiment.length > 0) {
+          setParticipants(participantsWithSentiment);
+        }
+      });
 
       // Extract trending themes with AI (non-blocking, runs in background)
       setAnalysisStatus('Extracting themes with AI...');
