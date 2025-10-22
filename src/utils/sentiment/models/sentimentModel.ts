@@ -9,7 +9,7 @@ export async function initializeSentimentModel() {
     try {
       sentimentPipeline = await pipeline(
         'sentiment-analysis',
-        'Xenova/twitter-roberta-base-sentiment-latest',
+        'Xenova/distilbert-base-uncased-finetuned-sst-2-english',
         { device: 'wasm' }
       );
       console.log('Sentiment model initialized successfully');
