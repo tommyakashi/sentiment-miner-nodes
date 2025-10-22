@@ -162,27 +162,48 @@ const Index = () => {
       // Step 1: Parse and prepare data
       if (stagedFileType === 'reddit') {
         rawData = stagedContent as RedditData[];
-        const parsed = parseRedditJSON(rawData);
-        textsToAnalyze = parsed.allText;
+        
+        // Validate Reddit data structure
+        const isValidReddit = rawData.length > 0 && 
+          rawData.some((item: any) => 
+            item && typeof item === 'object' && 
+            ('text' in item || 'body' in item || 'title' in item) &&
+            'createdAt' in item
+          );
 
-        // Process participants
-        participantsList = Array.from(parsed.participants.values())
-          .sort((a, b) => b.totalUpvotes - a.totalUpvotes)
-          .slice(0, 10);
+        if (!isValidReddit) {
+          // Treat as text if Reddit data is invalid
+          textsToAnalyze = stagedContent as string[];
+          const sourceData = [{ name: 'Text/Other', value: textsToAnalyze.length }];
+          setSources(sourceData);
+        } else {
+          // Valid Reddit data
+          const parsed = parseRedditJSON(rawData);
+          textsToAnalyze = parsed.allText;
 
-        // Extract time series data
-        const timeSeries = extractTimeSeriesData(rawData);
-        const sourceData = [{ name: 'Reddit', value: textsToAnalyze.length }];
+          // Process participants
+          participantsList = Array.from(parsed.participants.values())
+            .sort((a, b) => b.totalUpvotes - a.totalUpvotes)
+            .slice(0, 10);
 
-        // Update Reddit-specific state synchronously
-        setTimeSeriesData(timeSeries);
-        setParticipants(participantsList);
-        setSources(sourceData);
+          // Extract time series data with error handling
+          try {
+            const timeSeries = extractTimeSeriesData(rawData);
+            setTimeSeriesData(timeSeries);
+          } catch (timeError) {
+            console.error('Error extracting time series:', timeError);
+            setTimeSeriesData([]);
+          }
+          
+          const sourceData = [{ name: 'Reddit', value: textsToAnalyze.length }];
+          setSources(sourceData);
+          setParticipants(participantsList);
 
-        toast({
-          title: 'Reddit data loaded',
-          description: `Processing ${parsed.posts.length} posts and ${parsed.comments.length} comments`,
-        });
+          toast({
+            title: 'Reddit data loaded',
+            description: `Processing ${parsed.posts.length} posts and ${parsed.comments.length} comments`,
+          });
+        }
       } else {
         textsToAnalyze = stagedContent;
         const sourceData = [{ name: 'Text/Other', value: textsToAnalyze.length }];

@@ -52,23 +52,35 @@ export function extractTimeSeriesData(data: RedditData[]) {
   const timeSeriesMap = new Map<string, { positive: number; negative: number; neutral: number; volume: number }>();
 
   data.forEach(item => {
-    const date = new Date(item.createdAt).toISOString().split('T')[0];
-    
-    if (!timeSeriesMap.has(date)) {
-      timeSeriesMap.set(date, { positive: 0, negative: 0, neutral: 0, volume: 0 });
-    }
+    try {
+      const date = new Date(item.createdAt);
+      
+      // Validate date
+      if (isNaN(date.getTime())) {
+        console.warn('Invalid date in Reddit data:', item.createdAt);
+        return;
+      }
+      
+      const dateStr = date.toISOString().split('T')[0];
+      
+      if (!timeSeriesMap.has(dateStr)) {
+        timeSeriesMap.set(dateStr, { positive: 0, negative: 0, neutral: 0, volume: 0 });
+      }
 
-    const entry = timeSeriesMap.get(date)!;
-    entry.volume++;
+      const entry = timeSeriesMap.get(dateStr)!;
+      entry.volume++;
 
-    // Simple heuristic: high upvotes = positive, low/negative = negative
-    const upvotes = item.upVotes || 0;
-    if (upvotes > 5) {
-      entry.positive++;
-    } else if (upvotes < -2) {
-      entry.negative++;
-    } else {
-      entry.neutral++;
+      // Simple heuristic: high upvotes = positive, low/negative = negative
+      const upvotes = item.upVotes || 0;
+      if (upvotes > 5) {
+        entry.positive++;
+      } else if (upvotes < -2) {
+        entry.negative++;
+      } else {
+        entry.neutral++;
+      }
+    } catch (err) {
+      console.error('Error processing date for item:', err);
     }
   });
 

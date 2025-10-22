@@ -208,18 +208,29 @@ export function FileUploader({ onFilesLoaded, disabled }: FileUploaderProps) {
                 throw new Error('No text extracted from PDF');
               }
               
+              // Sanitize PDF text to remove null bytes and other problematic characters
+              const sanitizedTexts = pdfTexts.map(text => 
+                text.replace(/\u0000/g, '') // Remove null bytes
+                    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // Remove other control characters
+                    .trim()
+              ).filter(text => text.length > 0);
+              
+              if (sanitizedTexts.length === 0) {
+                throw new Error('No valid text after cleaning');
+              }
+              
               newFiles.push({
                 name: file.name,
                 type: 'text',
-                content: pdfTexts,
-                itemCount: pdfTexts.length,
+                content: sanitizedTexts,
+                itemCount: sanitizedTexts.length,
               });
               
               processedCount++;
               
               toast({
                 title: 'PDF processed',
-                description: `Extracted ${pdfTexts.length} pages from ${file.name}`,
+                description: `Extracted ${sanitizedTexts.length} pages from ${file.name}`,
               });
               
               // Small delay between PDFs to prevent memory overflow
@@ -483,7 +494,7 @@ export function FileUploader({ onFilesLoaded, disabled }: FileUploaderProps) {
           </Button>
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-3">
           <div className="border-2 border-dashed border-border rounded-lg p-8 text-center hover:border-primary/50 transition-colors">
             <input
               ref={fileInputRef}
@@ -513,8 +524,8 @@ export function FileUploader({ onFilesLoaded, disabled }: FileUploaderProps) {
             </div>
           </div>
 
-          <div className="border-t pt-4">
-            <p className="text-sm font-medium mb-3">Or scrape from Reddit URLs (Free!)</p>
+          <div className="pt-3 border-t">
+            <p className="text-sm font-medium mb-2">Or scrape from Reddit URLs (Free!)</p>
             <div className="space-y-2">
               <Textarea
                 placeholder="Paste multiple Reddit URLs (one per line):&#10;https://www.reddit.com/r/science/...&#10;https://www.reddit.com/r/technology/..."
