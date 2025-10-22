@@ -24,21 +24,56 @@ const kpiEmbeddingCache = new Map<string, number[]>();
 
 async function getKPIEmbeddings() {
   if (kpiEmbeddingCache.size === 0) {
-    console.log('Generating KPI concept embeddings...');
-    for (const [kpi, concepts] of Object.entries(KPI_CONCEPTS)) {
-      // Richer context for better semantic matching
-      const conceptText = `This represents ${kpi}. It relates to: ${concepts.join(', ')}. Key aspects include ${concepts.slice(0, 3).join(' and ')}.`;
-      const embedding = await generateEmbedding(conceptText);
-      kpiEmbeddingCache.set(kpi, embedding);
-    }
+    console.log('Generating KPI concept embeddings in parallel...');
+    const kpiEntries = Object.entries(KPI_CONCEPTS);
+    const embeddings = await Promise.all(
+      kpiEntries.map(([kpi, concepts]) => {
+        const conceptText = `This represents ${kpi}. It relates to: ${concepts.join(', ')}. Key aspects include ${concepts.slice(0, 3).join(' and ')}.`;
+        return generateEmbedding(conceptText);
+      })
+    );
+    kpiEntries.forEach(([kpi], index) => {
+      kpiEmbeddingCache.set(kpi, embeddings[index]);
+    });
   }
   return kpiEmbeddingCache;
 }
 
-async function calculateKPIScores(text: string, polarity: number, sentimentConfidence: number, textEmbedding?: number[]): Promise<KPIScore> {
+// Pre-build keyword frequency map for efficient matching
+function buildKeywordFrequencyMap(text: string): Map<string, number> {
+  const normalized = normalizeText(text);
+  const frequencyMap = new Map<string, number>();
+  
+  const domainWeights: Record<string, Record<string, number>> = {
+    trust: { reliable: 1.2, honest: 1.3, credible: 1.2 },
+    optimism: { hope: 1.3, positive: 1.2, encouraging: 1.2 },
+    frustration: { frustration: 1.3, annoying: 1.2, difficult: 1.2 },
+    clarity: { clear: 1.3, simple: 1.2, obvious: 1.2 },
+    access: { access: 1.3, available: 1.2, easy: 1.2 },
+    fairness: { fair: 1.3, equal: 1.2, just: 1.2 },
+  };
+  
+  for (const [kpi, keywords] of Object.entries(KPI_CONCEPTS)) {
+    for (const keyword of keywords) {
+      if (normalized.includes(keyword)) {
+        const weight = domainWeights[kpi]?.[keyword] || 1.0;
+        frequencyMap.set(`${kpi}:${keyword}`, weight);
+      }
+    }
+  }
+  
+  return frequencyMap;
+}
+
+async function calculateKPIScores(
+  text: string,
+  normalizedText: string,
+  keywordFrequencyMap: Map<string, number>,
+  polarity: number,
+  sentimentConfidence: number,
+  textEmbedding: number[]
+): Promise<KPIScore> {
   const kpiEmbeddings = await getKPIEmbeddings();
-  const embedding = textEmbedding || await generateEmbedding(text);
-  const normalizedText = normalizeText(text);
 
   const scores: KPIScore = {
     trust: 0,
@@ -49,31 +84,19 @@ async function calculateKPIScores(text: string, polarity: number, sentimentConfi
     fairness: 0,
   };
 
-  // Domain-specific adjustments
-  const domainWeights: Record<string, Record<string, number>> = {
-    trust: { reliable: 1.2, honest: 1.3, credible: 1.2 },
-    optimism: { hope: 1.3, positive: 1.2, encouraging: 1.2 },
-    frustration: { frustration: 1.3, annoying: 1.2, difficult: 1.2 },
-    clarity: { clear: 1.3, simple: 1.2, obvious: 1.2 },
-    access: { access: 1.3, available: 1.2, easy: 1.2 },
-    fairness: { fair: 1.3, equal: 1.2, just: 1.2 },
-  };
-
   for (const [kpi, kpiEmbedding] of kpiEmbeddings.entries()) {
-    const similarity = cosineSimilarity(embedding, kpiEmbedding);
+    const similarity = cosineSimilarity(textEmbedding, kpiEmbedding);
     
-    // Weight by sentiment confidence: more confident sentiment = stronger signal
     let score = similarity * (1 + Math.abs(polarity) * sentimentConfidence * 0.8);
     
-    // Keyword frequency boost
+    // Efficient keyword boost using pre-built frequency map
     const keywords = KPI_CONCEPTS[kpi as keyof typeof KPI_CONCEPTS];
     const keywordCount = keywords.reduce((count, keyword) => {
-      const weight = domainWeights[kpi]?.[keyword] || 1.0;
-      return count + (normalizedText.includes(keyword) ? weight : 0);
+      return count + (keywordFrequencyMap.get(`${kpi}:${keyword}`) || 0);
     }, 0);
     
     if (keywordCount > 0) {
-      score *= (1 + Math.min(keywordCount * 0.15, 0.5)); // Cap boost at 50%
+      score *= (1 + Math.min(keywordCount * 0.15, 0.5));
     }
     
     // Domain-specific polarity adjustments
@@ -89,17 +112,23 @@ async function calculateKPIScores(text: string, polarity: number, sentimentConfi
   return scores;
 }
 
-// Pre-compute node embeddings with richer context
+// Pre-compute node embeddings with richer context in parallel
 async function precomputeNodeEmbeddings(nodes: Node[]): Promise<void> {
-  console.log('Precomputing node embeddings...');
-  for (const node of nodes) {
-    if (!nodeEmbeddingCache.has(node.id)) {
-      // Richer semantic context
+  console.log('Precomputing node embeddings in parallel...');
+  const nodesToCompute = nodes.filter(node => !nodeEmbeddingCache.has(node.id));
+  
+  if (nodesToCompute.length === 0) return;
+  
+  const embeddings = await Promise.all(
+    nodesToCompute.map(node => {
       const contextText = `This topic is about: ${node.keywords.slice(0, 5).join(', ')}. It relates to ${node.keywords.slice(5).join(' and ')}.`;
-      const nodeEmbedding = await generateEmbedding(contextText);
-      nodeEmbeddingCache.set(node.id, nodeEmbedding);
-    }
-  }
+      return generateEmbedding(contextText);
+    })
+  );
+  
+  nodesToCompute.forEach((node, index) => {
+    nodeEmbeddingCache.set(node.id, embeddings[index]);
+  });
 }
 
 // Vectorized node matching - compute all similarities at once
@@ -154,13 +183,30 @@ export async function performSentimentAnalysis(
     if (onStatus) onStatus('Preparing node embeddings...');
     await precomputeNodeEmbeddings(nodes);
     
-    // PHASE 3: Normalize and prepare texts
+    // PHASE 3: Normalize texts and pre-detect long texts
     if (onStatus) onStatus('Preparing texts...');
-    const normalizedTexts = texts.map(normalizeText);
+    const normalizedTextCache = new Map<string, string>();
+    const keywordFrequencyCache = new Map<string, Map<string, number>>();
+    const longTextIndices = new Set<number>();
+    const allTextsToEmbed: string[] = [];
     
-    // PHASE 4: Batch generate ALL text embeddings upfront
+    texts.forEach((text, index) => {
+      const normalized = normalizeText(text);
+      normalizedTextCache.set(text, normalized);
+      keywordFrequencyCache.set(text, buildKeywordFrequencyMap(text));
+      
+      if (isLongText(text)) {
+        longTextIndices.add(index);
+        const chunks = chunkLongText(text, 500);
+        allTextsToEmbed.push(...chunks.map(normalizeText));
+      }
+      
+      allTextsToEmbed.push(normalized);
+    });
+    
+    // PHASE 4: Batch generate ALL embeddings (full texts + chunks)
     if (onStatus) onStatus('Generating text embeddings...');
-    const textEmbeddings = await generateBatchEmbeddings(normalizedTexts);
+    const textEmbeddings = await generateBatchEmbeddings(allTextsToEmbed);
     
     // PHASE 5: Process sentiment in batches
     for (let i = 0; i < texts.length; i += batchSize) {
@@ -186,24 +232,28 @@ export async function performSentimentAnalysis(
       const batchResults = await Promise.all(
         batch.map(async (text, batchIndex) => {
           try {
-            const normalizedText = normalizeText(text);
-            const textEmbedding = textEmbeddings.get(normalizedText);
+            const globalIndex = i + batchIndex;
+            const normalizedText = normalizedTextCache.get(text)!;
+            const keywordFrequencyMap = keywordFrequencyCache.get(text)!;
             
-            if (!textEmbedding) {
+            let finalEmbedding = textEmbeddings.get(normalizedText);
+            
+            if (!finalEmbedding) {
               throw new Error('Embedding not found');
             }
 
-            // Handle long texts by chunking and averaging
-            let finalEmbedding = textEmbedding;
-            if (isLongText(text)) {
-              const chunks = chunkLongText(text, 500);
-              const chunkEmbeddings = await generateBatchEmbeddings(chunks.map(normalizeText));
-              const embeddingArrays = Array.from(chunkEmbeddings.values());
+            // Use pre-computed chunk embeddings for long texts
+            if (longTextIndices.has(globalIndex)) {
+              const chunks = chunkLongText(text, 500).map(normalizeText);
+              const chunkEmbeddings = chunks
+                .map(chunk => textEmbeddings.get(chunk))
+                .filter((emb): emb is number[] => emb !== undefined);
               
-              // Average embeddings
-              finalEmbedding = embeddingArrays[0].map((_, idx) => 
-                embeddingArrays.reduce((sum, emb) => sum + emb[idx], 0) / embeddingArrays.length
-              );
+              if (chunkEmbeddings.length > 0) {
+                finalEmbedding = chunkEmbeddings[0].map((_, idx) => 
+                  chunkEmbeddings.reduce((sum, emb) => sum + emb[idx], 0) / chunkEmbeddings.length
+                );
+              }
             }
 
             // Run sentiment analysis and node matching in parallel
@@ -223,10 +273,16 @@ export async function performSentimentAnalysis(
               adjustedSentimentScore = Math.max(0.6, sentimentResult.score * 1.15);
             }
 
-            // Calculate KPI scores with improved context
-            const kpiScores = await calculateKPIScores(text, polarityScore, adjustedSentimentScore, finalEmbedding);
+            // Calculate KPI scores with cached data
+            const kpiScores = await calculateKPIScores(
+              text,
+              normalizedText,
+              keywordFrequencyMap,
+              polarityScore,
+              adjustedSentimentScore,
+              finalEmbedding
+            );
 
-            // Better confidence calculation
             const confidence = (adjustedSentimentScore * 0.6) + (nodeMatch.confidence * 0.4);
 
             successCount++;
@@ -241,7 +297,6 @@ export async function performSentimentAnalysis(
             } as SentimentResult;
           } catch (error) {
             console.error(`Error analyzing text ${i + batchIndex}:`, error);
-            // Skip failed analyses - don't add fake neutral results
             return null;
           }
         })

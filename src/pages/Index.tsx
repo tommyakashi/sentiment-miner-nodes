@@ -186,23 +186,27 @@ const Index = () => {
       const avgSentiment = analysisResults.reduce((sum, r) => sum + r.polarityScore, 0) / analysisResults.length;
       const nodeAnalysisData = aggregateNodeAnalysis(analysisResults);
 
-      // Optimize participant sentiment calculation - build text-to-result map once
+      // Optimize participant sentiment calculation with reverse index
       let participantsWithSentiment = participants;
       if (participants.length > 0) {
-        // Create a Map for O(1) lookup by text
-        const textToResult = new Map(
-          analysisResults.map(r => [r.text, r])
-        );
-
-        participantsWithSentiment = participants.map(p => {
-          // Build list of relevant results for this participant
-          const userResults: SentimentResult[] = [];
-          for (const result of analysisResults) {
-            if (result.text.includes(p.username)) {
-              userResults.push(result);
+        // Build reverse index: username -> results (O(n) single pass)
+        const participantIndex = new Map<string, SentimentResult[]>();
+        
+        analysisResults.forEach(result => {
+          const lowerText = result.text.toLowerCase();
+          participants.forEach(p => {
+            if (lowerText.includes(p.username.toLowerCase())) {
+              if (!participantIndex.has(p.username)) {
+                participantIndex.set(p.username, []);
+              }
+              participantIndex.get(p.username)!.push(result);
             }
-          }
-          
+          });
+        });
+
+        // Map lookup instead of nested loops
+        participantsWithSentiment = participants.map(p => {
+          const userResults = participantIndex.get(p.username) || [];
           const avgSent = userResults.length > 0
             ? userResults.reduce((sum, r) => sum + r.polarityScore, 0) / userResults.length * 100
             : 0;
