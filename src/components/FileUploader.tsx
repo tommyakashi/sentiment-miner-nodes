@@ -20,11 +20,11 @@ interface UploadedFile {
 }
 
 interface FileUploaderProps {
-  onFilesChange: (allContent: any[], fileType: 'reddit' | 'text') => void;
+  onFilesLoaded: (allContent: any[], fileType: 'reddit' | 'text') => void;
   disabled?: boolean;
 }
 
-export function FileUploader({ onFilesChange, disabled }: FileUploaderProps) {
+export function FileUploader({ onFilesLoaded, disabled }: FileUploaderProps) {
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [redditUrls, setRedditUrls] = useState('');
   const [isScrapingUrl, setIsScrapingUrl] = useState(false);
@@ -130,15 +130,15 @@ export function FileUploader({ onFilesChange, disabled }: FileUploaderProps) {
         
         if (validFiles.length > 0) {
           setUploadedFiles(validFiles);
-          mergeAndNotify(validFiles);
+          notifyParent(validFiles);
           
           toast({
             title: 'Sources loaded',
-            description: `Loaded ${validFiles.length} valid source(s)`,
+            description: `Loaded ${validFiles.length} valid source(s). Click "Start Analysis" when ready.`,
           });
         } else if (corruptedIds.length > 0) {
           setUploadedFiles([]);
-          onFilesChange([], 'text');
+          onFilesLoaded([], 'text');
         }
       }
       
@@ -268,12 +268,12 @@ export function FileUploader({ onFilesChange, disabled }: FileUploaderProps) {
         await saveSource(file);
       }
       
-      // Merge all content and notify parent
-      mergeAndNotify(updatedFiles);
+      // Notify parent without triggering analysis
+      notifyParent(updatedFiles);
 
       toast({
         title: 'Files uploaded',
-        description: `Added ${newFiles.length} file(s). Total: ${updatedFiles.length}`,
+        description: `Added ${newFiles.length} file(s). Total: ${updatedFiles.length} sources ready. Click "Start Analysis" when ready.`,
       });
     }
 
@@ -283,9 +283,9 @@ export function FileUploader({ onFilesChange, disabled }: FileUploaderProps) {
     }
   };
 
-  const mergeAndNotify = (files: UploadedFile[]) => {
+  const notifyParent = (files: UploadedFile[]) => {
     if (files.length === 0) {
-      onFilesChange([], 'text');
+      onFilesLoaded([], 'text');
       return;
     }
 
@@ -303,14 +303,14 @@ export function FileUploader({ onFilesChange, disabled }: FileUploaderProps) {
       }
     });
 
-    onFilesChange(mergedContent, fileType);
+    onFilesLoaded(mergedContent, fileType);
   };
 
   const removeFile = async (index: number) => {
     const fileName = uploadedFiles[index].name;
     const updatedFiles = uploadedFiles.filter((_, i) => i !== index);
     setUploadedFiles(updatedFiles);
-    mergeAndNotify(updatedFiles);
+    notifyParent(updatedFiles);
     
     // Remove from database
     if (user) {
@@ -333,7 +333,7 @@ export function FileUploader({ onFilesChange, disabled }: FileUploaderProps) {
 
   const clearAllFiles = async () => {
     setUploadedFiles([]);
-    onFilesChange([], 'text');
+    onFilesLoaded([], 'text');
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -386,7 +386,7 @@ export function FileUploader({ onFilesChange, disabled }: FileUploaderProps) {
         const updatedFiles = [...uploadedFiles, newFile];
         setUploadedFiles(updatedFiles);
         await saveSource(newFile);
-        mergeAndNotify(updatedFiles);
+        notifyParent(updatedFiles);
         successCount++;
       } catch (error) {
         console.error(`Error scraping ${url}:`, error);
@@ -403,7 +403,7 @@ export function FileUploader({ onFilesChange, disabled }: FileUploaderProps) {
     if (successCount > 0) {
       toast({
         title: "Reddit data scraped",
-        description: `Successfully extracted data from ${successCount} of ${urls.length} URL(s)`,
+        description: `Successfully extracted data from ${successCount} of ${urls.length} URL(s). Click "Start Analysis" when ready.`,
       });
     }
     

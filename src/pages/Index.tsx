@@ -41,6 +41,9 @@ const Index = () => {
   const [analysisStatus, setAnalysisStatus] = useState<string>('');
   const [activeTab, setActiveTab] = useState('dashboard');
   const [sources, setSources] = useState<Array<{ name: string; value: number }>>([]);
+  const [stagedContent, setStagedContent] = useState<any[]>([]);
+  const [stagedFileType, setStagedFileType] = useState<'reddit' | 'text'>('text');
+  const [isDataReady, setIsDataReady] = useState(false);
   const { toast } = useToast();
 
   // Server-side sentiment analysis using Edge Function
@@ -127,15 +130,34 @@ const Index = () => {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
-  const handleFilesChange = async (content: any[], fileType: 'reddit' | 'text') => {
+  const handleFilesLoaded = (content: any[], fileType: 'reddit' | 'text') => {
     if (content.length === 0) {
-      // Clear all data when no files
+      // Clear staged data when no files
+      setStagedContent([]);
+      setStagedFileType('text');
+      setIsDataReady(false);
       setResults([]);
       setNodeAnalysis([]);
       setTimeSeriesData([]);
       setParticipants([]);
       setTrendingThemes([]);
       setOverallSentiment(0);
+      return;
+    }
+    
+    // Stage the data without analyzing
+    setStagedContent(content);
+    setStagedFileType(fileType);
+    setIsDataReady(true);
+  };
+
+  const handleStartAnalysis = async () => {
+    if (stagedContent.length === 0) {
+      toast({
+        title: 'No data loaded',
+        description: 'Please upload files before starting analysis.',
+        variant: 'destructive',
+      });
       return;
     }
     if (nodes.length === 0) {
@@ -154,8 +176,8 @@ const Index = () => {
       let textsToAnalyze: string[] = [];
       let rawData: RedditData[] = [];
 
-      if (fileType === 'reddit') {
-        rawData = content as RedditData[];
+      if (stagedFileType === 'reddit') {
+        rawData = stagedContent as RedditData[];
         const parsed = parseRedditJSON(rawData);
         textsToAnalyze = parsed.allText;
 
@@ -180,7 +202,7 @@ const Index = () => {
           description: `Processing ${parsed.posts.length} posts and ${parsed.comments.length} comments`,
         });
       } else {
-        textsToAnalyze = content;
+        textsToAnalyze = stagedContent;
         const sourceData = [{ name: 'Text/Other', value: textsToAnalyze.length }];
         setSources(sourceData);
       }
@@ -471,8 +493,34 @@ const Index = () => {
 
           {/* Setup Tab */}
           <TabsContent value="setup" className="space-y-6">
+            {/* Start Analysis Button */}
+            {isDataReady && (
+              <div className="bg-primary/10 border-2 border-primary/20 rounded-lg p-6 text-center">
+                <div className="mb-4">
+                  <p className="text-lg font-semibold mb-2">
+                    📊 {stagedContent.length} sources loaded
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {nodes.length > 0 
+                      ? `Ready to analyze across ${nodes.length} node(s)`
+                      : 'Define at least one analysis node below to begin'
+                    }
+                  </p>
+                </div>
+                <Button
+                  onClick={handleStartAnalysis}
+                  disabled={isAnalyzing || nodes.length === 0}
+                  size="lg"
+                  className="gap-2"
+                >
+                  <Brain className="w-5 h-5" />
+                  Start Analysis
+                </Button>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <FileUploader onFilesChange={handleFilesChange} disabled={isAnalyzing} />
+              <FileUploader onFilesLoaded={handleFilesLoaded} disabled={isAnalyzing} />
               <NodeManager nodes={nodes} onNodesChange={setNodes} />
             </div>
           </TabsContent>
