@@ -41,7 +41,38 @@ export async function extractTextFromPDF(file: File): Promise<string[]> {
   const id = ++jobCounter;
 
   return new Promise<string[]>((resolve, reject) => {
-    pendingJobs.set(id, { resolve, reject });
+    pendingJobs.set(id, { 
+      resolve: (texts: string[]) => {
+        // Optimize PDF processing: chunk pages for better semantic grouping
+        const optimizedTexts = chunkPDFPages(texts);
+        resolve(optimizedTexts);
+      }, 
+      reject 
+    });
     worker.postMessage({ arrayBuffer, id });
   });
+}
+
+// Chunk PDF pages intelligently for academic papers
+function chunkPDFPages(pages: string[]): string[] {
+  const chunks: string[] = [];
+  const chunkSize = 3; // Group 3 pages together for research papers
+  
+  // Detect if this looks like an academic paper (has abstract, introduction, etc.)
+  const isAcademicPaper = pages.some(page => 
+    /abstract|introduction|methodology|results|discussion|conclusion/i.test(page)
+  );
+  
+  if (isAcademicPaper && pages.length > 6) {
+    // For academic papers, group pages by sections
+    for (let i = 0; i < pages.length; i += chunkSize) {
+      const pageGroup = pages.slice(i, i + chunkSize);
+      const combinedText = pageGroup.join('\n\n');
+      chunks.push(combinedText);
+    }
+    return chunks;
+  }
+  
+  // For other documents, return as-is
+  return pages;
 }

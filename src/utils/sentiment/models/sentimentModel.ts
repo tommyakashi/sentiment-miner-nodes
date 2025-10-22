@@ -32,28 +32,31 @@ export async function analyzeSentiment(text: string): Promise<SentimentOutput> {
 }
 
 export function calculatePolarityScore(label: string, score: number): { polarityScore: number; polarity: 'positive' | 'neutral' | 'negative' } {
-  // More nuanced scoring based on confidence
-  const threshold = 0.6; // Confidence threshold for strong sentiment
+  // Improved scoring with lower threshold and logarithmic scaling
+  const threshold = 0.52; // Lower threshold for more nuanced detection
+  const neutralThreshold = 0.53; // Tighter neutral range
   
   let polarityScore: number;
   let polarity: 'positive' | 'neutral' | 'negative';
   
   if (label === 'POSITIVE') {
-    // Scale positive sentiment: 0.5-1.0 confidence -> 0 to 1 polarity
+    // Logarithmic scaling for more nuanced positive sentiment
     if (score >= threshold) {
-      polarityScore = 0.3 + (score - threshold) * 1.75; // Maps 0.6-1.0 to 0.3-1.0
+      const normalized = (score - threshold) / (1 - threshold); // 0 to 1
+      polarityScore = Math.log10(1 + normalized * 9) / Math.log10(10); // Log scale
     } else {
-      polarityScore = (score - 0.5) * 0.6; // Maps 0.5-0.6 to 0-0.06
+      polarityScore = (score - 0.5) / (threshold - 0.5) * 0.2; // Small positive
     }
-    polarity = score >= 0.55 ? 'positive' : 'neutral';
+    polarity = score >= neutralThreshold ? 'positive' : 'neutral';
   } else if (label === 'NEGATIVE') {
-    // Scale negative sentiment similarly
+    // Logarithmic scaling for negative sentiment
     if (score >= threshold) {
-      polarityScore = -(0.3 + (score - threshold) * 1.75);
+      const normalized = (score - threshold) / (1 - threshold);
+      polarityScore = -(Math.log10(1 + normalized * 9) / Math.log10(10));
     } else {
-      polarityScore = -(score - 0.5) * 0.6;
+      polarityScore = -((score - 0.5) / (threshold - 0.5) * 0.2);
     }
-    polarity = score >= 0.55 ? 'negative' : 'neutral';
+    polarity = score >= neutralThreshold ? 'negative' : 'neutral';
   } else {
     polarityScore = 0;
     polarity = 'neutral';

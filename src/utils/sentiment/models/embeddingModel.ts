@@ -26,6 +26,34 @@ export async function generateEmbedding(text: string): Promise<number[]> {
   return Array.from(output.data);
 }
 
+// Batch embedding generation for efficiency
+export async function generateBatchEmbeddings(texts: string[]): Promise<Map<string, number[]>> {
+  const model = await initializeEmbeddingModel();
+  const embeddingMap = new Map<string, number[]>();
+  
+  // Process in chunks to avoid memory issues
+  const chunkSize = 100;
+  
+  for (let i = 0; i < texts.length; i += chunkSize) {
+    const chunk = texts.slice(i, i + chunkSize);
+    
+    // Generate embeddings in parallel for the chunk
+    const results = await Promise.all(
+      chunk.map(async (text) => {
+        const output = await model(text, { pooling: 'mean', normalize: true }) as any;
+        return { text, embedding: Array.from(output.data) as number[] };
+      })
+    );
+    
+    // Add to map
+    results.forEach(({ text, embedding }) => {
+      embeddingMap.set(text, embedding);
+    });
+  }
+  
+  return embeddingMap;
+}
+
 export function cosineSimilarity(a: number[], b: number[]): number {
   if (a.length !== b.length) return 0;
   

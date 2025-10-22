@@ -45,6 +45,7 @@ const Index = () => {
   const [stagedFileType, setStagedFileType] = useState<'reddit' | 'text'>('text');
   const [stagedFileCount, setStagedFileCount] = useState<number>(0);
   const [isDataReady, setIsDataReady] = useState(false);
+  const [modelsPreloaded, setModelsPreloaded] = useState(false);
   const { toast } = useToast();
 
   // Check auth status
@@ -70,13 +71,14 @@ const Index = () => {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
-  const handleFilesLoaded = (content: any[], fileType: 'reddit' | 'text', fileCount: number) => {
+  const handleFilesLoaded = async (content: any[], fileType: 'reddit' | 'text', fileCount: number) => {
     if (content.length === 0) {
       // Clear staged data when no files
       setStagedContent([]);
       setStagedFileType('text');
       setStagedFileCount(0);
       setIsDataReady(false);
+      setModelsPreloaded(false);
       setResults([]);
       setNodeAnalysis([]);
       setTimeSeriesData([]);
@@ -91,6 +93,28 @@ const Index = () => {
     setStagedFileType(fileType);
     setStagedFileCount(fileCount);
     setIsDataReady(true);
+    
+    // Preload models when files are uploaded for faster analysis
+    if (!modelsPreloaded) {
+      setAnalysisStatus('Preloading AI models...');
+      try {
+        const { initializeSentimentModel } = await import('@/utils/sentiment/models/sentimentModel');
+        const { initializeEmbeddingModel } = await import('@/utils/sentiment/models/embeddingModel');
+        await Promise.all([
+          initializeSentimentModel(),
+          initializeEmbeddingModel(),
+        ]);
+        setModelsPreloaded(true);
+        setAnalysisStatus('');
+        toast({
+          title: 'Ready to analyze',
+          description: `AI models loaded • ${fileCount} file(s) staged`,
+        });
+      } catch (error) {
+        console.error('Failed to preload models:', error);
+        setAnalysisStatus('');
+      }
+    }
   };
 
   const handleStartAnalysis = async () => {
