@@ -60,6 +60,32 @@ export function ResultsTable({
     link.click();
   };
 
+  const exportSummaryCSV = () => {
+    const headers = ['Node', 'Total Texts', 'Avg Sentiment', 'Positive', 'Neutral', 'Negative', 'Trust', 'Optimism', 'Frustration', 'Clarity', 'Access', 'Fairness'];
+    const rows = nodeAnalysis.map(node => [
+      node.nodeName,
+      node.totalTexts,
+      node.avgPolarity.toFixed(2),
+      node.sentimentDistribution.positive,
+      node.sentimentDistribution.neutral,
+      node.sentimentDistribution.negative,
+      node.avgKpiScores.trust.toFixed(2),
+      node.avgKpiScores.optimism.toFixed(2),
+      node.avgKpiScores.frustration.toFixed(2),
+      node.avgKpiScores.clarity.toFixed(2),
+      node.avgKpiScores.access.toFixed(2),
+      node.avgKpiScores.fairness.toFixed(2),
+    ]);
+
+    const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `sentiment-summary-${Date.now()}.csv`;
+    link.click();
+  };
+
   const exportToCSV = () => {
     const headers = ['Text', 'Node', 'Polarity', 'Score', 'Trust', 'Optimism', 'Frustration', 'Clarity', 'Access', 'Fairness', 'Confidence'];
     const rows = results.map(r => [
@@ -340,13 +366,17 @@ export function ResultsTable({
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold">Analysis Results</h2>
           <div className="flex gap-2">
+            <Button onClick={exportSummaryCSV}>
+              <Download className="w-4 h-4 mr-2" />
+              Export Summary
+            </Button>
             <Button variant="outline" size="sm" onClick={exportToPDF}>
               <FileText className="w-4 h-4 mr-2" />
               PDF
             </Button>
             <Button variant="outline" size="sm" onClick={exportToCSV}>
               <Download className="w-4 h-4 mr-2" />
-              CSV
+              Full CSV
             </Button>
             <Button variant="outline" size="sm" onClick={exportToJSON}>
               <Download className="w-4 h-4 mr-2" />
