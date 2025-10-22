@@ -1,4 +1,4 @@
-import { generateEmbedding, cosineSimilarity } from '../models/embeddingModel';
+// Removed embedding imports for performance optimization
 
 const STOP_WORDS = new Set([
   'the', 'be', 'to', 'of', 'and', 'a', 'in', 'that', 'have', 'i',
@@ -57,23 +57,20 @@ export async function extractKeywords(
     // Combine all texts for overall keyword extraction
     const combinedText = texts.join(' ');
     
-    // Use TF-IDF for initial keyword extraction
+    // Use TF-IDF for keyword extraction (removed embedding diversification for performance)
     const scores = calculateTFIDF(combinedText);
     
     if (!scores || scores.size === 0) {
       return fallbackKeywordExtraction(combinedText, maxKeywords);
     }
 
-    // Get top candidates based on TF-IDF
-    const candidates = Array.from(scores.entries())
+    // Get top keywords based on TF-IDF score
+    const keywords = Array.from(scores.entries())
       .sort((a, b) => b[1] - a[1])
-      .slice(0, maxKeywords * 3) // Get more candidates for diversity
+      .slice(0, maxKeywords)
       .map(([word]) => word);
-
-    // Use embeddings to diversify keywords (avoid semantic duplicates)
-    const diverseKeywords = await diversifyKeywords(candidates, maxKeywords);
     
-    return diverseKeywords;
+    return keywords;
   } catch (error) {
     console.error('Error in keyword extraction:', error);
     const combinedText = texts.join(' ');
@@ -81,59 +78,7 @@ export async function extractKeywords(
   }
 }
 
-async function diversifyKeywords(candidates: string[], maxKeywords: number): Promise<string[]> {
-  if (candidates.length <= maxKeywords) return candidates;
-
-  try {
-    // Generate embeddings for all candidates
-    const embeddings = await Promise.all(
-      candidates.map(word => generateEmbedding(word))
-    );
-
-    // Select diverse keywords using maximal marginal relevance
-    const selected: string[] = [];
-    const selectedEmbeddings: number[][] = [];
-    
-    // Add the first (highest TF-IDF) keyword
-    selected.push(candidates[0]);
-    selectedEmbeddings.push(embeddings[0]);
-
-    // Iteratively add most diverse keywords
-    while (selected.length < maxKeywords && selected.length < candidates.length) {
-      let maxMinSimilarity = -1;
-      let bestIndex = -1;
-
-      for (let i = 0; i < candidates.length; i++) {
-        if (selected.includes(candidates[i])) continue;
-
-        // Calculate minimum similarity to already selected keywords
-        let minSimilarity = 1;
-        for (const selectedEmb of selectedEmbeddings) {
-          const similarity = cosineSimilarity(embeddings[i], selectedEmb);
-          minSimilarity = Math.min(minSimilarity, similarity);
-        }
-
-        // We want maximum of the minimum similarities (most diverse)
-        if (minSimilarity > maxMinSimilarity) {
-          maxMinSimilarity = minSimilarity;
-          bestIndex = i;
-        }
-      }
-
-      if (bestIndex !== -1) {
-        selected.push(candidates[bestIndex]);
-        selectedEmbeddings.push(embeddings[bestIndex]);
-      } else {
-        break;
-      }
-    }
-
-    return selected;
-  } catch (error) {
-    console.error('Error diversifying keywords:', error);
-    return candidates.slice(0, maxKeywords);
-  }
-}
+// Removed diversifyKeywords function - no longer needed without embeddings
 
 function fallbackKeywordExtraction(text: string, maxKeywords: number): string[] {
   const words = tokenize(text);
