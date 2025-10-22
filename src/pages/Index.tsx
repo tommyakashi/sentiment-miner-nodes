@@ -43,6 +43,7 @@ const Index = () => {
   const [sources, setSources] = useState<Array<{ name: string; value: number }>>([]);
   const [stagedContent, setStagedContent] = useState<any[]>([]);
   const [stagedFileType, setStagedFileType] = useState<'reddit' | 'text'>('text');
+  const [stagedFileCount, setStagedFileCount] = useState<number>(0);
   const [isDataReady, setIsDataReady] = useState(false);
   const { toast } = useToast();
 
@@ -130,11 +131,12 @@ const Index = () => {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
-  const handleFilesLoaded = (content: any[], fileType: 'reddit' | 'text') => {
+  const handleFilesLoaded = (content: any[], fileType: 'reddit' | 'text', fileCount: number) => {
     if (content.length === 0) {
       // Clear staged data when no files
       setStagedContent([]);
       setStagedFileType('text');
+      setStagedFileCount(0);
       setIsDataReady(false);
       setResults([]);
       setNodeAnalysis([]);
@@ -148,6 +150,7 @@ const Index = () => {
     // Stage the data without analyzing
     setStagedContent(content);
     setStagedFileType(fileType);
+    setStagedFileCount(fileCount);
     setIsDataReady(true);
   };
 
@@ -498,7 +501,7 @@ const Index = () => {
               <div className="bg-primary/10 border-2 border-primary/20 rounded-lg p-6 text-center">
                 <div className="mb-4">
                   <p className="text-lg font-semibold mb-2">
-                    📊 {stagedContent.length} sources loaded
+                    📊 {stagedFileCount} source{stagedFileCount !== 1 ? 's' : ''} loaded ({stagedContent.length} items)
                   </p>
                   <p className="text-sm text-muted-foreground">
                     {nodes.length > 0 

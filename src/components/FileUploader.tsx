@@ -20,7 +20,7 @@ interface UploadedFile {
 }
 
 interface FileUploaderProps {
-  onFilesLoaded: (allContent: any[], fileType: 'reddit' | 'text') => void;
+  onFilesLoaded: (allContent: any[], fileType: 'reddit' | 'text', fileCount: number) => void;
   disabled?: boolean;
 }
 
@@ -138,7 +138,7 @@ export function FileUploader({ onFilesLoaded, disabled }: FileUploaderProps) {
           });
         } else if (corruptedIds.length > 0) {
           setUploadedFiles([]);
-          onFilesLoaded([], 'text');
+          onFilesLoaded([], 'text', 0);
         }
       }
       
@@ -285,7 +285,7 @@ export function FileUploader({ onFilesLoaded, disabled }: FileUploaderProps) {
 
   const notifyParent = (files: UploadedFile[]) => {
     if (files.length === 0) {
-      onFilesLoaded([], 'text');
+      onFilesLoaded([], 'text', 0);
       return;
     }
 
@@ -303,7 +303,7 @@ export function FileUploader({ onFilesLoaded, disabled }: FileUploaderProps) {
       }
     });
 
-    onFilesLoaded(mergedContent, fileType);
+    onFilesLoaded(mergedContent, fileType, files.length);
   };
 
   const removeFile = async (index: number) => {
@@ -333,7 +333,7 @@ export function FileUploader({ onFilesLoaded, disabled }: FileUploaderProps) {
 
   const clearAllFiles = async () => {
     setUploadedFiles([]);
-    onFilesLoaded([], 'text');
+    onFilesLoaded([], 'text', 0);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
