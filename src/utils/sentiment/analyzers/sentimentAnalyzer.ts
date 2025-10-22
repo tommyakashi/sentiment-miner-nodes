@@ -75,9 +75,17 @@ async function getKPIEmbeddings() {
   return kpiEmbeddingCache;
 }
 
-// Pre-build keyword frequency map for efficient matching
+// Negation words for context-aware keyword matching
+const NEGATION_WORDS = [
+  'not', 'no', 'never', 'dont', 'didnt', 'wont', 'cant', 'couldnt', 'shouldnt',
+  'wouldnt', 'isnt', 'arent', 'wasnt', 'werent', 'lack', 'without', 'absence',
+  'missing', 'barely', 'hardly', 'scarcely', 'neither', 'nor', 'none'
+];
+
+// Pre-build keyword frequency map with negation detection
 function buildKeywordFrequencyMap(text: string): Map<string, number> {
   const normalized = normalizeText(text);
+  const words = normalized.split(/\s+/);
   const frequencyMap = new Map<string, number>();
   
   const domainWeights: Record<string, Record<string, number>> = {
@@ -109,8 +117,19 @@ function buildKeywordFrequencyMap(text: string): Map<string, number> {
   
   for (const [kpi, keywords] of Object.entries(KPI_CONCEPTS)) {
     for (const keyword of keywords) {
-      if (normalized.includes(keyword)) {
-        const weight = domainWeights[kpi]?.[keyword] || 1.0;
+      const keywordIndex = normalized.indexOf(keyword);
+      if (keywordIndex !== -1) {
+        // Check for negation in the 3 words before the keyword
+        const wordsBeforeKeyword = normalized.slice(Math.max(0, keywordIndex - 30), keywordIndex).split(/\s+/).slice(-3);
+        const hasNegation = wordsBeforeKeyword.some(w => NEGATION_WORDS.includes(w));
+        
+        let weight = domainWeights[kpi]?.[keyword] || 1.0;
+        
+        // Invert weight if negation is detected
+        if (hasNegation) {
+          weight = -weight;
+        }
+        
         frequencyMap.set(`${kpi}:${keyword}`, weight);
       }
     }
@@ -123,7 +142,7 @@ async function calculateKPIScores(
   text: string,
   normalizedText: string,
   keywordFrequencyMap: Map<string, number>,
-  polarity: number,
+  polarityScore: number, // Now expecting the actual polarity score (-1 to +1)
   sentimentConfidence: number,
   textEmbedding: number[]
 ): Promise<KPIScore> {
@@ -141,31 +160,37 @@ async function calculateKPIScores(
   for (const [kpi, kpiEmbedding] of kpiEmbeddings.entries()) {
     const similarity = cosineSimilarity(textEmbedding, kpiEmbedding);
     
-    // Base score from semantic similarity (decoupled from polarity)
+    // Base score from semantic similarity
     let baseScore = similarity;
     
-    // Apply polarity as directional adjustment, not amplification
-    if (kpi === 'optimism' && polarity > 0) {
-      baseScore += polarity * 0.2;
-    } else if (kpi === 'frustration' && polarity < 0) {
-      baseScore += Math.abs(polarity) * 0.2;
-    } else if (kpi === 'trust' && polarity > 0) {
-      baseScore += polarity * 0.15;
-    } else if (kpi === 'clarity' && Math.abs(polarity) < 0.2) {
-      baseScore += 0.1; // Neutral statements tend to be clear
-    }
-    
-    // Efficient keyword boost using pre-built frequency map
+    // Efficient keyword matching with negation handling
     const keywords = KPI_CONCEPTS[kpi as keyof typeof KPI_CONCEPTS];
-    const keywordCount = keywords.reduce((count, keyword) => {
-      return count + (keywordFrequencyMap.get(`${kpi}:${keyword}`) || 0);
+    const keywordSum = keywords.reduce((sum, keyword) => {
+      return sum + (keywordFrequencyMap.get(`${kpi}:${keyword}`) || 0);
     }, 0);
     
-    // Keyword boost as primary signal
-    const keywordBoost = Math.min(keywordCount * 0.25, 0.4);
-    const score = Math.min(1.0, baseScore + keywordBoost);
+    // Keyword contribution (can be negative due to negation detection)
+    const keywordBoost = Math.max(-0.5, Math.min(0.5, keywordSum * 0.20));
     
-    scores[kpi as keyof KPIScore] = Math.max(0, Math.min(1, score));
+    // Combine semantic similarity with keyword signals
+    let score = baseScore + keywordBoost;
+    
+    // CRITICAL: Make KPI scores sentiment-aware
+    // For positive KPIs (trust, optimism, clarity, access, fairness): 
+    // multiply by (1 + polarityScore) so negative sentiment reduces the score
+    // For negative KPI (frustration): 
+    // multiply by (1 - polarityScore) so negative sentiment increases frustration
+    
+    if (kpi === 'frustration') {
+      // Negative sentiment increases frustration
+      score = score * (1 - polarityScore);
+    } else {
+      // Positive KPIs: negative sentiment reduces them
+      score = score * (1 + polarityScore);
+    }
+    
+    // Normalize to -1.0 to +1.0 range (KPIs can now be negative)
+    scores[kpi as keyof KPIScore] = Math.max(-1.0, Math.min(1.0, score));
   }
 
   return scores;
@@ -225,7 +250,20 @@ export async function performSentimentAnalysis(
   console.log(`Starting sentiment analysis on ${texts.length} texts across ${nodes.length} nodes`);
   
   const results: SentimentResult[] = [];
-  const batchSize = 250;
+  
+  // Adaptive batch size based on dataset size and average text length
+  const avgTextLength = texts.reduce((sum, t) => sum + t.length, 0) / texts.length;
+  let batchSize = 250; // Default
+  
+  if (texts.length < 100) {
+    batchSize = 50; // Smaller batches for small datasets
+  } else if (avgTextLength > 1000) {
+    batchSize = 100; // Smaller batches for long texts
+  } else if (texts.length > 10000) {
+    batchSize = 500; // Larger batches for huge datasets
+  }
+  
+  console.log(`Using adaptive batch size: ${batchSize} (avg text length: ${Math.round(avgTextLength)} chars)`);
   const startTime = Date.now();
   let successCount = 0;
 
@@ -334,11 +372,11 @@ export async function performSentimentAnalysis(
               sentimentResult.score
             );
 
-            // Dampen confidence and polarity for short texts
+            // Reduced penalty for short texts - more lenient
             let adjustedSentimentScore = sentimentResult.score;
             if (isShortText(text)) {
-              adjustedSentimentScore = Math.min(0.75, sentimentResult.score * 0.85);
-              polarityScore *= 0.6;
+              adjustedSentimentScore = Math.min(0.80, sentimentResult.score * 0.90);
+              polarityScore *= 0.75;
             }
 
             // Calculate KPI scores with cached data
@@ -351,11 +389,11 @@ export async function performSentimentAnalysis(
               finalEmbedding
             );
 
-            // Separate sentiment and node confidence, penalize disagreement
+            // Separate sentiment and node confidence - no penalty for disagreement
+            // These are independent signals: a text can be confidently negative while weakly matched to a node
             const sentimentConfidence = adjustedSentimentScore;
             const nodeMatchConfidence = nodeMatch.confidence;
-            const agreement = 1 - Math.abs(sentimentConfidence - nodeMatchConfidence);
-            const confidence = (sentimentConfidence * 0.5 + nodeMatchConfidence * 0.5) * agreement;
+            const confidence = sentimentConfidence; // Use only sentiment confidence
 
             successCount++;
             return {
@@ -412,10 +450,18 @@ export function aggregateNodeAnalysis(results: SentimentResult[]): NodeAnalysis[
     nodeMap.get(result.nodeId)!.push(result);
   });
 
-  // Calculate aggregates for each node
-  return Array.from(nodeMap.entries()).map(([nodeId, nodeResults]) => {
-    const totalTexts = nodeResults.length;
-    const avgPolarity = nodeResults.reduce((sum, r) => sum + r.polarityScore, 0) / totalTexts;
+  // Calculate aggregates for each node with validation
+  return Array.from(nodeMap.entries())
+    .map(([nodeId, nodeResults]) => {
+      const totalTexts = nodeResults.length;
+      
+      // Validation: skip nodes with no results
+      if (totalTexts === 0) {
+        console.warn(`Node ${nodeId} has 0 results, skipping aggregation`);
+        return null;
+      }
+      
+      const avgPolarity = nodeResults.reduce((sum, r) => sum + r.polarityScore, 0) / totalTexts;
 
     const avgKpiScores: KPIScore = {
       trust: 0,
@@ -445,7 +491,8 @@ export function aggregateNodeAnalysis(results: SentimentResult[]): NodeAnalysis[
       avgKpiScores,
       sentimentDistribution,
     };
-  });
+  })
+  .filter((analysis): analysis is NodeAnalysis => analysis !== null); // Filter out null results
 }
 
 export { extractKeywords };

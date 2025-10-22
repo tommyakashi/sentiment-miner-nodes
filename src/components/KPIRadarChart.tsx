@@ -55,6 +55,8 @@ export function KPIRadarChart({ data }: KPIRadarChartProps) {
             angle={90} 
             domain={[0, 100]}
             tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }}
+            tickFormatter={(value) => `${value}`}
+            label={{ value: '0 = Negative, 50 = Neutral, 100 = Positive', position: 'insideTopLeft', fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
           />
           {data.slice(0, 5).map((node, index) => (
             <Radar

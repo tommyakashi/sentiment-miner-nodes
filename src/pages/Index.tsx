@@ -179,14 +179,7 @@ const Index = () => {
               .sort((a, b) => b.totalUpvotes - a.totalUpvotes)
               .slice(0, 10);
 
-            // Extract time series data with error handling
-            try {
-              const timeSeries = extractTimeSeriesData(rawData);
-              setTimeSeriesData(timeSeries);
-            } catch (timeError) {
-              console.error('Error extracting time series:', timeError);
-              setTimeSeriesData([]);
-            }
+            // Note: Time series will be calculated after sentiment analysis
 
             setParticipants(participantsList);
           }
@@ -233,14 +226,7 @@ const Index = () => {
               .sort((a, b) => b.totalUpvotes - a.totalUpvotes)
               .slice(0, 10);
 
-            // Extract time series data with error handling
-            try {
-              const timeSeries = extractTimeSeriesData(rawData);
-              setTimeSeriesData(timeSeries);
-            } catch (timeError) {
-              console.error('Error extracting time series:', timeError);
-              setTimeSeriesData([]);
-            }
+            // Note: Time series will be calculated after sentiment analysis
             
             const sourceData = [{ name: 'Reddit', value: textsToAnalyze.length }];
             setSources(sourceData);
@@ -267,11 +253,22 @@ const Index = () => {
         (status) => setAnalysisStatus(status)
       );
 
-      // Step 3: Calculate derived metrics
+      // Step 3: Calculate time series with actual sentiment (if Reddit data available)
+      if (rawData.length > 0) {
+        try {
+          const timeSeries = extractTimeSeriesData(rawData, analysisResults);
+          setTimeSeriesData(timeSeries);
+        } catch (timeError) {
+          console.error('Error extracting time series:', timeError);
+          setTimeSeriesData([]);
+        }
+      }
+
+      // Step 4: Calculate derived metrics
       const avgSentiment = analysisResults.reduce((sum, r) => sum + r.polarityScore, 0) / analysisResults.length;
       const nodeAnalysisData = aggregateNodeAnalysis(analysisResults);
 
-      // Step 4: Calculate participant sentiment scores (if applicable)
+      // Step 5: Calculate participant sentiment scores (if applicable)
       let participantsWithSentiment = participantsList;
       if (participantsList.length > 0) {
         // Build reverse index: username -> results (O(n) single pass)
@@ -299,7 +296,7 @@ const Index = () => {
         });
       }
 
-      // Step 5: Update all analysis results synchronously
+      // Step 6: Update all analysis results synchronously
       setResults(analysisResults);
       setOverallSentiment(avgSentiment * 100);
       setNodeAnalysis(nodeAnalysisData);
@@ -308,7 +305,7 @@ const Index = () => {
       }
       setTrendingThemes([]);
 
-      // Step 6: Show completion and switch to dashboard
+      // Step 7: Show completion and switch to dashboard
       toast({
         title: 'Analysis complete',
         description: `Successfully analyzed ${textsToAnalyze.length} texts across ${nodeAnalysisData.length} topics.`,
@@ -431,8 +428,8 @@ const Index = () => {
                         title="How to read this"
                         insights={[
                           'Each row represents one of your analysis topics with quantitative scores',
-                          'Polarity ranges from -1 (negative) to +1 (positive) - shows overall sentiment',
-                          'KPI scores measure specific qualities: Trust, Optimism, Frustration, Clarity, Access, and Fairness',
+                          'Polarity ranges from -1.0 (negative) to +1.0 (positive) - shows overall sentiment direction',
+                          'KPI scores range from -1.0 to +1.0: positive values mean favorable discussion, negative values mean unfavorable discussion',
                           'Distribution shows count of positive (+), neutral (=), and negative (-) mentions',
                           'Click column headers to sort and find strongest/weakest areas'
                         ]}

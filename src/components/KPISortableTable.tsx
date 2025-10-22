@@ -90,14 +90,14 @@ export function KPISortableTable({ data }: KPISortableTableProps) {
   });
 
   const getScoreColor = (score: number) => {
-    if (score > 0.2) return 'text-sentiment-positive font-semibold';
-    if (score < -0.2) return 'text-sentiment-negative font-semibold';
+    if (score > 0.15) return 'text-sentiment-positive font-semibold';
+    if (score < -0.15) return 'text-sentiment-negative font-semibold';
     return 'text-muted-foreground';
   };
 
   const getScoreBg = (score: number) => {
-    if (score > 0.2) return 'bg-sentiment-positive/10';
-    if (score < -0.2) return 'bg-sentiment-negative/10';
+    if (score > 0.15) return 'bg-sentiment-positive/10';
+    if (score < -0.15) return 'bg-sentiment-negative/10';
     return 'bg-muted/30';
   };
 
@@ -192,24 +192,36 @@ export function KPISortableTable({ data }: KPISortableTableProps) {
                     {node.avgPolarity.toFixed(3)}
                   </div>
                 </TableCell>
-                <TableCell className={`text-right ${getScoreColor(node.avgKpiScores.trust)}`}>
-                  {node.avgKpiScores.trust.toFixed(2)}
-                </TableCell>
-                <TableCell className={`text-right ${getScoreColor(node.avgKpiScores.optimism)}`}>
-                  {node.avgKpiScores.optimism.toFixed(2)}
-                </TableCell>
-                <TableCell className={`text-right ${getScoreColor(node.avgKpiScores.frustration)}`}>
-                  {node.avgKpiScores.frustration.toFixed(2)}
-                </TableCell>
-                <TableCell className={`text-right ${getScoreColor(node.avgKpiScores.clarity)}`}>
-                  {node.avgKpiScores.clarity.toFixed(2)}
-                </TableCell>
-                <TableCell className={`text-right ${getScoreColor(node.avgKpiScores.access)}`}>
-                  {node.avgKpiScores.access.toFixed(2)}
-                </TableCell>
-                <TableCell className={`text-right ${getScoreColor(node.avgKpiScores.fairness)}`}>
-                  {node.avgKpiScores.fairness.toFixed(2)}
-                </TableCell>
+                 <TableCell className={`text-right ${getScoreColor(node.avgKpiScores.trust)}`}>
+                   <div className={`inline-block px-2 py-1 rounded ${getScoreBg(node.avgKpiScores.trust)}`}>
+                     {node.avgKpiScores.trust > 0 ? '+' : ''}{node.avgKpiScores.trust.toFixed(2)}
+                   </div>
+                 </TableCell>
+                 <TableCell className={`text-right ${getScoreColor(node.avgKpiScores.optimism)}`}>
+                   <div className={`inline-block px-2 py-1 rounded ${getScoreBg(node.avgKpiScores.optimism)}`}>
+                     {node.avgKpiScores.optimism > 0 ? '+' : ''}{node.avgKpiScores.optimism.toFixed(2)}
+                   </div>
+                 </TableCell>
+                 <TableCell className={`text-right ${getScoreColor(node.avgKpiScores.frustration)}`}>
+                   <div className={`inline-block px-2 py-1 rounded ${getScoreBg(node.avgKpiScores.frustration)}`}>
+                     {node.avgKpiScores.frustration > 0 ? '+' : ''}{node.avgKpiScores.frustration.toFixed(2)}
+                   </div>
+                 </TableCell>
+                 <TableCell className={`text-right ${getScoreColor(node.avgKpiScores.clarity)}`}>
+                   <div className={`inline-block px-2 py-1 rounded ${getScoreBg(node.avgKpiScores.clarity)}`}>
+                     {node.avgKpiScores.clarity > 0 ? '+' : ''}{node.avgKpiScores.clarity.toFixed(2)}
+                   </div>
+                 </TableCell>
+                 <TableCell className={`text-right ${getScoreColor(node.avgKpiScores.access)}`}>
+                   <div className={`inline-block px-2 py-1 rounded ${getScoreBg(node.avgKpiScores.access)}`}>
+                     {node.avgKpiScores.access > 0 ? '+' : ''}{node.avgKpiScores.access.toFixed(2)}
+                   </div>
+                 </TableCell>
+                 <TableCell className={`text-right ${getScoreColor(node.avgKpiScores.fairness)}`}>
+                   <div className={`inline-block px-2 py-1 rounded ${getScoreBg(node.avgKpiScores.fairness)}`}>
+                     {node.avgKpiScores.fairness > 0 ? '+' : ''}{node.avgKpiScores.fairness.toFixed(2)}
+                   </div>
+                 </TableCell>
                 <TableCell>
                   <div className="flex gap-1 justify-end">
                     <Badge className="bg-sentiment-positive text-white text-xs">

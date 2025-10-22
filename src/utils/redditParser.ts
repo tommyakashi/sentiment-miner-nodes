@@ -48,7 +48,7 @@ export function parseRedditJSON(jsonData: RedditData[]): ParsedRedditData {
   };
 }
 
-export function extractTimeSeriesData(data: RedditData[]) {
+export function extractTimeSeriesData(data: RedditData[], sentimentResults?: Array<{ text: string; polarityScore: number }>) {
   const timeSeriesMap = new Map<string, { positive: number; negative: number; neutral: number; volume: number }>();
 
   data.forEach(item => {
@@ -70,14 +70,52 @@ export function extractTimeSeriesData(data: RedditData[]) {
       const entry = timeSeriesMap.get(dateStr)!;
       entry.volume++;
 
-      // Simple heuristic: high upvotes = positive, low/negative = negative
-      const upvotes = item.upVotes || 0;
-      if (upvotes > 5) {
-        entry.positive++;
-      } else if (upvotes < -2) {
-        entry.negative++;
+      // Use actual sentiment if available, otherwise fall back to upvotes
+      if (sentimentResults) {
+        // Build text from Reddit item
+        const itemText = item.dataType === 'post' 
+          ? `${(item as any).title || ''} ${item.body || ''}`.trim()
+          : item.body || '';
+        
+        // Find matching sentiment result
+        const sentimentMatch = sentimentResults.find(sr => {
+          // Match by checking if the text contains significant portion of the item text
+          const normalizedItemText = itemText.toLowerCase().slice(0, 100);
+          const normalizedSentimentText = sr.text.toLowerCase().slice(0, 100);
+          return normalizedSentimentText.includes(normalizedItemText) || 
+                 normalizedItemText.includes(normalizedSentimentText);
+        });
+        
+        if (sentimentMatch) {
+          // Use actual sentiment polarity
+          if (sentimentMatch.polarityScore > 0.15) {
+            entry.positive++;
+          } else if (sentimentMatch.polarityScore < -0.15) {
+            entry.negative++;
+          } else {
+            entry.neutral++;
+          }
+        } else {
+          // Fallback to upvote heuristic if no sentiment match
+          const upvotes = item.upVotes || 0;
+          if (upvotes > 5) {
+            entry.positive++;
+          } else if (upvotes < -2) {
+            entry.negative++;
+          } else {
+            entry.neutral++;
+          }
+        }
       } else {
-        entry.neutral++;
+        // Original upvote-based heuristic (fallback when no sentiment results)
+        const upvotes = item.upVotes || 0;
+        if (upvotes > 5) {
+          entry.positive++;
+        } else if (upvotes < -2) {
+          entry.negative++;
+        } else {
+          entry.neutral++;
+        }
       }
     } catch (err) {
       console.error('Error processing date for item:', err);

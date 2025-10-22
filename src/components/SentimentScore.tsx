@@ -9,20 +9,20 @@ interface SentimentScoreProps {
 
 export function SentimentScore({ score, label }: SentimentScoreProps) {
   const getColor = () => {
-    if (score > 30) return 'text-sentiment-positive';
-    if (score < -30) return 'text-sentiment-negative';
+    if (score > 15) return 'text-sentiment-positive';
+    if (score < -15) return 'text-sentiment-negative';
     return 'text-sentiment-neutral';
   };
 
   const getBgColor = () => {
-    if (score > 30) return 'bg-sentiment-positive/10';
-    if (score < -30) return 'bg-sentiment-negative/10';
+    if (score > 15) return 'bg-sentiment-positive/10';
+    if (score < -15) return 'bg-sentiment-negative/10';
     return 'bg-sentiment-neutral/10';
   };
 
   const getSentimentLabel = () => {
-    if (score > 30) return 'Positive';
-    if (score < -30) return 'Negative';
+    if (score > 15) return 'Positive';
+    if (score < -15) return 'Negative';
     return 'Neutral';
   };
 
@@ -45,7 +45,7 @@ export function SentimentScore({ score, label }: SentimentScoreProps) {
               <TooltipContent className="max-w-xs">
                 <p className="text-sm">
                   Scores range from -100 (very negative) to +100 (very positive). 
-                  Values between -30 and +30 are considered neutral.
+                  Values between -15 and +15 are considered neutral.
                 </p>
               </TooltipContent>
             </Tooltip>

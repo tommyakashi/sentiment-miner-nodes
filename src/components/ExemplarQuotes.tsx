@@ -57,7 +57,7 @@ export function ExemplarQuotes({ results, nodeId, nodeName }: ExemplarQuotesProp
                 {label}
               </Badge>
               <Badge variant="secondary" className="text-xs">
-                {quote!.polarityScore.toFixed(2)}
+                {quote!.polarityScore > 0 ? '+' : ''}{quote!.polarityScore.toFixed(2)}
               </Badge>
             </div>
             <p className="text-sm text-foreground/80 italic mb-3">
@@ -65,13 +65,13 @@ export function ExemplarQuotes({ results, nodeId, nodeName }: ExemplarQuotesProp
             </p>
             <div className="flex flex-wrap gap-2">
               <Badge variant="outline" className="text-xs">
-                Trust: {quote!.kpiScores.trust.toFixed(2)}
+                Trust: {quote!.kpiScores.trust > 0 ? '+' : ''}{quote!.kpiScores.trust.toFixed(2)}
               </Badge>
               <Badge variant="outline" className="text-xs">
-                Optimism: {quote!.kpiScores.optimism.toFixed(2)}
+                Optimism: {quote!.kpiScores.optimism > 0 ? '+' : ''}{quote!.kpiScores.optimism.toFixed(2)}
               </Badge>
               <Badge variant="outline" className="text-xs">
-                Clarity: {quote!.kpiScores.clarity.toFixed(2)}
+                Clarity: {quote!.kpiScores.clarity > 0 ? '+' : ''}{quote!.kpiScores.clarity.toFixed(2)}
               </Badge>
             </div>
           </div>

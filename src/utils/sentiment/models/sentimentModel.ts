@@ -47,28 +47,30 @@ export async function analyzeSentimentBatch(texts: string[]): Promise<SentimentO
 
 export function calculatePolarityScore(label: string, score: number): { polarityScore: number; polarity: 'positive' | 'neutral' | 'negative' } {
   const threshold = 0.65;
-  const neutralThreshold = 0.70;
+  const neutralThreshold = 0.60; // Lowered from 0.70 for more sensitivity
   
   let polarityScore: number;
   let polarity: 'positive' | 'neutral' | 'negative';
   
-  // Sigmoid smoothing for gradual transitions
-  const sigmoid = (x: number) => 2 / (1 + Math.exp(-5 * x)) - 1;
-  
+  // Linear mapping for easier interpretation (replaces sigmoid)
   if (label === 'POSITIVE') {
     if (score >= threshold) {
+      // Linear interpolation from threshold to 1.0 -> maps to 0.3 to 1.0
       const normalized = (score - threshold) / (1 - threshold);
-      polarityScore = sigmoid(normalized * 2 - 1) * 0.7;
+      polarityScore = 0.3 + (normalized * 0.7); // Range: 0.3 to 1.0
     } else {
-      polarityScore = (score - 0.5) / (threshold - 0.5) * 0.15;
+      // Linear interpolation from 0.5 to threshold -> maps to 0 to 0.3
+      polarityScore = (score - 0.5) / (threshold - 0.5) * 0.3;
     }
     polarity = score >= neutralThreshold ? 'positive' : 'neutral';
   } else if (label === 'NEGATIVE') {
     if (score >= threshold) {
+      // Linear interpolation from threshold to 1.0 -> maps to -0.3 to -1.0
       const normalized = (score - threshold) / (1 - threshold);
-      polarityScore = sigmoid(normalized * 2 - 1) * -0.7;
+      polarityScore = -(0.3 + (normalized * 0.7)); // Range: -0.3 to -1.0
     } else {
-      polarityScore = -((score - 0.5) / (threshold - 0.5) * 0.15);
+      // Linear interpolation from 0.5 to threshold -> maps to 0 to -0.3
+      polarityScore = -((score - 0.5) / (threshold - 0.5) * 0.3);
     }
     polarity = score >= neutralThreshold ? 'negative' : 'neutral';
   } else {
@@ -76,9 +78,9 @@ export function calculatePolarityScore(label: string, score: number): { polarity
     polarity = 'neutral';
   }
   
-  // Dampen polarity for low confidence scores
-  if (score < 0.75) {
-    const dampening = Math.max(0.3, (score - 0.5) / 0.25);
+  // Reduced dampening - only for very low confidence scores below 0.60
+  if (score < 0.60) {
+    const dampening = Math.max(0.5, (score - 0.5) / 0.10); // More lenient than before
     polarityScore *= dampening;
   }
   
