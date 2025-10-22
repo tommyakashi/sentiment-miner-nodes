@@ -257,21 +257,8 @@ const Index = () => {
         }
       });
 
-      // Extract trending themes with AI (non-blocking, runs in background)
-      setAnalysisStatus('Extracting themes with AI...');
-      supabase.functions.invoke('extract-themes', {
-        body: { texts: textsToAnalyze }
-      }).then(({ data, error }) => {
-        if (error) {
-          console.error('Error extracting themes:', error);
-          setTrendingThemes([]);
-        } else if (data?.themes) {
-          setTrendingThemes(data.themes);
-        }
-      }).catch(error => {
-        console.error('Error extracting themes:', error);
-        setTrendingThemes([]);
-      });
+      // Theme extraction removed
+      setTrendingThemes([]);
 
       toast({
         title: 'Analysis complete',
