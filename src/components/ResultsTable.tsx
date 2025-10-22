@@ -3,8 +3,8 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Download } from 'lucide-react';
-import type { SentimentResult, NodeAnalysis } from '@/types/sentiment';
+import { Download, FileText } from 'lucide-react';
+import type { SentimentResult, NodeAnalysis, Node } from '@/types/sentiment';
 import {
   Table,
   TableBody,
@@ -13,13 +13,26 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface ResultsTableProps {
   results: SentimentResult[];
   nodeAnalysis: NodeAnalysis[];
+  nodes: Node[];
+  overallSentiment: number;
+  totalTexts: number;
+  sources?: Array<{ name: string; value: number }>;
 }
 
-export function ResultsTable({ results, nodeAnalysis }: ResultsTableProps) {
+export function ResultsTable({ 
+  results, 
+  nodeAnalysis, 
+  nodes, 
+  overallSentiment, 
+  totalTexts,
+  sources = [] 
+}: ResultsTableProps) {
   const getSentimentColor = (polarity: string) => {
     switch (polarity) {
       case 'positive':
@@ -70,6 +83,127 @@ export function ResultsTable({ results, nodeAnalysis }: ResultsTableProps) {
     link.href = url;
     link.download = `sentiment-analysis-${Date.now()}.csv`;
     link.click();
+  };
+
+  const exportToPDF = () => {
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    let yPosition = 20;
+
+    // Title
+    doc.setFontSize(20);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Sentiment Analysis Report', pageWidth / 2, yPosition, { align: 'center' });
+    yPosition += 15;
+
+    // Date
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Generated: ${new Date().toLocaleString()}`, pageWidth / 2, yPosition, { align: 'center' });
+    yPosition += 15;
+
+    // Analysis Summary
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Analysis Summary', 14, yPosition);
+    yPosition += 8;
+
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Total Texts Analyzed: ${totalTexts}`, 14, yPosition);
+    yPosition += 6;
+    doc.text(`Number of Nodes: ${nodes.length}`, 14, yPosition);
+    yPosition += 6;
+    doc.text(`Overall Sentiment Score: ${overallSentiment.toFixed(2)}`, 14, yPosition);
+    yPosition += 6;
+    
+    if (sources.length > 0) {
+      doc.text(`Data Sources: ${sources.map(s => `${s.name} (${s.value})`).join(', ')}`, 14, yPosition);
+      yPosition += 10;
+    } else {
+      yPosition += 4;
+    }
+
+    // Node Configurations
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Node Configurations', 14, yPosition);
+    yPosition += 8;
+
+    nodes.forEach((node, idx) => {
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`${idx + 1}. ${node.name}`, 14, yPosition);
+      yPosition += 6;
+      
+      doc.setFont('helvetica', 'normal');
+      const keywords = `Keywords: ${node.keywords.join(', ')}`;
+      const splitKeywords = doc.splitTextToSize(keywords, pageWidth - 28);
+      doc.text(splitKeywords, 20, yPosition);
+      yPosition += (splitKeywords.length * 5) + 4;
+
+      if (yPosition > 270) {
+        doc.addPage();
+        yPosition = 20;
+      }
+    });
+
+    yPosition += 5;
+
+    // Node Analysis Summary Table
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Node Analysis Summary', 14, yPosition);
+    yPosition += 8;
+
+    autoTable(doc, {
+      startY: yPosition,
+      head: [['Node', 'Texts', 'Avg Score', 'Positive', 'Neutral', 'Negative']],
+      body: nodeAnalysis.map(node => [
+        node.nodeName,
+        node.totalTexts.toString(),
+        node.avgPolarity.toFixed(2),
+        node.sentimentDistribution.positive.toString(),
+        node.sentimentDistribution.neutral.toString(),
+        node.sentimentDistribution.negative.toString(),
+      ]),
+      theme: 'grid',
+      headStyles: { fillColor: [59, 130, 246], textColor: 255 },
+      styles: { fontSize: 9 },
+    });
+
+    yPosition = (doc as any).lastAutoTable.finalY + 10;
+
+    // KPI Scores Table
+    if (yPosition > 220) {
+      doc.addPage();
+      yPosition = 20;
+    }
+
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('KPI Scores by Node', 14, yPosition);
+    yPosition += 8;
+
+    autoTable(doc, {
+      startY: yPosition,
+      head: [['Node', 'Trust', 'Optimism', 'Frustration', 'Clarity', 'Access', 'Fairness']],
+      body: nodeAnalysis.map(node => [
+        node.nodeName,
+        node.avgKpiScores.trust.toFixed(2),
+        node.avgKpiScores.optimism.toFixed(2),
+        node.avgKpiScores.frustration.toFixed(2),
+        node.avgKpiScores.clarity.toFixed(2),
+        node.avgKpiScores.access.toFixed(2),
+        node.avgKpiScores.fairness.toFixed(2),
+      ]),
+      theme: 'grid',
+      headStyles: { fillColor: [59, 130, 246], textColor: 255 },
+      styles: { fontSize: 8 },
+    });
+
+    // Save the PDF
+    doc.save(`sentiment-analysis-report-${Date.now()}.pdf`);
   };
 
   // Virtual scrolling component
@@ -206,6 +340,10 @@ export function ResultsTable({ results, nodeAnalysis }: ResultsTableProps) {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold">Analysis Results</h2>
           <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={exportToPDF}>
+              <FileText className="w-4 h-4 mr-2" />
+              PDF
+            </Button>
             <Button variant="outline" size="sm" onClick={exportToCSV}>
               <Download className="w-4 h-4 mr-2" />
               CSV

@@ -480,7 +480,14 @@ const Index = () => {
           {/* Details Tab */}
           <TabsContent value="details">
             {results.length > 0 ? (
-              <ResultsTable results={results} nodeAnalysis={nodeAnalysis} />
+              <ResultsTable 
+                results={results} 
+                nodeAnalysis={nodeAnalysis}
+                nodes={nodes}
+                overallSentiment={overallSentiment}
+                totalTexts={results.length}
+                sources={sources}
+              />
             ) : (
               <div className="text-center py-12 text-muted-foreground">
                 No detailed results available yet
