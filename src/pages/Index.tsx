@@ -161,48 +161,96 @@ const Index = () => {
 
       // Step 1: Parse and prepare data
       if (stagedFileType === 'reddit') {
-        rawData = stagedContent as RedditData[];
+        // Check if we have mixed content (reddit + text files)
+        const firstItem = stagedContent[0];
         
-        // Validate Reddit data structure
-        const isValidReddit = rawData.length > 0 && 
-          rawData.some((item: any) => 
-            item && typeof item === 'object' && 
-            ('text' in item || 'body' in item || 'title' in item) &&
-            'createdAt' in item
-          );
+        if (firstItem && typeof firstItem === 'object' && 'reddit' in firstItem && 'text' in firstItem) {
+          // Mixed content structure
+          const mixedData = firstItem as { reddit: RedditData[], text: string[], hasReddit: boolean, hasText: boolean };
+          
+          // Process Reddit data if present
+          if (mixedData.hasReddit && mixedData.reddit.length > 0) {
+            rawData = mixedData.reddit;
+            const parsed = parseRedditJSON(rawData);
+            textsToAnalyze = [...parsed.allText];
 
-        if (!isValidReddit) {
-          // Treat as text if Reddit data is invalid
-          textsToAnalyze = stagedContent as string[];
-          const sourceData = [{ name: 'Text/Other', value: textsToAnalyze.length }];
-          setSources(sourceData);
-        } else {
-          // Valid Reddit data
-          const parsed = parseRedditJSON(rawData);
-          textsToAnalyze = parsed.allText;
+            // Process participants
+            participantsList = Array.from(parsed.participants.values())
+              .sort((a, b) => b.totalUpvotes - a.totalUpvotes)
+              .slice(0, 10);
 
-          // Process participants
-          participantsList = Array.from(parsed.participants.values())
-            .sort((a, b) => b.totalUpvotes - a.totalUpvotes)
-            .slice(0, 10);
+            // Extract time series data with error handling
+            try {
+              const timeSeries = extractTimeSeriesData(rawData);
+              setTimeSeriesData(timeSeries);
+            } catch (timeError) {
+              console.error('Error extracting time series:', timeError);
+              setTimeSeriesData([]);
+            }
 
-          // Extract time series data with error handling
-          try {
-            const timeSeries = extractTimeSeriesData(rawData);
-            setTimeSeriesData(timeSeries);
-          } catch (timeError) {
-            console.error('Error extracting time series:', timeError);
-            setTimeSeriesData([]);
+            setParticipants(participantsList);
           }
           
-          const sourceData = [{ name: 'Reddit', value: textsToAnalyze.length }];
+          // Add text from PDFs/text files
+          if (mixedData.hasText && mixedData.text.length > 0) {
+            textsToAnalyze = [...textsToAnalyze, ...mixedData.text];
+          }
+          
+          const sourceData = [
+            ...(mixedData.hasReddit ? [{ name: 'Reddit', value: rawData.length }] : []),
+            ...(mixedData.hasText ? [{ name: 'PDFs/Text', value: mixedData.text.length }] : [])
+          ];
           setSources(sourceData);
-          setParticipants(participantsList);
 
           toast({
-            title: 'Reddit data loaded',
-            description: `Processing ${parsed.posts.length} posts and ${parsed.comments.length} comments`,
+            title: 'Mixed data loaded',
+            description: `Processing ${rawData.length} Reddit items + ${mixedData.text.length} text items`,
           });
+        } else {
+          // Pure Reddit data (old format)
+          rawData = stagedContent as RedditData[];
+          
+          // Validate Reddit data structure
+          const isValidReddit = rawData.length > 0 && 
+            rawData.some((item: any) => 
+              item && typeof item === 'object' && 
+              ('text' in item || 'body' in item || 'title' in item) &&
+              'createdAt' in item
+            );
+
+          if (!isValidReddit) {
+            // Treat as text if Reddit data is invalid
+            textsToAnalyze = stagedContent as string[];
+            const sourceData = [{ name: 'Text/Other', value: textsToAnalyze.length }];
+            setSources(sourceData);
+          } else {
+            // Valid Reddit data
+            const parsed = parseRedditJSON(rawData);
+            textsToAnalyze = parsed.allText;
+
+            // Process participants
+            participantsList = Array.from(parsed.participants.values())
+              .sort((a, b) => b.totalUpvotes - a.totalUpvotes)
+              .slice(0, 10);
+
+            // Extract time series data with error handling
+            try {
+              const timeSeries = extractTimeSeriesData(rawData);
+              setTimeSeriesData(timeSeries);
+            } catch (timeError) {
+              console.error('Error extracting time series:', timeError);
+              setTimeSeriesData([]);
+            }
+            
+            const sourceData = [{ name: 'Reddit', value: textsToAnalyze.length }];
+            setSources(sourceData);
+            setParticipants(participantsList);
+
+            toast({
+              title: 'Reddit data loaded',
+              description: `Processing ${parsed.posts.length} posts and ${parsed.comments.length} comments`,
+            });
+          }
         }
       } else {
         textsToAnalyze = stagedContent;

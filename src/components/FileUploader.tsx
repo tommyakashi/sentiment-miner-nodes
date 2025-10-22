@@ -344,21 +344,48 @@ export function FileUploader({ onFilesLoaded, disabled }: FileUploaderProps) {
       return;
     }
 
-    // Determine primary type (reddit if any reddit files exist)
-    const hasReddit = files.some(f => f.type === 'reddit');
-    const fileType = hasReddit ? 'reddit' : 'text';
-
-    // Merge all content
-    let mergedContent: any[] = [];
-    files.forEach(file => {
-      if (Array.isArray(file.content)) {
-        mergedContent = [...mergedContent, ...file.content];
-      } else {
-        mergedContent.push(file.content);
-      }
-    });
-
-    onFilesLoaded(mergedContent, fileType, files.length);
+    // Separate reddit and text files
+    const redditFiles = files.filter(f => f.type === 'reddit');
+    const textFiles = files.filter(f => f.type === 'text');
+    
+    // If we have reddit files, we need to pass them separately
+    // but also include text from text files
+    if (redditFiles.length > 0) {
+      // Extract all text content from text files
+      let textContent: string[] = [];
+      textFiles.forEach(file => {
+        if (Array.isArray(file.content)) {
+          textContent = [...textContent, ...file.content];
+        }
+      });
+      
+      // Merge reddit data
+      let redditContent: any[] = [];
+      redditFiles.forEach(file => {
+        if (Array.isArray(file.content)) {
+          redditContent = [...redditContent, ...file.content];
+        }
+      });
+      
+      // Create combined data structure that includes both
+      const combinedData = {
+        reddit: redditContent,
+        text: textContent,
+        hasReddit: redditContent.length > 0,
+        hasText: textContent.length > 0
+      };
+      
+      onFilesLoaded([combinedData] as any, 'reddit', files.length);
+    } else {
+      // Only text files - merge normally
+      let mergedContent: string[] = [];
+      files.forEach(file => {
+        if (Array.isArray(file.content)) {
+          mergedContent = [...mergedContent, ...file.content];
+        }
+      });
+      onFilesLoaded(mergedContent, 'text', files.length);
+    }
   };
 
   const removeFile = async (index: number) => {
