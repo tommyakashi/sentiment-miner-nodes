@@ -20,7 +20,7 @@ import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { aggregateNodeAnalysis } from '@/utils/sentiment/analyzers/sentimentAnalyzer';
+import { performSentimentAnalysis, aggregateNodeAnalysis } from '@/utils/sentiment/analyzers/sentimentAnalyzer';
 import { parseRedditJSON, extractTimeSeriesData } from '@/utils/redditParser';
 import type { Node, SentimentResult, NodeAnalysis } from '@/types/sentiment';
 import type { RedditData } from '@/types/reddit';
@@ -46,67 +46,6 @@ const Index = () => {
   const [stagedFileCount, setStagedFileCount] = useState<number>(0);
   const [isDataReady, setIsDataReady] = useState(false);
   const { toast } = useToast();
-
-  // Server-side sentiment analysis using Edge Function
-  const analyzeSentimentWithEdgeFunction = async (
-    texts: string[],
-    nodes: Node[],
-    onProgress: (progress: number) => void,
-    onStatus: (status: string) => void
-  ): Promise<SentimentResult[]> => {
-    const chunkSize = 100; // Process 100 texts at a time
-    const allResults: SentimentResult[] = [];
-
-    for (let i = 0; i < texts.length; i += chunkSize) {
-      const chunk = texts.slice(i, i + chunkSize);
-      const chunkNumber = Math.floor(i / chunkSize) + 1;
-      const totalChunks = Math.ceil(texts.length / chunkSize);
-      
-      onStatus(`Processing batch ${chunkNumber} of ${totalChunks}...`);
-      
-      try {
-        const { data, error } = await supabase.functions.invoke('analyze-sentiment-batch', {
-          body: { texts: chunk, nodes }
-        });
-
-        if (error) throw error;
-        
-        if (data?.results) {
-          allResults.push(...data.results);
-        }
-
-        const currentProgress = Math.min(((i + chunk.length) / texts.length) * 100, 100);
-        onProgress(currentProgress);
-      } catch (error) {
-        console.error(`Error processing chunk ${chunkNumber}:`, error);
-        toast({
-          title: 'Batch processing error',
-          description: `Failed to process batch ${chunkNumber}. Retrying...`,
-          variant: 'destructive',
-        });
-        
-        // Retry once
-        try {
-          const { data, error: retryError } = await supabase.functions.invoke('analyze-sentiment-batch', {
-            body: { texts: chunk, nodes }
-          });
-          
-          if (!retryError && data?.results) {
-            allResults.push(...data.results);
-          }
-        } catch (retryErr) {
-          console.error('Retry failed:', retryErr);
-        }
-      }
-
-      // Small delay between chunks to avoid rate limiting
-      if (i + chunkSize < texts.length) {
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
-    }
-
-    return allResults;
-  };
 
   // Check auth status
   useEffect(() => {
@@ -210,9 +149,9 @@ const Index = () => {
         setSources(sourceData);
       }
 
-      // Analyze sentiment using Edge Function (server-side processing)
-      setAnalysisStatus('Sending data to analysis server...');
-      const analysisResults = await analyzeSentimentWithEdgeFunction(
+      // Analyze sentiment using client-side browser models
+      setAnalysisStatus('Initializing sentiment analysis models...');
+      const analysisResults = await performSentimentAnalysis(
         textsToAnalyze, 
         nodes, 
         (progress) => setProgress(progress),

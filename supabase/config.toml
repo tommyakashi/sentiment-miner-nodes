@@ -1,13 +1,4 @@
 project_id = "ncdzzczhjxkyjimkrgub"
 
-[functions.generate-keywords]
-verify_jwt = false
-
 [functions.scrape-reddit]
-verify_jwt = false
-
-[functions.analyze-sentiment-batch]
-verify_jwt = false
-
-[functions.extract-themes]
 verify_jwt = false
