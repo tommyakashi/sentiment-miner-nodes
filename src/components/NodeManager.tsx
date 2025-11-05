@@ -149,20 +149,81 @@ export function NodeManager({ nodes, onNodesChange }: NodeManagerProps) {
   };
 
   const generateKeywords = async (nodeId: string) => {
-    // AI keyword generation removed
-    toast({
-      title: "Feature disabled",
-      description: "AI keyword generation has been removed",
-      variant: "destructive",
-    });
+    const node = nodes.find(n => n.id === nodeId);
+    if (!node) return;
+
+    setIsGenerating(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-keywords', {
+        body: { 
+          nodeName: node.name,
+          existingKeywords: node.keywords 
+        }
+      });
+
+      if (error) throw error;
+
+      if (data?.keywords && Array.isArray(data.keywords)) {
+        onNodesChange(nodes.map(n => 
+          n.id === nodeId 
+            ? { ...n, keywords: [...n.keywords, ...data.keywords] }
+            : n
+        ));
+        
+        toast({
+          title: "Keywords generated",
+          description: `Added ${data.keywords.length} keywords to ${node.name}`,
+        });
+      }
+    } catch (error: any) {
+      console.error('Error generating keywords:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to generate keywords",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const generateAllKeywords = async () => {
-    // AI keyword generation removed  
+    if (nodes.length === 0) return;
+
+    setIsGenerating(true);
+    let successCount = 0;
+    const updatedNodes = [...nodes];
+
+    for (let i = 0; i < updatedNodes.length; i++) {
+      const node = updatedNodes[i];
+      try {
+        const { data, error } = await supabase.functions.invoke('generate-keywords', {
+          body: { 
+            nodeName: node.name,
+            existingKeywords: node.keywords 
+          }
+        });
+
+        if (error) throw error;
+
+        if (data?.keywords && Array.isArray(data.keywords)) {
+          updatedNodes[i] = {
+            ...node,
+            keywords: [...node.keywords, ...data.keywords]
+          };
+          successCount++;
+        }
+      } catch (error: any) {
+        console.error(`Error generating keywords for ${node.name}:`, error);
+      }
+    }
+
+    onNodesChange(updatedNodes);
+    setIsGenerating(false);
+    
     toast({
-      title: "Feature disabled",
-      description: "AI keyword generation has been removed",
-      variant: "destructive",
+      title: "Batch generation complete",
+      description: `Generated keywords for ${successCount} out of ${nodes.length} nodes`,
     });
   };
 
