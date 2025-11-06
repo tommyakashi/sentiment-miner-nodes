@@ -40,10 +40,16 @@ export function NodeManager({ nodes, onNodesChange }: NodeManagerProps) {
     } else {
       // Set default nodes if nothing saved
       const defaultNodes: Node[] = [
-        { id: '1', name: 'Market Sentiment', keywords: ['bullish', 'bearish', 'rally', 'crash', 'gain', 'loss'] },
-        { id: '2', name: 'Tech Stocks', keywords: ['tech', 'tsla', 'aapl', 'nvda', 'meta', 'googl'] },
-        { id: '3', name: 'Economic Policy', keywords: ['fed', 'interest', 'inflation', 'economy', 'policy', 'rates'] },
-        { id: '4', name: 'Trading Strategy', keywords: ['calls', 'puts', 'yolo', 'strategy', 'trade', 'option'] },
+        { id: '1', name: 'Funding Outlook & Sustainability', keywords: [] },
+        { id: '2', name: 'Open Science & Transparency', keywords: [] },
+        { id: '3', name: 'Collaboration & Community', keywords: [] },
+        { id: '4', name: 'Institutional Trust', keywords: [] },
+        { id: '5', name: 'Administrative Load', keywords: [] },
+        { id: '6', name: 'Technological Enablement', keywords: [] },
+        { id: '7', name: 'Future of AI & U.S. vs China Race', keywords: [] },
+        { id: '8', name: 'Ethical Responsibility', keywords: [] },
+        { id: '9', name: 'Career Outlook & Researcher Well-being', keywords: [] },
+        { id: '10', name: 'Impact & Recognition', keywords: [] },
       ];
       onNodesChange(defaultNodes);
     }
