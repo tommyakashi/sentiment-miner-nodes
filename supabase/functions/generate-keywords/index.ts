@@ -18,18 +18,20 @@ serve(async (req) => {
       throw new Error("PERPLEXITY_API_KEY is not configured");
     }
 
-    const prompt = `Search for recent research papers and academic literature about "${nodeName}". 
-Extract 8-12 specific keywords or technical terms that frequently appear in these research papers.
+    const prompt = `Search recent peer-reviewed research papers, academic journals, and scholarly literature about "${nodeName}". 
+Extract 25-30 sophisticated keywords and technical terms that frequently appear in these academic publications.
 
 Keywords should be:
-- Actual terms used in academic/research papers about this topic
-- Single words or short technical phrases (2-4 words max)
-- Relevant for sentiment analysis research
-- Diverse, covering different aspects
-- Lowercase
+- High-level academic terminology from peer-reviewed research papers
+- Include both established concepts and emerging research areas
+- Technical phrases, methodological terms, and specialized vocabulary (2-5 words)
+- Terms that would appear in abstracts, titles, or key findings of research papers
+- Cover theoretical frameworks, methodologies, applications, and outcomes
+- Diverse aspects: policy, ethics, implementation, measurement, impact
+- Lowercase format
 ${existingKeywords.length > 0 ? `- Different from these existing keywords: ${existingKeywords.join(', ')}` : ''}
 
-Return ONLY a JSON array of keyword strings, nothing else. Example: ["keyword1", "keyword2", ...]`;
+Prioritize sophisticated academic terminology over common words. Return ONLY a JSON array of keyword strings. Example: ["keyword1", "keyword2", ...]`;
 
     const response = await fetch("https://api.perplexity.ai/chat/completions", {
       method: "POST",
@@ -43,7 +45,7 @@ Return ONLY a JSON array of keyword strings, nothing else. Example: ["keyword1",
           { role: "user", content: prompt }
         ],
         temperature: 0.3,
-        max_tokens: 500,
+        max_tokens: 1000,
       }),
     });
 
@@ -101,7 +103,7 @@ Return ONLY a JSON array of keyword strings, nothing else. Example: ["keyword1",
     );
 
     return new Response(
-      JSON.stringify({ keywords: newKeywords.slice(0, 10) }),
+      JSON.stringify({ keywords: newKeywords.slice(0, 30) }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       }
