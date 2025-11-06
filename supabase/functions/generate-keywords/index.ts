@@ -12,40 +12,38 @@ serve(async (req) => {
 
   try {
     const { nodeName, existingKeywords = [] } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const PERPLEXITY_API_KEY = Deno.env.get("PERPLEXITY_API_KEY");
     
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    if (!PERPLEXITY_API_KEY) {
+      throw new Error("PERPLEXITY_API_KEY is not configured");
     }
 
-    const systemPrompt = `You are a keyword extraction expert. Generate 5-10 relevant keywords for the given topic/node.
+    const prompt = `Search for recent research papers and academic literature about "${nodeName}". 
+Extract 8-12 specific keywords or technical terms that frequently appear in these research papers.
+
 Keywords should be:
-- Single words or short phrases (2-3 words max)
-- Relevant to sentiment analysis and research
-- Diverse and covering different aspects of the topic
+- Actual terms used in academic/research papers about this topic
+- Single words or short technical phrases (2-4 words max)
+- Relevant for sentiment analysis research
+- Diverse, covering different aspects
 - Lowercase
-- No duplicates
+${existingKeywords.length > 0 ? `- Different from these existing keywords: ${existingKeywords.join(', ')}` : ''}
 
-Return ONLY a JSON array of keyword strings, nothing else.`;
+Return ONLY a JSON array of keyword strings, nothing else. Example: ["keyword1", "keyword2", ...]`;
 
-    const userPrompt = `Generate keywords for the topic: "${nodeName}"
-${existingKeywords.length > 0 ? `Existing keywords to avoid duplicating: ${existingKeywords.join(', ')}` : ''}
-
-Return format: ["keyword1", "keyword2", "keyword3", ...]`;
-
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const response = await fetch("https://api.perplexity.ai/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        Authorization: `Bearer ${PERPLEXITY_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "llama-3.1-sonar-small-128k-online",
         messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
+          { role: "user", content: prompt }
         ],
-        temperature: 0.7,
+        temperature: 0.3,
+        max_tokens: 500,
       }),
     });
 
@@ -58,7 +56,7 @@ Return format: ["keyword1", "keyword2", "keyword3", ...]`;
       }
       if (response.status === 402) {
         return new Response(
-          JSON.stringify({ error: "Payment required. Please add credits to your Lovable AI workspace." }),
+          JSON.stringify({ error: "Payment required. Please add credits to your Perplexity API account." }),
           { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
