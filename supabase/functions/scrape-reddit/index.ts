@@ -1,283 +1,225 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-interface RedditTokenResponse {
-  access_token: string;
-  token_type: string;
-  expires_in: number;
-}
-
 interface RedditPost {
-  data: {
-    id: string;
-    title: string;
-    selftext: string;
-    author: string;
-    created_utc: number;
-    score: number;
-    num_comments: number;
-    subreddit: string;
-    permalink: string;
-  };
+  id: string;
+  title: string;
+  selftext: string;
+  author: string;
+  created_utc: number;
+  score: number;
+  num_comments: number;
+  url: string;
+  permalink: string;
 }
 
 interface RedditComment {
-  data: {
-    id: string;
-    body: string;
-    author: string;
-    created_utc: number;
-    score: number;
-  };
-}
-
-async function getRedditAccessToken(): Promise<string> {
-  const clientId = Deno.env.get('REDDIT_CLIENT_ID');
-  const clientSecret = Deno.env.get('REDDIT_CLIENT_SECRET');
-
-  if (!clientId || !clientSecret) {
-    throw new Error('Reddit API credentials not configured');
-  }
-
-  const auth = btoa(`${clientId}:${clientSecret}`);
-  
-  const response = await fetch('https://www.reddit.com/api/v1/access_token', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Basic ${auth}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'User-Agent': 'Laude/1.0',
-    },
-    body: 'grant_type=client_credentials',
-  });
-
-  if (!response.ok) {
-    const error = await response.text();
-    console.error('Token error:', error);
-    throw new Error(`Failed to get access token: ${response.status} ${response.statusText}`);
-  }
-
-  const data: RedditTokenResponse = await response.json();
-  console.log('Successfully obtained Reddit access token');
-  return data.access_token;
-}
-
-async function fetchWithAuth(url: string, token: string): Promise<any> {
-  const response = await fetch(url, {
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'User-Agent': 'Laude/1.0',
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(`Reddit API error: ${response.status} ${response.statusText}`);
-  }
-
-  return await response.json();
-}
-
-function convertPostToRedditData(post: RedditPost): any {
-  return {
-    id: post.data.id,
-    parsedId: post.data.id,
-    url: `https://reddit.com${post.data.permalink}`,
-    username: post.data.author,
-    userId: post.data.author,
-    title: post.data.title,
-    communityName: post.data.subreddit,
-    parsedCommunityName: post.data.subreddit,
-    body: post.data.selftext || '',
-    html: '',
-    link: `https://reddit.com${post.data.permalink}`,
-    numberOfComments: post.data.num_comments,
-    upVotes: post.data.score,
-    upVoteRatio: 1,
-    isVideo: false,
-    isAd: false,
-    over18: false,
-    thumbnailUrl: '',
-    createdAt: new Date(post.data.created_utc * 1000).toISOString(),
-    scrapedAt: new Date().toISOString(),
-    dataType: 'post'
-  };
-}
-
-function convertCommentToRedditData(comment: RedditComment, postId: string = ''): any {
-  return {
-    id: comment.data.id,
-    parsedId: comment.data.id,
-    url: `https://reddit.com/comments/${postId}/_/${comment.data.id}`,
-    postId: postId,
-    parentId: '',
-    username: comment.data.author,
-    userId: comment.data.author,
-    category: '',
-    communityName: '',
-    body: comment.data.body,
-    createdAt: new Date(comment.data.created_utc * 1000).toISOString(),
-    scrapedAt: new Date().toISOString(),
-    upVotes: comment.data.score,
-    numberOfreplies: 0,
-    html: '',
-    dataType: 'comment'
-  };
-}
-
-function extractCommentsFromTree(comments: any[], postId: string, maxDepth: number = 10): any[] {
-  const results: any[] = [];
-  
-  function traverse(comment: any, depth: number = 0) {
-    if (!comment || depth > maxDepth) return;
-    
-    if (comment.kind === 't1' && comment.data?.body) {
-      const body = comment.data.body;
-      if (body.length > 20 && !body.startsWith('[deleted]') && !body.startsWith('[removed]')) {
-        const converted = convertCommentToRedditData(comment as RedditComment, postId);
-        if (converted) results.push(converted);
-      }
-    }
-    
-    // Recursively traverse replies
-    if (comment.data?.replies?.data?.children) {
-      for (const reply of comment.data.replies.data.children) {
-        if (reply && typeof reply === 'object') {
-          traverse(reply, depth + 1);
-        }
-      }
-    }
-  }
-  
-  for (const comment of comments) {
-    if (comment && typeof comment === 'object') {
-      traverse(comment);
-    }
-  }
-  
-  return results.filter(item => item && item.dataType);
+  id: string;
+  body: string;
+  author: string;
+  created_utc: number;
+  score: number;
 }
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") {
+  if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { url } = await req.json();
+    const { subreddit, postId, limit = 25 } = await req.json();
     
-    if (!url) {
-      throw new Error("URL is required");
+    console.log(`Starting Reddit scrape: subreddit=${subreddit}, postId=${postId}, limit=${limit}`);
+
+    if (!subreddit) {
+      return new Response(
+        JSON.stringify({ error: 'Subreddit parameter is required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    console.log(`Scraping Reddit URL via API: ${url}`);
+    // Get auth header
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Missing authorization header' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
-    // Get OAuth token
-    const token = await getRedditAccessToken();
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = authHeader.replace('Bearer ', '');
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
-    let redditData: any[] = [];
+    // Get user from auth token
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      console.error('Auth error:', userError);
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
-    // Parse URL to determine if it's a post or subreddit listing
-    const urlObj = new URL(url);
-    const pathParts = urlObj.pathname.split('/').filter(p => p);
+    let posts: RedditPost[] = [];
+    let comments: RedditComment[] = [];
+    let redditUrl: string;
 
-    if (pathParts.includes('comments') && pathParts.length >= 5) {
-      // Single post with comments: /r/{subreddit}/comments/{post_id}/{title}
-      const subreddit = pathParts[1];
-      const postId = pathParts[3];
+    // Determine what to scrape
+    if (postId) {
+      // Scrape specific post and its comments
+      redditUrl = `https://www.reddit.com/r/${subreddit}/comments/${postId}.json`;
+      console.log(`Fetching specific post: ${redditUrl}`);
       
-      console.log(`Fetching post ${postId} from r/${subreddit} with comments`);
-      
-      // Fetch post and comments
-      const apiUrl = `https://oauth.reddit.com/r/${subreddit}/comments/${postId}?limit=500&depth=10`;
-      const data = await fetchWithAuth(apiUrl, token);
-      
-      // Reddit returns [post_listing, comments_listing]
-      if (Array.isArray(data) && data.length >= 2) {
-        // Extract post
-        const postListing = data[0];
-        if (postListing.data?.children?.[0]) {
-          const postData = convertPostToRedditData(postListing.data.children[0]);
-          redditData.push(postData);
+      const response = await fetch(redditUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
-        
-        // Extract comments
-        const commentsListing = data[1];
-        if (commentsListing.data?.children) {
-          const postId = postListing.data?.children?.[0]?.data?.id || '';
-          const comments = extractCommentsFromTree(commentsListing.data.children, postId);
-          redditData.push(...comments);
-        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Reddit API error: ${response.status} ${response.statusText}`);
       }
-    } else if (pathParts[0] === 'r' && pathParts.length >= 2) {
-      // Subreddit listing: /r/{subreddit}
-      const subreddit = pathParts[1];
-      const limit = 100; // Max posts to fetch
+
+      const data = await response.json();
       
-      console.log(`Fetching posts from r/${subreddit}`);
-      
-      const apiUrl = `https://oauth.reddit.com/r/${subreddit}/hot?limit=${limit}`;
-      const data = await fetchWithAuth(apiUrl, token);
-      
-      if (data.data?.children) {
-        for (const child of data.data.children) {
-          if (child.kind === 't3') {
-            const postData = convertPostToRedditData(child);
-            redditData.push(postData);
-          }
-        }
+      // First array element contains the post
+      if (data[0]?.data?.children?.[0]) {
+        const postData = data[0].data.children[0].data;
+        posts.push({
+          id: postData.id,
+          title: postData.title,
+          selftext: postData.selftext || '',
+          author: postData.author,
+          created_utc: postData.created_utc,
+          score: postData.score,
+          num_comments: postData.num_comments,
+          url: postData.url,
+          permalink: postData.permalink
+        });
       }
-    } else if (pathParts[0] === 'user' && pathParts.length >= 2) {
-      // User posts: /user/{username} or /u/{username}
-      const username = pathParts[1];
-      const limit = 100;
-      
-      console.log(`Fetching posts from u/${username}`);
-      
-      const apiUrl = `https://oauth.reddit.com/user/${username}/submitted?limit=${limit}`;
-      const data = await fetchWithAuth(apiUrl, token);
-      
-      if (data.data?.children) {
-        for (const child of data.data.children) {
-          if (child.kind === 't3') {
-            const postData = convertPostToRedditData(child);
-            redditData.push(postData);
-          }
-        }
+
+      // Second array element contains comments
+      if (data[1]?.data?.children) {
+        comments = extractComments(data[1].data.children);
       }
     } else {
-      throw new Error('Unsupported Reddit URL format. Please provide a post URL, subreddit URL, or user URL.');
+      // Scrape subreddit listing
+      redditUrl = `https://www.reddit.com/r/${subreddit}/hot.json?limit=${limit}`;
+      console.log(`Fetching subreddit listing: ${redditUrl}`);
+      
+      const response = await fetch(redditUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Reddit API error: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      
+      if (data?.data?.children) {
+        posts = data.data.children
+          .filter((child: any) => child.kind === 't3')
+          .map((child: any) => {
+            const postData = child.data;
+            return {
+              id: postData.id,
+              title: postData.title,
+              selftext: postData.selftext || '',
+              author: postData.author,
+              created_utc: postData.created_utc,
+              score: postData.score,
+              num_comments: postData.num_comments,
+              url: postData.url,
+              permalink: postData.permalink
+            };
+          });
+      }
     }
 
-    console.log(`Extracted ${redditData.length} items from Reddit API`);
+    console.log(`Scraped ${posts.length} posts and ${comments.length} comments`);
 
-    // Filter out any undefined/null items
-    redditData = redditData.filter(item => item && typeof item === 'object' && item.dataType);
+    // Store in database
+    const { data: dataSource, error: insertError } = await supabase
+      .from('data_sources')
+      .insert({
+        user_id: user.id,
+        name: postId ? `Reddit Post: ${posts[0]?.title || postId}` : `r/${subreddit}`,
+        source_type: 'reddit',
+        url: redditUrl,
+        content: {
+          subreddit,
+          posts,
+          comments,
+          scraped_at: new Date().toISOString()
+        },
+        item_count: posts.length + comments.length
+      })
+      .select()
+      .single();
 
-    if (redditData.length === 0) {
-      throw new Error('No content found. The URL might be invalid or have no accessible content.');
+    if (insertError) {
+      console.error('Database insert error:', insertError);
+      throw insertError;
     }
+
+    console.log(`Successfully stored data source: ${dataSource.id}`);
 
     return new Response(
       JSON.stringify({ 
-        success: true,
-        data: redditData,
-        itemCount: redditData.length,
-        source: 'reddit'
+        success: true, 
+        dataSourceId: dataSource.id,
+        postsScraped: posts.length,
+        commentsScraped: comments.length
       }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
+
   } catch (error) {
-    console.error("Error scraping Reddit:", error);
+    console.error('Error in scrape-reddit function:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     return new Response(
-      JSON.stringify({ 
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error" 
-      }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ error: errorMessage }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });
+
+// Recursively extract comments from Reddit's nested structure
+function extractComments(children: any[]): RedditComment[] {
+  const comments: RedditComment[] = [];
+  
+  for (const child of children) {
+    if (child.kind === 't1' && child.data) {
+      const commentData = child.data;
+      
+      // Skip deleted/removed comments
+      if (commentData.body && 
+          commentData.body !== '[deleted]' && 
+          commentData.body !== '[removed]') {
+        comments.push({
+          id: commentData.id,
+          body: commentData.body,
+          author: commentData.author,
+          created_utc: commentData.created_utc,
+          score: commentData.score
+        });
+      }
+
+      // Recursively get replies
+      if (commentData.replies?.data?.children) {
+        comments.push(...extractComments(commentData.replies.data.children));
+      }
+    }
+  }
+  
+  return comments;
+}
