@@ -62,64 +62,65 @@ interface RedditComment {
   dataType: 'comment';
 }
 
-async function scrapeSubreddit(
+async function scrapeSubredditPullpush(
   subreddit: string, 
-  limit: number = 10
+  limit: number = 30
 ): Promise<{ posts: RedditPost[]; comments: RedditComment[] }> {
   const posts: RedditPost[] = [];
   const comments: RedditComment[] = [];
   const scrapedAt = new Date().toISOString();
-  const cutoffDate = new Date(Date.now() - 24 * 60 * 60 * 1000); // Last 24 hours
+  // Last 24 hours
+  const afterTimestamp = Math.floor(Date.now() / 1000) - (24 * 60 * 60);
 
   try {
-    const listingUrl = `https://www.reddit.com/r/${subreddit}/top.json?t=day&limit=${limit}`;
-    console.log(`[Scheduled] Fetching: ${listingUrl}`);
+    // Fetch posts using Pullpush.io API
+    const postsUrl = `https://api.pullpush.io/reddit/search/submission/?subreddit=${subreddit}&after=${afterTimestamp}&size=${limit}&sort=desc&sort_type=score`;
+    console.log(`[Scheduled] Fetching posts: ${postsUrl}`);
 
-    const listingResponse = await fetch(listingUrl, {
+    const postsResponse = await fetch(postsUrl, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        'User-Agent': 'ResearchSentimentTracker/1.0'
       }
     });
 
-    if (!listingResponse.ok) {
-      console.error(`[Scheduled] Failed to fetch r/${subreddit}: ${listingResponse.status}`);
+    if (!postsResponse.ok) {
+      console.error(`[Scheduled] Failed to fetch posts from r/${subreddit}: ${postsResponse.status}`);
       return { posts, comments };
     }
 
-    const listingData = await listingResponse.json();
+    const postsData = await postsResponse.json();
     
-    if (!listingData?.data?.children) {
+    if (!postsData?.data || postsData.data.length === 0) {
       console.log(`[Scheduled] No posts found in r/${subreddit}`);
       return { posts, comments };
     }
 
-    for (const child of listingData.data.children) {
-      if (child.kind !== 't3') continue;
-      
-      const postData = child.data;
-      const createdAt = new Date(postData.created_utc * 1000);
-      
+    // Process each post from Pullpush response
+    for (const postData of postsData.data) {
+      // Skip deleted/removed posts
       if (postData.author === '[deleted]' || postData.removed_by_category) continue;
+
+      const createdAt = new Date(postData.created_utc * 1000);
 
       const post: RedditPost = {
         id: postData.id,
         parsedId: `t3_${postData.id}`,
         url: `https://www.reddit.com${postData.permalink}`,
-        username: postData.author,
+        username: postData.author || '[unknown]',
         userId: postData.author_fullname || '',
-        title: postData.title,
+        title: postData.title || '',
         communityName: `r/${subreddit}`,
         parsedCommunityName: subreddit,
         body: postData.selftext || '',
-        html: postData.selftext_html || '',
-        link: postData.url,
-        numberOfComments: postData.num_comments,
+        html: '',
+        link: postData.url || '',
+        numberOfComments: postData.num_comments || 0,
         flair: postData.link_flair_text || '',
-        upVotes: postData.score,
-        upVoteRatio: postData.upvote_ratio,
-        isVideo: postData.is_video,
-        isAd: postData.promoted || false,
-        over18: postData.over_18,
+        upVotes: postData.score || 0,
+        upVoteRatio: postData.upvote_ratio || 0,
+        isVideo: postData.is_video || false,
+        isAd: false,
+        over18: postData.over_18 || false,
         thumbnailUrl: postData.thumbnail || '',
         createdAt: createdAt.toISOString(),
         scrapedAt,
@@ -127,33 +128,52 @@ async function scrapeSubreddit(
       };
 
       posts.push(post);
+    }
 
-      // Fetch comments for high-engagement posts
-      if (postData.score > 10 || postData.num_comments > 5) {
-        try {
-          await new Promise(resolve => setTimeout(resolve, 300));
-          
-          const commentsUrl = `https://www.reddit.com/r/${subreddit}/comments/${postData.id}.json?limit=30`;
-          const commentsResponse = await fetch(commentsUrl, {
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            }
-          });
+    // Fetch comments using Pullpush.io API
+    const commentsUrl = `https://api.pullpush.io/reddit/search/comment/?subreddit=${subreddit}&after=${afterTimestamp}&size=${Math.min(limit * 2, 50)}&sort=desc&sort_type=score`;
+    
+    const commentsResponse = await fetch(commentsUrl, {
+      headers: {
+        'User-Agent': 'ResearchSentimentTracker/1.0'
+      }
+    });
 
-          if (commentsResponse.ok) {
-            const commentsData = await commentsResponse.json();
-            if (commentsData[1]?.data?.children) {
-              const extractedComments = extractComments(
-                commentsData[1].data.children, 
-                postData.id, 
-                subreddit, 
-                scrapedAt
-              );
-              comments.push(...extractedComments);
-            }
+    if (commentsResponse.ok) {
+      const commentsData = await commentsResponse.json();
+      
+      if (commentsData?.data && commentsData.data.length > 0) {
+        for (const commentData of commentsData.data) {
+          // Skip deleted/removed comments
+          if (!commentData.body || 
+              commentData.body === '[deleted]' || 
+              commentData.body === '[removed]' ||
+              commentData.author === '[deleted]') {
+            continue;
           }
-        } catch (commentError) {
-          console.error(`[Scheduled] Error fetching comments for post ${postData.id}:`, commentError);
+
+          const createdAt = new Date(commentData.created_utc * 1000);
+
+          const comment: RedditComment = {
+            id: commentData.id,
+            parsedId: `t1_${commentData.id}`,
+            url: `https://www.reddit.com${commentData.permalink || ''}`,
+            postId: commentData.link_id || '',
+            parentId: commentData.parent_id || '',
+            username: commentData.author || '[unknown]',
+            userId: commentData.author_fullname || '',
+            category: '',
+            communityName: `r/${subreddit}`,
+            body: commentData.body,
+            createdAt: createdAt.toISOString(),
+            scrapedAt,
+            upVotes: commentData.score || 0,
+            numberOfreplies: 0,
+            html: '',
+            dataType: 'comment'
+          };
+
+          comments.push(comment);
         }
       }
     }
@@ -167,69 +187,12 @@ async function scrapeSubreddit(
   }
 }
 
-function extractComments(
-  children: any[], 
-  postId: string, 
-  subreddit: string, 
-  scrapedAt: string
-): RedditComment[] {
-  const comments: RedditComment[] = [];
-
-  for (const child of children) {
-    if (child.kind !== 't1' || !child.data) continue;
-    
-    const commentData = child.data;
-    
-    if (!commentData.body || 
-        commentData.body === '[deleted]' || 
-        commentData.body === '[removed]' ||
-        commentData.author === '[deleted]') {
-      continue;
-    }
-
-    const createdAt = new Date(commentData.created_utc * 1000);
-
-    const comment: RedditComment = {
-      id: commentData.id,
-      parsedId: `t1_${commentData.id}`,
-      url: `https://www.reddit.com${commentData.permalink}`,
-      postId: `t3_${postId}`,
-      parentId: commentData.parent_id,
-      username: commentData.author,
-      userId: commentData.author_fullname || '',
-      category: '',
-      communityName: `r/${subreddit}`,
-      body: commentData.body,
-      createdAt: createdAt.toISOString(),
-      scrapedAt,
-      upVotes: commentData.score,
-      numberOfreplies: commentData.replies?.data?.children?.length || 0,
-      html: commentData.body_html || '',
-      dataType: 'comment'
-    };
-
-    comments.push(comment);
-
-    if (commentData.replies?.data?.children && comments.length < 100) {
-      const replies = extractComments(
-        commentData.replies.data.children, 
-        postId, 
-        subreddit, 
-        scrapedAt
-      );
-      comments.push(...replies);
-    }
-  }
-
-  return comments;
-}
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
-  console.log('[Scheduled] Starting daily Reddit scrape job...');
+  console.log('[Scheduled] Starting daily Reddit scrape job via Pullpush.io...');
 
   try {
     // Use service role for scheduled jobs (no user auth)
@@ -241,13 +204,15 @@ serve(async (req) => {
     const allComments: RedditComment[] = [];
     const subredditStats: Record<string, { posts: number; comments: number }> = {};
 
-    // Process in batches of 5
-    const batchSize = 5;
+    // Process in batches of 3
+    const batchSize = 3;
     for (let i = 0; i < DEFAULT_SUBREDDITS.length; i += batchSize) {
       const batch = DEFAULT_SUBREDDITS.slice(i, i + batchSize);
       
+      console.log(`[Scheduled] Processing batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(DEFAULT_SUBREDDITS.length/batchSize)}`);
+      
       const batchResults = await Promise.all(
-        batch.map((sub: string) => scrapeSubreddit(sub, 8))
+        batch.map((sub: string) => scrapeSubredditPullpush(sub, 20))
       );
 
       for (let j = 0; j < batch.length; j++) {
@@ -261,7 +226,7 @@ serve(async (req) => {
 
       // Delay between batches
       if (i + batchSize < DEFAULT_SUBREDDITS.length) {
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
     }
 
@@ -315,8 +280,7 @@ serve(async (req) => {
         summary: {
           totalPosts: allPosts.length,
           totalComments: allComments.length,
-          subredditsScraped: Object.keys(subredditStats).length,
-          usersUpdated: 0 // We don't need to report this
+          subredditsScraped: Object.keys(subredditStats).filter(k => subredditStats[k].posts > 0 || subredditStats[k].comments > 0).length
         }
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
