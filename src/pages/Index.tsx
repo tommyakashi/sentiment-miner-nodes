@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { NodeManager } from '@/components/NodeManager';
 import { FileUploader } from '@/components/FileUploader';
 import { RedditScraper } from '@/components/RedditScraper';
+import { ScrapeHistory } from '@/components/ScrapeHistory';
 import { SentimentScore } from '@/components/SentimentScore';
 import { SentimentChart } from '@/components/SentimentChart';
 import { ParticipantsList } from '@/components/ParticipantsList';
@@ -25,7 +26,7 @@ import { performSentimentAnalysis, aggregateNodeAnalysis } from '@/utils/sentime
 import { parseRedditJSON, extractTimeSeriesData } from '@/utils/redditParser';
 import type { Node, SentimentResult, NodeAnalysis } from '@/types/sentiment';
 import type { RedditData } from '@/types/reddit';
-import { Brain, BarChart3, Settings, Radio } from 'lucide-react';
+import { Brain, BarChart3, Settings } from 'lucide-react';
 
 const Index = () => {
   const navigate = useNavigate();
@@ -565,12 +566,22 @@ const Index = () => {
               </div>
             )}
 
-            {/* Reddit Scraper - Primary Data Collection */}
-            <RedditScraper 
-              onDataScraped={(data) => {
-                handleFilesLoaded(data, 'reddit', 1);
-              }} 
-            />
+            {/* Reddit Data Collection Section */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Reddit Scraper - Primary Data Collection */}
+              <RedditScraper 
+                onDataScraped={(data) => {
+                  handleFilesLoaded(data, 'reddit', 1);
+                }} 
+              />
+              
+              {/* Scrape History */}
+              <ScrapeHistory 
+                onLoadScrape={(data) => {
+                  handleFilesLoaded(data, 'reddit', 1);
+                }}
+              />
+            </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <FileUploader onFilesLoaded={handleFilesLoaded} disabled={isAnalyzing} />

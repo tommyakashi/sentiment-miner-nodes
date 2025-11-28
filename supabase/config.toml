@@ -6,5 +6,8 @@ verify_jwt = false
 [functions.scrape-reddit-bulk]
 verify_jwt = false
 
+[functions.scrape-reddit-scheduled]
+verify_jwt = false
+
 [functions.generate-keywords]
 verify_jwt = false
