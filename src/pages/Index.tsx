@@ -2,15 +2,12 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { NodeManager } from '@/components/NodeManager';
-import { FileUploader } from '@/components/FileUploader';
 import { RedditScraper } from '@/components/RedditScraper';
 import { ScrapeHistory } from '@/components/ScrapeHistory';
 import { SentimentScore } from '@/components/SentimentScore';
 import { SentimentChart } from '@/components/SentimentChart';
 import { ParticipantsList } from '@/components/ParticipantsList';
 import { TopicsList } from '@/components/TopicsList';
-import { TrendingThemes } from '@/components/TrendingThemes';
-import { ResultsTable } from '@/components/ResultsTable';
 import { KPISortableTable } from '@/components/KPISortableTable';
 import { KPIRadarChart } from '@/components/KPIRadarChart';
 import { KPIHeatmap } from '@/components/KPIHeatmap';
@@ -20,13 +17,14 @@ import { ConfidenceDistribution } from '@/components/ConfidenceDistribution';
 import { InsightButton } from '@/components/InsightButton';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card } from '@/components/ui/card';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useToast } from '@/hooks/use-toast';
 import { performSentimentAnalysis, aggregateNodeAnalysis } from '@/utils/sentiment/analyzers/sentimentAnalyzer';
 import { parseRedditJSON, extractTimeSeriesData } from '@/utils/redditParser';
 import type { Node, SentimentResult, NodeAnalysis } from '@/types/sentiment';
 import type { RedditData } from '@/types/reddit';
-import { Brain, BarChart3, Settings } from 'lucide-react';
+import { Brain, ChevronDown, ChevronUp, Settings2 } from 'lucide-react';
 
 const Index = () => {
   const navigate = useNavigate();
@@ -36,18 +34,15 @@ const Index = () => {
   const [nodeAnalysis, setNodeAnalysis] = useState<NodeAnalysis[]>([]);
   const [timeSeriesData, setTimeSeriesData] = useState<any[]>([]);
   const [participants, setParticipants] = useState<any[]>([]);
-  const [trendingThemes, setTrendingThemes] = useState<any[]>([]);
   const [overallSentiment, setOverallSentiment] = useState<number>(0);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [analysisStatus, setAnalysisStatus] = useState<string>('');
-  const [activeTab, setActiveTab] = useState('dashboard');
   const [sources, setSources] = useState<Array<{ name: string; value: number }>>([]);
   const [stagedContent, setStagedContent] = useState<any[]>([]);
-  const [stagedFileType, setStagedFileType] = useState<'reddit' | 'text'>('text');
-  const [stagedFileCount, setStagedFileCount] = useState<number>(0);
   const [isDataReady, setIsDataReady] = useState(false);
   const [modelsPreloaded, setModelsPreloaded] = useState(false);
+  const [showNodeConfig, setShowNodeConfig] = useState(false);
   const { toast } = useToast();
 
   // Check auth status
@@ -75,35 +70,27 @@ const Index = () => {
 
   const handleFilesLoaded = async (content: any[], fileType: 'reddit' | 'text', fileCount: number) => {
     if (content.length === 0) {
-      // Clear staged data when no files
       setStagedContent([]);
-      setStagedFileType('text');
-      setStagedFileCount(0);
       setIsDataReady(false);
       setModelsPreloaded(false);
       setResults([]);
       setNodeAnalysis([]);
       setTimeSeriesData([]);
       setParticipants([]);
-      setTrendingThemes([]);
       setOverallSentiment(0);
       return;
     }
     
-    // Stage the data without analyzing
     setStagedContent(content);
-    setStagedFileType(fileType);
-    setStagedFileCount(fileCount);
     setIsDataReady(true);
     
-    // Preload models when files are uploaded for faster analysis
+    // Preload models
     if (!modelsPreloaded) {
       setAnalysisStatus('Preloading AI models...');
       try {
         const { initializeSentimentModel } = await import('@/utils/sentiment/models/sentimentModel');
         const { initializeEmbeddingModel } = await import('@/utils/sentiment/models/embeddingModel');
         
-        // Initialize models with timeout
         const modelTimeout = new Promise((_, reject) => 
           setTimeout(() => reject(new Error('Model loading timeout')), 60000)
         );
@@ -120,17 +107,12 @@ const Index = () => {
         setAnalysisStatus('');
         toast({
           title: 'Ready to analyze',
-          description: `AI models loaded • ${fileCount} file(s) staged`,
+          description: `AI models loaded • ${content.length} items staged`,
         });
       } catch (error) {
         console.error('Failed to preload models:', error);
         setAnalysisStatus('');
         setModelsPreloaded(false);
-        toast({
-          title: 'Model loading failed',
-          description: 'Models will load when you start analysis. This may take a moment.',
-          variant: 'destructive',
-        });
       }
     }
   };
@@ -139,7 +121,7 @@ const Index = () => {
     if (stagedContent.length === 0) {
       toast({
         title: 'No data loaded',
-        description: 'Please upload files before starting analysis.',
+        description: 'Scrape Reddit data first.',
         variant: 'destructive',
       });
       return;
@@ -147,9 +129,10 @@ const Index = () => {
     if (nodes.length === 0) {
       toast({
         title: 'No nodes defined',
-        description: 'Please define at least one analysis node before analyzing data.',
+        description: 'Configure analysis nodes first.',
         variant: 'destructive',
       });
+      setShowNodeConfig(true);
       return;
     }
 
@@ -161,93 +144,34 @@ const Index = () => {
       let rawData: RedditData[] = [];
       let participantsList: any[] = [];
 
-      // Step 1: Parse and prepare data
-      if (stagedFileType === 'reddit') {
-        // Check if we have mixed content (reddit + text files)
-        const firstItem = stagedContent[0];
+      // Parse Reddit data
+      rawData = stagedContent as RedditData[];
+      
+      const isValidReddit = rawData.length > 0 && 
+        rawData.some((item: any) => 
+          item && typeof item === 'object' && 
+          ('text' in item || 'body' in item || 'title' in item) &&
+          'createdAt' in item
+        );
+
+      if (isValidReddit) {
+        const parsed = parseRedditJSON(rawData);
+        textsToAnalyze = parsed.allText;
+
+        participantsList = Array.from(parsed.participants.values())
+          .sort((a, b) => b.totalUpvotes - a.totalUpvotes)
+          .slice(0, 10);
         
-        if (firstItem && typeof firstItem === 'object' && 'reddit' in firstItem && 'text' in firstItem) {
-          // Mixed content structure
-          const mixedData = firstItem as { reddit: RedditData[], text: string[], hasReddit: boolean, hasText: boolean };
-          
-          // Process Reddit data if present
-          if (mixedData.hasReddit && mixedData.reddit.length > 0) {
-            rawData = mixedData.reddit;
-            const parsed = parseRedditJSON(rawData);
-            textsToAnalyze = [...parsed.allText];
-
-            // Process participants
-            participantsList = Array.from(parsed.participants.values())
-              .sort((a, b) => b.totalUpvotes - a.totalUpvotes)
-              .slice(0, 10);
-
-            // Note: Time series will be calculated after sentiment analysis
-
-            setParticipants(participantsList);
-          }
-          
-          // Add text from PDFs/text files
-          if (mixedData.hasText && mixedData.text.length > 0) {
-            textsToAnalyze = [...textsToAnalyze, ...mixedData.text];
-          }
-          
-          const sourceData = [
-            ...(mixedData.hasReddit ? [{ name: 'Reddit', value: rawData.length }] : []),
-            ...(mixedData.hasText ? [{ name: 'PDFs/Text', value: mixedData.text.length }] : [])
-          ];
-          setSources(sourceData);
-
-          toast({
-            title: 'Mixed data loaded',
-            description: `Processing ${rawData.length} Reddit items + ${mixedData.text.length} text items`,
-          });
-        } else {
-          // Pure Reddit data (old format)
-          rawData = stagedContent as RedditData[];
-          
-          // Validate Reddit data structure
-          const isValidReddit = rawData.length > 0 && 
-            rawData.some((item: any) => 
-              item && typeof item === 'object' && 
-              ('text' in item || 'body' in item || 'title' in item) &&
-              'createdAt' in item
-            );
-
-          if (!isValidReddit) {
-            // Treat as text if Reddit data is invalid
-            textsToAnalyze = stagedContent as string[];
-            const sourceData = [{ name: 'Text/Other', value: textsToAnalyze.length }];
-            setSources(sourceData);
-          } else {
-            // Valid Reddit data
-            const parsed = parseRedditJSON(rawData);
-            textsToAnalyze = parsed.allText;
-
-            // Process participants
-            participantsList = Array.from(parsed.participants.values())
-              .sort((a, b) => b.totalUpvotes - a.totalUpvotes)
-              .slice(0, 10);
-
-            // Note: Time series will be calculated after sentiment analysis
-            
-            const sourceData = [{ name: 'Reddit', value: textsToAnalyze.length }];
-            setSources(sourceData);
-            setParticipants(participantsList);
-
-            toast({
-              title: 'Reddit data loaded',
-              description: `Processing ${parsed.posts.length} posts and ${parsed.comments.length} comments`,
-            });
-          }
-        }
-      } else {
-        textsToAnalyze = stagedContent;
-        const sourceData = [{ name: 'Text/Other', value: textsToAnalyze.length }];
+        const sourceData = [{ name: 'Reddit', value: textsToAnalyze.length }];
         setSources(sourceData);
+        setParticipants(participantsList);
+      } else {
+        textsToAnalyze = stagedContent as string[];
+        setSources([{ name: 'Text/Other', value: textsToAnalyze.length }]);
       }
 
-      // Step 2: Perform sentiment analysis
-      setAnalysisStatus('Initializing sentiment analysis models...');
+      // Perform sentiment analysis
+      setAnalysisStatus('Analyzing sentiment...');
       const analysisResults = await performSentimentAnalysis(
         textsToAnalyze, 
         nodes,
@@ -255,7 +179,7 @@ const Index = () => {
         (status) => setAnalysisStatus(status)
       );
 
-      // Step 3: Calculate time series with actual sentiment (if Reddit data available)
+      // Calculate time series
       if (rawData.length > 0) {
         try {
           const timeSeries = extractTimeSeriesData(rawData, analysisResults);
@@ -266,14 +190,12 @@ const Index = () => {
         }
       }
 
-      // Step 4: Calculate derived metrics
+      // Calculate metrics
       const avgSentiment = analysisResults.reduce((sum, r) => sum + r.polarityScore, 0) / analysisResults.length;
       const nodeAnalysisData = aggregateNodeAnalysis(analysisResults);
 
-      // Step 5: Calculate participant sentiment scores (if applicable)
-      let participantsWithSentiment = participantsList;
+      // Calculate participant sentiment
       if (participantsList.length > 0) {
-        // Build reverse index: username -> results (O(n) single pass)
         const participantIndex = new Map<string, SentimentResult[]>();
         
         analysisResults.forEach(result => {
@@ -288,32 +210,25 @@ const Index = () => {
           });
         });
 
-        // Calculate sentiment scores using index
-        participantsWithSentiment = participantsList.map(p => {
+        const participantsWithSentiment = participantsList.map(p => {
           const userResults = participantIndex.get(p.username) || [];
           const avgSent = userResults.length > 0
             ? userResults.reduce((sum, r) => sum + r.polarityScore, 0) / userResults.length * 100
             : 0;
           return { ...p, sentimentScore: avgSent };
         });
+        setParticipants(participantsWithSentiment);
       }
 
-      // Step 6: Update all analysis results synchronously
       setResults(analysisResults);
       setOverallSentiment(avgSentiment * 100);
       setNodeAnalysis(nodeAnalysisData);
-      if (participantsWithSentiment.length > 0) {
-        setParticipants(participantsWithSentiment);
-      }
-      setTrendingThemes([]);
 
-      // Step 7: Show completion and switch to dashboard
       toast({
         title: 'Analysis complete',
-        description: `Successfully analyzed ${textsToAnalyze.length} texts across ${nodeAnalysisData.length} topics.`,
+        description: `Analyzed ${textsToAnalyze.length} texts across ${nodeAnalysisData.length} topics.`,
       });
-      
-      setActiveTab('dashboard');
+
     } catch (error) {
       console.error('Analysis error:', error);
       toast({
@@ -344,17 +259,15 @@ const Index = () => {
       <div className="container mx-auto px-4 py-6 max-w-[1600px]">
         {/* Header */}
         <div className="mb-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-primary rounded-lg">
-                <Brain className="w-8 h-8 text-primary-foreground" />
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold">Sentiment Insights</h1>
-                <p className="text-sm text-muted-foreground">
-                  Multi-node analysis with KPI scoring
-                </p>
-              </div>
+          <div className="flex items-center gap-3">
+            <div className="p-3 bg-primary rounded-lg">
+              <Brain className="w-8 h-8 text-primary-foreground" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold">Research Sentiment Tracker</h1>
+              <p className="text-sm text-muted-foreground">
+                Real-time sentiment analysis across academic & AI communities
+              </p>
             </div>
           </div>
         </div>
@@ -374,239 +287,156 @@ const Index = () => {
           </div>
         )}
 
-        {/* Tabs */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3 max-w-md">
-            <TabsTrigger value="dashboard" className="gap-2">
-              <BarChart3 className="w-4 h-4" />
-              Dashboard
-            </TabsTrigger>
-            <TabsTrigger value="setup" className="gap-2">
-              <Settings className="w-4 h-4" />
-              Setup
-            </TabsTrigger>
-            <TabsTrigger value="details" className="gap-2">
-              Details
-            </TabsTrigger>
-          </TabsList>
+        {/* Main Scraper Interface */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          <RedditScraper 
+            onDataScraped={(data) => {
+              handleFilesLoaded(data, 'reddit', 1);
+            }} 
+          />
+          <ScrapeHistory 
+            onLoadScrape={(data) => {
+              handleFilesLoaded(data, 'reddit', 1);
+            }}
+          />
+        </div>
 
-          {/* Dashboard Tab */}
-          <TabsContent value="dashboard" className="space-y-6">
-            {results.length === 0 ? (
-              <div className="text-center py-12">
-                <Brain className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
-                <h3 className="text-xl font-semibold mb-2">No Analysis Yet</h3>
-                <p className="text-muted-foreground mb-4">
-                  Upload data in the Setup tab to begin analysis
-                </p>
-                <Button onClick={() => setActiveTab('setup')}>
-                  Go to Setup
-                </Button>
+        {/* Analysis Controls */}
+        {isDataReady && (
+          <Card className="p-4 mb-6">
+            <div className="flex items-center justify-between flex-wrap gap-4">
+              <div className="flex items-center gap-4">
+                <div className="text-sm">
+                  <span className="font-semibold text-primary">{stagedContent.length}</span>
+                  <span className="text-muted-foreground"> items ready</span>
+                </div>
+                <div className="text-sm">
+                  <span className="font-semibold">{nodes.length}</span>
+                  <span className="text-muted-foreground"> analysis nodes</span>
+                </div>
               </div>
-            ) : (
-              <>
-                {/* BIG SCORE - Full Width Banner */}
-                <div className="w-full">
-                  <SentimentScore 
-                    score={overallSentiment} 
-                    label="Overall Sentiment Index" 
-                  />
-                </div>
-
-                {/* Time Series Chart */}
-                {timeSeriesData.length > 0 && (
-                  <SentimentChart
-                    data={timeSeriesData}
-                    title="Sentiment and Volume over time"
-                  />
-                )}
-
-                {/* KPI Sortable Table */}
-                {nodeAnalysis.length > 0 && (
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-lg font-semibold">Node-Level KPI Analysis</h3>
-                      <InsightButton
-                        title="How to read this"
-                        insights={[
-                          'Each row represents one of your analysis topics with quantitative scores',
-                          'Polarity ranges from -1.0 (negative) to +1.0 (positive) - shows overall sentiment direction',
-                          'KPI scores range from -1.0 to +1.0: positive values mean favorable discussion, negative values mean unfavorable discussion',
-                          'Distribution shows count of positive (+), neutral (=), and negative (-) mentions',
-                          'Click column headers to sort and find strongest/weakest areas'
-                        ]}
-                      />
-                    </div>
-                    <KPISortableTable data={nodeAnalysis} />
-                  </div>
-                )}
-
-                {/* Two Column Grid for Visualizations */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* Radar Chart */}
-                  {nodeAnalysis.length > 0 && (
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-lg font-semibold">KPI Comparison</h3>
-                        <InsightButton
-                          title="How to read this"
-                          insights={[
-                            'The radar chart shows how your top 5 topics perform across all 6 KPIs',
-                            'Larger, more filled shapes indicate stronger scores across multiple metrics',
-                            'Compare shapes to see which topics have similar or different patterns',
-                            'Look for topics that excel in specific areas vs. those with balanced scores'
-                          ]}
-                        />
-                      </div>
-                      <KPIRadarChart data={nodeAnalysis} />
-                    </div>
-                  )}
-
-                  {/* Source Distribution */}
-                  {sources.length > 0 && (
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-lg font-semibold">Data Sources</h3>
-                        <InsightButton
-                          title="How to read this"
-                          insights={[
-                            'Shows where your analyzed content came from (Reddit, PDFs, text files, etc.)',
-                            'Useful for understanding if sentiment patterns differ by source type',
-                            'Larger slices indicate more data from that source',
-                            'Consider balancing sources if one dominates the analysis'
-                          ]}
-                        />
-                      </div>
-                      <SourceDistribution sources={sources} />
-                    </div>
-                  )}
-
-                  {/* Heatmap spans full width if odd number */}
-                  {nodeAnalysis.length > 0 && (
-                    <div className="lg:col-span-2 space-y-3">
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-lg font-semibold">KPI Heatmap</h3>
-                        <InsightButton
-                          title="How to read this"
-                          insights={[
-                            'Color-coded grid for quick visual comparison of all topics and KPIs',
-                            'Green cells = positive/strong scores, Red = negative/weak, Gray = neutral',
-                            'Scan rows to see topic strengths/weaknesses across all metrics',
-                            'Scan columns to compare how all topics perform on a specific KPI',
-                            'Look for patterns: Are certain KPIs consistently high/low across topics?'
-                          ]}
-                        />
-                      </div>
-                      <KPIHeatmap data={nodeAnalysis} />
-                    </div>
-                  )}
-
-                  {/* Confidence Distribution */}
-                  {results.length > 0 && (
-                    <ConfidenceDistribution results={results} />
-                  )}
-
-                  {/* Trending Themes */}
-                  {trendingThemes.length > 0 && (
-                    <TrendingThemes themes={trendingThemes} />
-                  )}
-
-                  {/* Participants */}
-                  {participants.length > 0 && (
-                    <ParticipantsList
-                      participants={participants}
-                      title="Top Participants"
-                    />
-                  )}
-
-                  {/* Topics */}
-                  {nodeAnalysis.length > 0 && (
-                    <TopicsList topics={nodeAnalysis} />
-                  )}
-                </div>
-
-                {/* Exemplar Quotes - Show top 3 nodes */}
-                {nodeAnalysis.slice(0, 3).map((node) => (
-                  <ExemplarQuotes
-                    key={node.nodeId}
-                    results={results}
-                    nodeId={node.nodeId}
-                    nodeName={node.nodeName}
-                  />
-                ))}
-              </>
-            )}
-          </TabsContent>
-
-          {/* Setup Tab */}
-          <TabsContent value="setup" className="space-y-6">
-            {/* Start Analysis Button */}
-            {isDataReady && (
-              <div className="bg-primary/10 border-2 border-primary/20 rounded-lg p-6 text-center">
-                <div className="mb-4">
-                  <p className="text-lg font-semibold mb-2">
-                    📊 {stagedFileCount} source{stagedFileCount !== 1 ? 's' : ''} loaded ({stagedContent.length} items)
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {nodes.length > 0 
-                      ? `Ready to analyze across ${nodes.length} node(s)`
-                      : 'Define at least one analysis node below to begin'
-                    }
-                  </p>
-                </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowNodeConfig(!showNodeConfig)}
+                  className="gap-2"
+                >
+                  <Settings2 className="w-4 h-4" />
+                  Configure Nodes
+                  {showNodeConfig ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </Button>
                 <Button
                   onClick={handleStartAnalysis}
                   disabled={isAnalyzing || nodes.length === 0}
-                  size="lg"
                   className="gap-2"
                 >
-                  <Brain className="w-5 h-5" />
-                  Start Analysis
+                  <Brain className="w-4 h-4" />
+                  Run Analysis
                 </Button>
               </div>
+            </div>
+          </Card>
+        )}
+
+        {/* Node Configuration (Collapsible) */}
+        <Collapsible open={showNodeConfig} onOpenChange={setShowNodeConfig}>
+          <CollapsibleContent className="mb-6">
+            <NodeManager nodes={nodes} onNodesChange={setNodes} />
+          </CollapsibleContent>
+        </Collapsible>
+
+        {/* Results Section */}
+        {results.length > 0 && (
+          <div className="space-y-6">
+            {/* Overall Sentiment Score */}
+            <SentimentScore 
+              score={overallSentiment} 
+              label="Overall Sentiment Index" 
+            />
+
+            {/* Time Series Chart */}
+            {timeSeriesData.length > 0 && (
+              <SentimentChart
+                data={timeSeriesData}
+                title="Sentiment Over Time"
+              />
             )}
 
-            {/* Reddit Data Collection Section */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Reddit Scraper - Primary Data Collection */}
-              <RedditScraper 
-                onDataScraped={(data) => {
-                  handleFilesLoaded(data, 'reddit', 1);
-                }} 
-              />
-              
-              {/* Scrape History */}
-              <ScrapeHistory 
-                onLoadScrape={(data) => {
-                  handleFilesLoaded(data, 'reddit', 1);
-                }}
-              />
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <FileUploader onFilesLoaded={handleFilesLoaded} disabled={isAnalyzing} />
-              <NodeManager nodes={nodes} onNodesChange={setNodes} />
-            </div>
-          </TabsContent>
-
-          {/* Details Tab */}
-          <TabsContent value="details">
-            {results.length > 0 ? (
-              <ResultsTable 
-                results={results} 
-                nodeAnalysis={nodeAnalysis}
-                nodes={nodes}
-                overallSentiment={overallSentiment}
-                totalTexts={results.length}
-                sources={sources}
-              />
-            ) : (
-              <div className="text-center py-12 text-muted-foreground">
-                No detailed results available yet
+            {/* KPI Table */}
+            {nodeAnalysis.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-lg font-semibold">Node-Level KPI Analysis</h3>
+                  <InsightButton
+                    title="How to read this"
+                    insights={[
+                      'Each row represents one analysis topic with scores',
+                      'Polarity: -1.0 (negative) to +1.0 (positive)',
+                      'KPI scores show sentiment intensity for each dimension',
+                      'Click headers to sort'
+                    ]}
+                  />
+                </div>
+                <KPISortableTable data={nodeAnalysis} />
               </div>
             )}
-          </TabsContent>
-        </Tabs>
+
+            {/* Visualizations Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {nodeAnalysis.length > 0 && (
+                <KPIRadarChart data={nodeAnalysis} />
+              )}
+
+              {sources.length > 0 && (
+                <SourceDistribution sources={sources} />
+              )}
+
+              {nodeAnalysis.length > 0 && (
+                <div className="lg:col-span-2">
+                  <KPIHeatmap data={nodeAnalysis} />
+                </div>
+              )}
+
+              {results.length > 0 && (
+                <ConfidenceDistribution results={results} />
+              )}
+
+              {participants.length > 0 && (
+                <ParticipantsList
+                  participants={participants}
+                  title="Top Participants"
+                />
+              )}
+
+              {nodeAnalysis.length > 0 && (
+                <TopicsList topics={nodeAnalysis} />
+              )}
+            </div>
+
+            {/* Exemplar Quotes */}
+            {nodeAnalysis.slice(0, 3).map((node) => (
+              <ExemplarQuotes
+                key={node.nodeId}
+                results={results}
+                nodeId={node.nodeId}
+                nodeName={node.nodeName}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Empty State */}
+        {!isDataReady && results.length === 0 && (
+          <Card className="p-12 text-center">
+            <Brain className="w-16 h-16 mx-auto text-muted-foreground mb-4 opacity-50" />
+            <h3 className="text-xl font-semibold mb-2">Scrape Reddit to Get Started</h3>
+            <p className="text-muted-foreground max-w-md mx-auto">
+              Select a time range above and click scrape to collect posts from 39 research and AI subreddits. 
+              Then run analysis to see sentiment insights.
+            </p>
+          </Card>
+        )}
       </div>
     </div>
   );
