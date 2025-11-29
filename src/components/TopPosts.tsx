@@ -10,21 +10,23 @@ interface TopPostsProps {
 }
 
 export function TopPosts({ posts, title = "Top Posts" }: TopPostsProps) {
-  // Get top 3 posts by upvotes, then by comments
+  // Calculate engagement score for sorting
+  const getEngagementScore = (post: RedditPost): number => {
+    const ageInHours = Math.max(1, (Date.now() - new Date(post.createdAt).getTime()) / (1000 * 60 * 60));
+    // Weight: upvotes (if available) + comments*3 (comments indicate discussion)
+    const engagement = post.upVotes > 0 
+      ? (post.upVotes + post.numberOfComments * 3) 
+      : (post.numberOfComments * 5); // No upvotes = weight comments more
+    return engagement / ageInHours;
+  };
+
+  // Sort by engagement score (works with or without upvotes)
   const topPosts = [...posts]
-    .sort((a, b) => {
-      if (b.upVotes !== a.upVotes) return b.upVotes - a.upVotes;
-      return b.numberOfComments - a.numberOfComments;
-    })
+    .map(post => ({ ...post, score: getEngagementScore(post) }))
+    .sort((a, b) => b.score - a.score)
     .slice(0, 3);
 
   if (topPosts.length === 0) return null;
-
-  const getEngagementScore = (post: RedditPost): number => {
-    // Calculate a simple engagement metric
-    const ageInHours = Math.max(1, (Date.now() - new Date(post.createdAt).getTime()) / (1000 * 60 * 60));
-    return ((post.upVotes + post.numberOfComments * 2) / ageInHours);
-  };
 
   return (
     <Card className="p-6">
