@@ -5,10 +5,28 @@ interface AnalysisLoadingOverlayProps {
   isVisible: boolean;
   progress: number;
   status: string;
+  currentStep: number;
+  totalSteps: number;
 }
 
-export function AnalysisLoadingOverlay({ isVisible, progress, status }: AnalysisLoadingOverlayProps) {
+const STEP_LABELS = [
+  'Initializing',
+  'Loading AI models',
+  'Processing embeddings',
+  'Analyzing sentiment',
+  'Aggregating results'
+];
+
+export function AnalysisLoadingOverlay({ 
+  isVisible, 
+  progress, 
+  status,
+  currentStep,
+  totalSteps
+}: AnalysisLoadingOverlayProps) {
   if (!isVisible) return null;
+
+  const stepLabel = STEP_LABELS[currentStep - 1] || status || 'Processing...';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -33,16 +51,39 @@ export function AnalysisLoadingOverlay({ isVisible, progress, status }: Analysis
               </div>
             </div>
             
+            {/* Step indicator */}
+            <div className="text-center mb-2">
+              <span className="text-xs font-mono text-muted-foreground">
+                Step {currentStep} of {totalSteps}
+              </span>
+            </div>
+            
             {/* Status text */}
             <p className="text-center text-foreground font-medium mb-6">
-              {status || 'Analyzing sentiment...'}
+              {stepLabel}
             </p>
+            
+            {/* Step dots */}
+            <div className="flex justify-center gap-2 mb-6">
+              {Array.from({ length: totalSteps }).map((_, i) => (
+                <div 
+                  key={i}
+                  className={`w-2 h-2 rounded-full transition-all duration-300 ${
+                    i + 1 < currentStep 
+                      ? 'bg-primary' 
+                      : i + 1 === currentStep 
+                        ? 'bg-primary animate-pulse scale-125' 
+                        : 'bg-muted-foreground/30'
+                  }`}
+                />
+              ))}
+            </div>
             
             {/* Progress bar */}
             <div className="space-y-3">
               <Progress value={progress} className="h-2" />
               <div className="flex justify-between items-center">
-                <span className="text-xs text-muted-foreground font-mono">Processing</span>
+                <span className="text-xs text-muted-foreground font-mono">{status || 'Processing'}</span>
                 <span className="text-sm font-mono text-primary font-semibold">{Math.round(progress)}%</span>
               </div>
             </div>
