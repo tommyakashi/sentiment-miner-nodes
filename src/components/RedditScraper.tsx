@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { 
@@ -14,13 +15,22 @@ import {
   ChevronUp,
   TrendingUp,
   MessageSquare,
-  Calendar,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Zap,
+  Clock
 } from 'lucide-react';
 import type { RedditData } from '@/types/reddit';
 
-const DEFAULT_SUBREDDITS = [
+// Core high-activity subreddits for fast mode
+const FAST_MODE_SUBREDDITS = [
+  'AskAcademia', 'GradSchool', 'PhD', 'science', 'MachineLearning',
+  'datascience', 'LocalLLaMA', 'cscareerquestions', 'labrats', 'Professors',
+  'singularity', 'AGI', 'artificial', 'deeplearning', 'compsci'
+];
+
+// Full list for comprehensive analysis
+const ALL_SUBREDDITS = [
   'AskAcademia', 'GradSchool', 'PhD', 'science', 'AcademicPsychology',
   'labrats', 'Professors', 'scholarships', 'researchstudents', 'PostDoc',
   'OpenScience', 'MachineLearning', 'datascience', 'SciencePolicy', 'engineering',
@@ -37,7 +47,10 @@ interface ScrapeSummary {
   totalPosts: number;
   totalComments: number;
   subredditsScraped: number;
+  subredditsRequested?: number;
+  failedSubreddits?: number;
   timeRange: string;
+  fastMode?: boolean;
   subredditStats: Record<string, { posts: number; comments: number }>;
 }
 
@@ -52,8 +65,13 @@ export function RedditScraper({ onDataScraped }: RedditScraperProps) {
   const [status, setStatus] = useState('');
   const [lastScrape, setLastScrape] = useState<ScrapeSummary | null>(null);
   const [showSubreddits, setShowSubreddits] = useState(false);
-  const [subreddits, setSubreddits] = useState<string[]>(DEFAULT_SUBREDDITS);
+  const [fastMode, setFastMode] = useState(true);
+  const [customSubreddits, setCustomSubreddits] = useState<string[]>([]);
   const { toast } = useToast();
+
+  const activeSubreddits = customSubreddits.length > 0 
+    ? customSubreddits 
+    : (fastMode ? FAST_MODE_SUBREDDITS : ALL_SUBREDDITS);
 
   const timeRangeOptions: { value: TimeRange; label: string; description: string }[] = [
     { value: 'day', label: 'Today', description: 'Last 24 hours' },
@@ -65,52 +83,53 @@ export function RedditScraper({ onDataScraped }: RedditScraperProps) {
   const handleScrape = async () => {
     setIsLoading(true);
     setProgress(0);
-    setStatus('Initializing scraper...');
+    setStatus('Connecting...');
 
     try {
-      // Get current session
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         throw new Error('Not authenticated');
       }
 
-      setStatus(`Scraping ${subreddits.length} subreddits...`);
-      setProgress(10);
+      setStatus(`Scraping ${activeSubreddits.length} subreddits...`);
+      setProgress(15);
 
-      // Simulate progress updates
+      // Progress simulation based on expected time
+      const expectedTime = fastMode ? 15000 : 40000;
       const progressInterval = setInterval(() => {
-        setProgress(prev => Math.min(prev + 5, 85));
-      }, 2000);
+        setProgress(prev => {
+          if (prev >= 90) return prev;
+          return prev + (90 - prev) * 0.1;
+        });
+      }, expectedTime / 20);
 
       const { data, error } = await supabase.functions.invoke('scrape-reddit-bulk', {
         body: {
-          subreddits,
+          subreddits: customSubreddits.length > 0 ? customSubreddits : undefined,
           timeRange: selectedTimeRange,
-          postsPerSubreddit: 10,
-          saveToDb: true
+          postsPerSubreddit: 25,
+          saveToDb: true,
+          fastMode: customSubreddits.length === 0 ? fastMode : false
         }
       });
 
       clearInterval(progressInterval);
 
-      if (error) {
-        throw error;
-      }
-
-      if (!data.success) {
-        throw new Error(data.error || 'Scrape failed');
-      }
+      if (error) throw error;
+      if (!data.success) throw new Error(data.error || 'Scrape failed');
 
       setProgress(100);
       setStatus('Complete!');
       setLastScrape(data.summary);
 
-      // Pass scraped data to parent
       if (data.data && data.data.length > 0) {
         onDataScraped(data.data);
+        
+        const hasPartialData = data.summary.failedSubreddits > 0;
         toast({
-          title: 'Scrape Complete',
-          description: `Collected ${data.summary.totalPosts} posts and ${data.summary.totalComments} comments from ${data.summary.subredditsScraped} subreddits.`,
+          title: hasPartialData ? 'Scrape Complete (Partial)' : 'Scrape Complete',
+          description: `${data.summary.totalPosts} posts, ${data.summary.totalComments} comments from ${data.summary.subredditsScraped} subreddits.${hasPartialData ? ` (${data.summary.failedSubreddits} failed)` : ''}`,
+          variant: hasPartialData ? 'default' : 'default',
         });
       } else {
         toast({
@@ -124,7 +143,7 @@ export function RedditScraper({ onDataScraped }: RedditScraperProps) {
       console.error('Scrape error:', error);
       toast({
         title: 'Scrape Failed',
-        description: error instanceof Error ? error.message : 'Unknown error occurred',
+        description: error instanceof Error ? error.message : 'Unknown error',
         variant: 'destructive',
       });
     } finally {
@@ -137,11 +156,15 @@ export function RedditScraper({ onDataScraped }: RedditScraperProps) {
   };
 
   const toggleSubreddit = (sub: string) => {
-    setSubreddits(prev => 
+    setCustomSubreddits(prev => 
       prev.includes(sub) 
         ? prev.filter(s => s !== sub)
         : [...prev, sub]
     );
+  };
+
+  const resetToDefault = () => {
+    setCustomSubreddits([]);
   };
 
   return (
@@ -154,10 +177,40 @@ export function RedditScraper({ onDataScraped }: RedditScraperProps) {
           <div>
             <h3 className="text-lg font-semibold">Reddit Sentiment Scraper</h3>
             <p className="text-sm text-muted-foreground">
-              Scrape top posts from {subreddits.length} research subreddits
+              {activeSubreddits.length} research subreddits
             </p>
           </div>
         </div>
+
+        {/* Fast Mode Toggle */}
+        <div className="flex items-center gap-2">
+          <Clock className="w-4 h-4 text-muted-foreground" />
+          <span className="text-sm text-muted-foreground">Fast</span>
+          <Switch
+            checked={fastMode}
+            onCheckedChange={(checked) => {
+              setFastMode(checked);
+              setCustomSubreddits([]);
+            }}
+            disabled={isLoading || customSubreddits.length > 0}
+          />
+          <Zap className={`w-4 h-4 ${fastMode ? 'text-amber-500' : 'text-muted-foreground'}`} />
+        </div>
+      </div>
+
+      {/* Mode indicator */}
+      <div className={`text-xs px-3 py-1.5 rounded-full inline-flex items-center gap-1.5 ${fastMode ? 'bg-amber-500/10 text-amber-600' : 'bg-blue-500/10 text-blue-600'}`}>
+        {fastMode ? (
+          <>
+            <Zap className="w-3 h-3" />
+            Fast Mode: 15 core subreddits (~15s)
+          </>
+        ) : (
+          <>
+            <Clock className="w-3 h-3" />
+            Full Mode: 39 subreddits (~45s)
+          </>
+        )}
       </div>
 
       {/* Time Range Selection */}
@@ -185,7 +238,7 @@ export function RedditScraper({ onDataScraped }: RedditScraperProps) {
           <Button variant="ghost" className="w-full justify-between">
             <span className="flex items-center gap-2">
               <MessageSquare className="w-4 h-4" />
-              Subreddits ({subreddits.length} selected)
+              Customize Subreddits ({activeSubreddits.length} active)
             </span>
             {showSubreddits ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </Button>
@@ -193,33 +246,49 @@ export function RedditScraper({ onDataScraped }: RedditScraperProps) {
         <CollapsibleContent className="pt-4">
           <ScrollArea className="h-[200px] border rounded-lg p-3">
             <div className="flex flex-wrap gap-2">
-              {DEFAULT_SUBREDDITS.map((sub) => (
-                <Badge
-                  key={sub}
-                  variant={subreddits.includes(sub) ? 'default' : 'outline'}
-                  className="cursor-pointer transition-all hover:scale-105"
-                  onClick={() => toggleSubreddit(sub)}
-                >
-                  r/{sub}
-                </Badge>
-              ))}
+              {ALL_SUBREDDITS.map((sub) => {
+                const isActive = customSubreddits.length > 0 
+                  ? customSubreddits.includes(sub)
+                  : activeSubreddits.includes(sub);
+                const isFastCore = FAST_MODE_SUBREDDITS.includes(sub);
+                
+                return (
+                  <Badge
+                    key={sub}
+                    variant={isActive ? 'default' : 'outline'}
+                    className={`cursor-pointer transition-all hover:scale-105 ${isFastCore && customSubreddits.length === 0 ? 'ring-1 ring-amber-500/50' : ''}`}
+                    onClick={() => toggleSubreddit(sub)}
+                  >
+                    r/{sub}
+                  </Badge>
+                );
+              })}
             </div>
           </ScrollArea>
           <div className="flex gap-2 mt-3">
             <Button 
               variant="outline" 
               size="sm"
-              onClick={() => setSubreddits(DEFAULT_SUBREDDITS)}
+              onClick={() => setCustomSubreddits([...ALL_SUBREDDITS])}
             >
               Select All
             </Button>
             <Button 
               variant="outline" 
               size="sm"
-              onClick={() => setSubreddits([])}
+              onClick={() => setCustomSubreddits([])}
             >
-              Clear All
+              Clear
             </Button>
+            {customSubreddits.length > 0 && (
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={resetToDefault}
+              >
+                Reset to {fastMode ? 'Fast' : 'Full'} Mode
+              </Button>
+            )}
           </div>
         </CollapsibleContent>
       </Collapsible>
@@ -236,17 +305,17 @@ export function RedditScraper({ onDataScraped }: RedditScraperProps) {
       <Button
         className="w-full h-12 text-lg"
         onClick={handleScrape}
-        disabled={isLoading || subreddits.length === 0}
+        disabled={isLoading || activeSubreddits.length === 0}
       >
         {isLoading ? (
           <>
             <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-            Scraping Reddit...
+            Scraping...
           </>
         ) : (
           <>
             <TrendingUp className="w-5 h-5 mr-2" />
-            Scrape {selectedTimeRange === 'day' ? "Today's" : timeRangeOptions.find(o => o.value === selectedTimeRange)?.label} Sentiment
+            Scrape {timeRangeOptions.find(o => o.value === selectedTimeRange)?.label} Sentiment
           </>
         )}
       </Button>
@@ -257,6 +326,11 @@ export function RedditScraper({ onDataScraped }: RedditScraperProps) {
           <div className="flex items-center gap-2 text-sm font-medium">
             <CheckCircle2 className="w-4 h-4 text-green-500" />
             Last Scrape Summary
+            {lastScrape.fastMode !== undefined && (
+              <Badge variant="outline" className="text-xs">
+                {lastScrape.fastMode ? 'Fast' : 'Full'}
+              </Badge>
+            )}
           </div>
           <div className="grid grid-cols-3 gap-4 text-center">
             <div>
@@ -273,9 +347,9 @@ export function RedditScraper({ onDataScraped }: RedditScraperProps) {
             </div>
           </div>
           
-          {/* Top Subreddits by Activity */}
+          {/* Top Subreddits */}
           <div className="pt-2 border-t">
-            <p className="text-xs text-muted-foreground mb-2">Top Active Subreddits</p>
+            <p className="text-xs text-muted-foreground mb-2">Top Active</p>
             <div className="flex flex-wrap gap-1">
               {Object.entries(lastScrape.subredditStats)
                 .sort((a, b) => (b[1].posts + b[1].comments) - (a[1].posts + a[1].comments))
@@ -290,10 +364,10 @@ export function RedditScraper({ onDataScraped }: RedditScraperProps) {
         </div>
       )}
 
-      {subreddits.length === 0 && (
+      {activeSubreddits.length === 0 && (
         <div className="flex items-center gap-2 text-sm text-amber-600 bg-amber-500/10 p-3 rounded-lg">
           <AlertCircle className="w-4 h-4" />
-          Select at least one subreddit to scrape
+          Select at least one subreddit
         </div>
       )}
     </Card>
