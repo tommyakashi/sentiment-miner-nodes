@@ -173,8 +173,71 @@ function parseRSSXML(xmlText: string, subreddit: string, scrapedAt: string): Red
   return posts;
 }
 
-// Fast RSS scrape (no comments for speed)
-async function scrapeViaRSS(subreddit: string): Promise<{ posts: RedditPost[]; comments: RedditComment[] }> {
+// Fetch comments for a specific post using Reddit JSON endpoint
+async function fetchCommentsForPost(
+  subreddit: string, 
+  postId: string,
+  scrapedAt: string
+): Promise<RedditComment[]> {
+  const comments: RedditComment[] = [];
+  
+  try {
+    // Clean the postId (remove t3_ prefix if present)
+    const cleanPostId = postId.replace('t3_', '');
+    const url = `https://www.reddit.com/r/${subreddit}/comments/${cleanPostId}.json?limit=10&depth=1`;
+    
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      return comments;
+    }
+
+    const data = await response.json();
+    
+    // Reddit returns [post_data, comments_data]
+    if (Array.isArray(data) && data.length >= 2) {
+      const commentsListing = data[1]?.data?.children || [];
+      
+      for (const item of commentsListing) {
+        if (item.kind !== 't1') continue;
+        const c = item.data;
+        
+        if (!c.body || c.body === '[deleted]' || c.body === '[removed]' || c.author === '[deleted]') continue;
+        
+        comments.push({
+          id: c.id,
+          parsedId: `t1_${c.id}`,
+          url: `https://www.reddit.com${c.permalink || ''}`,
+          postId: `t3_${cleanPostId}`,
+          parentId: c.parent_id || '',
+          username: c.author || '[unknown]',
+          userId: c.author_fullname || '',
+          category: '',
+          communityName: `r/${subreddit}`,
+          body: c.body,
+          createdAt: new Date((c.created_utc || c.created || Date.now() / 1000) * 1000).toISOString(),
+          scrapedAt,
+          upVotes: c.score || 0,
+          numberOfreplies: c.replies?.data?.children?.length || 0,
+          html: '',
+          dataType: 'comment'
+        });
+      }
+    }
+  } catch (error) {
+    // Silently fail - comments are optional
+  }
+  
+  return comments;
+}
+
+// RSS scrape with optional comment fetching
+async function scrapeViaRSS(subreddit: string, fetchComments: boolean = true): Promise<{ posts: RedditPost[]; comments: RedditComment[] }> {
   const posts: RedditPost[] = [];
   const comments: RedditComment[] = [];
   const scrapedAt = new Date().toISOString();
@@ -197,7 +260,21 @@ async function scrapeViaRSS(subreddit: string): Promise<{ posts: RedditPost[]; c
     const xmlText = await response.text();
     const parsedPosts = parseRSSXML(xmlText, subreddit, scrapedAt);
     posts.push(...parsedPosts);
-    console.log(`[RSS] r/${subreddit}: ${posts.length} posts`);
+    
+    // Fetch comments for top 3 posts (to stay within rate limits and timeout)
+    if (fetchComments && posts.length > 0) {
+      const topPosts = posts.slice(0, 3);
+      const commentPromises = topPosts.map(post => 
+        fetchCommentsForPost(subreddit, post.id, scrapedAt)
+      );
+      
+      const commentResults = await Promise.all(commentPromises);
+      for (const postComments of commentResults) {
+        comments.push(...postComments);
+      }
+    }
+    
+    console.log(`[RSS] r/${subreddit}: ${posts.length} posts, ${comments.length} comments`);
 
   } catch (error) {
     console.log(`[RSS] Error r/${subreddit}: ${error}`);
