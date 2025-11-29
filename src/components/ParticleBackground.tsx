@@ -523,6 +523,21 @@ export function ParticleBackground({
     ctx.restore();
   }, []);
 
+  // Draw vignette overlay
+  const drawVignette = useCallback((ctx: CanvasRenderingContext2D, width: number, height: number) => {
+    const gradient = ctx.createRadialGradient(
+      width / 2, height / 2, Math.min(width, height) * 0.2,
+      width / 2, height / 2, Math.max(width, height) * 0.8
+    );
+    gradient.addColorStop(0, 'transparent');
+    gradient.addColorStop(0.5, 'transparent');
+    gradient.addColorStop(0.8, 'rgba(0, 0, 0, 0.3)');
+    gradient.addColorStop(1, 'rgba(0, 0, 0, 0.7)');
+    
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, width, height);
+  }, []);
+
   const draw = useCallback((time: number) => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
@@ -600,8 +615,11 @@ export function ParticleBackground({
       drawShootingStar(ctx, star);
     });
 
+    // Draw vignette overlay (on top of everything)
+    drawVignette(ctx, canvas.width, canvas.height);
+
     animationRef.current = requestAnimationFrame(draw);
-  }, [updateParticle, drawBackgroundStars, drawNebulaCloud, drawStar, drawDust, drawShootingStar, drawGravitationalThread, createShootingStar]);
+  }, [updateParticle, drawBackgroundStars, drawNebulaCloud, drawStar, drawDust, drawShootingStar, drawGravitationalThread, createShootingStar, drawVignette]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
