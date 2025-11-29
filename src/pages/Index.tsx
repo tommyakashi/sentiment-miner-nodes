@@ -19,7 +19,7 @@ import { InsightButton } from '@/components/InsightButton';
 import { ParticleBackground } from '@/components/ParticleBackground';
 import { FloatingWindow } from '@/components/FloatingWindow';
 import { WindowTabs, TabId } from '@/components/WindowTabs';
-import { Progress } from '@/components/ui/progress';
+import { AnalysisLoadingOverlay } from '@/components/AnalysisLoadingOverlay';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -28,7 +28,7 @@ import { performSentimentAnalysis, aggregateNodeAnalysis } from '@/utils/sentime
 import { parseRedditJSON, extractTimeSeriesData } from '@/utils/redditParser';
 import type { Node, SentimentResult, NodeAnalysis } from '@/types/sentiment';
 import type { RedditData, RedditPost } from '@/types/reddit';
-import { Activity, Zap, Settings2 } from 'lucide-react';
+import { Activity, Zap } from 'lucide-react';
 
 const Index = () => {
   const navigate = useNavigate();
@@ -41,6 +41,7 @@ const Index = () => {
   const [participants, setParticipants] = useState<any[]>([]);
   const [overallSentiment, setOverallSentiment] = useState<number>(0);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [showWindow, setShowWindow] = useState(true);
   const [progress, setProgress] = useState(0);
   const [analysisStatus, setAnalysisStatus] = useState<string>('');
   const [sources, setSources] = useState<Array<{ name: string; value: number }>>([]);
@@ -145,8 +146,8 @@ const Index = () => {
     }
 
     setIsAnalyzing(true);
+    setShowWindow(false);
     setProgress(0);
-    setActiveTab('analysis');
 
     try {
       let textsToAnalyze: string[] = [];
@@ -242,6 +243,8 @@ const Index = () => {
       });
     } finally {
       setIsAnalyzing(false);
+      setShowWindow(true);
+      setActiveTab('analysis');
       setProgress(0);
       setAnalysisStatus('');
     }
@@ -269,20 +272,6 @@ const Index = () => {
       case 'scanner':
         return (
           <div className="p-6 space-y-6">
-            {/* Progress Bar */}
-            {isAnalyzing && (
-              <Card className="p-4 border-primary/30 bg-primary/5">
-                <Progress value={progress} className="h-2 mb-3" />
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Zap className="w-4 h-4 text-primary animate-pulse" />
-                    <p className="text-sm font-medium">{analysisStatus || 'Processing signals...'}</p>
-                  </div>
-                  <p className="text-xs text-muted-foreground font-mono">{Math.round(progress)}%</p>
-                </div>
-              </Card>
-            )}
-
             {/* Scraper */}
             <RedditScraper 
               onDataScraped={(data) => {
@@ -440,20 +429,29 @@ const Index = () => {
       {/* Subtle Grid Overlay */}
       <div className="fixed inset-0 observatory-grid pointer-events-none z-0 opacity-50" />
       
-      {/* Floating Window */}
-      <div className="relative z-10 w-full animate-fade-in-up">
-        <FloatingWindow
-          header={
-            <WindowTabs 
-              activeTab={activeTab} 
-              onTabChange={setActiveTab}
-              dataCount={stagedContent.length}
-            />
-          }
-        >
-          {renderTabContent()}
-        </FloatingWindow>
-      </div>
+      {/* Analysis Loading Overlay */}
+      <AnalysisLoadingOverlay 
+        isVisible={isAnalyzing && !showWindow}
+        progress={progress}
+        status={analysisStatus}
+      />
+      
+      {/* Floating Window - conditionally visible */}
+      {showWindow && (
+        <div className="relative z-10 w-full animate-fade-in">
+          <FloatingWindow
+            header={
+              <WindowTabs 
+                activeTab={activeTab} 
+                onTabChange={setActiveTab}
+                dataCount={stagedContent.length}
+              />
+            }
+          >
+            {renderTabContent()}
+          </FloatingWindow>
+        </div>
+      )}
     </div>
   );
 };
