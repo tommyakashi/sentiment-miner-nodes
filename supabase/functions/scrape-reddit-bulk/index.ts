@@ -19,6 +19,7 @@ const DEFAULT_SUBREDDITS = [
 ];
 
 type TimeRange = 'day' | 'week' | 'month' | '3days';
+type DataSource = 'rss' | 'arctic_shift' | 'pullpush';
 
 interface RedditPost {
   id: string;
@@ -80,9 +81,147 @@ function getTimestampForRange(timeRange: TimeRange): number {
   }
 }
 
-async function scrapeSubredditPullpush(
-  subreddit: string, 
-  timeRange: TimeRange, 
+function selectDataSource(timeRange: TimeRange): DataSource {
+  switch (timeRange) {
+    case 'day':
+    case '3days':
+      return 'rss'; // Real-time from RSS feeds
+    case 'week':
+    case 'month':
+      return 'arctic_shift'; // Recent archive data
+    default:
+      return 'rss';
+  }
+}
+
+// Parse RSS XML to extract posts
+function parseRSSXML(xmlText: string, subreddit: string, scrapedAt: string): RedditPost[] {
+  const posts: RedditPost[] = [];
+  
+  // Simple XML parsing for RSS feed
+  const entryMatches = xmlText.match(/<entry>[\s\S]*?<\/entry>/g) || [];
+  
+  for (const entry of entryMatches) {
+    try {
+      // Extract ID
+      const idMatch = entry.match(/<id>([^<]+)<\/id>/);
+      const id = idMatch ? idMatch[1].split('/').pop() || '' : '';
+      
+      // Extract title
+      const titleMatch = entry.match(/<title>([^<]+)<\/title>/);
+      const title = titleMatch ? decodeHTMLEntities(titleMatch[1]) : '';
+      
+      // Extract link
+      const linkMatch = entry.match(/<link href="([^"]+)"/);
+      const url = linkMatch ? linkMatch[1] : '';
+      
+      // Extract author
+      const authorMatch = entry.match(/<author><name>\/u\/([^<]+)<\/name><\/author>/);
+      const username = authorMatch ? authorMatch[1] : '[unknown]';
+      
+      // Extract published date
+      const publishedMatch = entry.match(/<published>([^<]+)<\/published>/);
+      const createdAt = publishedMatch ? publishedMatch[1] : new Date().toISOString();
+      
+      // Extract content/body
+      const contentMatch = entry.match(/<content type="html">([^]*?)<\/content>/);
+      let body = '';
+      if (contentMatch) {
+        body = decodeHTMLEntities(contentMatch[1])
+          .replace(/<[^>]*>/g, ' ')
+          .replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/\s+/g, ' ')
+          .trim();
+      }
+      
+      if (id && title) {
+        posts.push({
+          id: id.replace('t3_', ''),
+          parsedId: id.startsWith('t3_') ? id : `t3_${id}`,
+          url,
+          username,
+          userId: '',
+          title,
+          communityName: `r/${subreddit}`,
+          parsedCommunityName: subreddit,
+          body,
+          html: '',
+          link: url,
+          numberOfComments: 0,
+          flair: '',
+          upVotes: 0, // RSS doesn't provide upvotes
+          upVoteRatio: 0,
+          isVideo: false,
+          isAd: false,
+          over18: false,
+          thumbnailUrl: '',
+          createdAt,
+          scrapedAt,
+          dataType: 'post'
+        });
+      }
+    } catch (e) {
+      console.error('Error parsing RSS entry:', e);
+    }
+  }
+  
+  return posts;
+}
+
+function decodeHTMLEntities(text: string): string {
+  return text
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'");
+}
+
+// Scrape via Reddit RSS feeds (real-time, works reliably)
+async function scrapeViaRSS(
+  subreddit: string
+): Promise<{ posts: RedditPost[]; comments: RedditComment[] }> {
+  const posts: RedditPost[] = [];
+  const comments: RedditComment[] = [];
+  const scrapedAt = new Date().toISOString();
+
+  try {
+    // Try new posts first
+    const rssUrl = `https://www.reddit.com/r/${subreddit}/new/.rss`;
+    console.log(`[RSS] Fetching: ${rssUrl}`);
+
+    const response = await fetch(rssUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/rss+xml, application/xml, text/xml, */*'
+      }
+    });
+
+    if (!response.ok) {
+      console.error(`[RSS] Failed to fetch r/${subreddit}: ${response.status}`);
+      return { posts, comments };
+    }
+
+    const xmlText = await response.text();
+    const parsedPosts = parseRSSXML(xmlText, subreddit, scrapedAt);
+    posts.push(...parsedPosts);
+
+    console.log(`[RSS] r/${subreddit}: ${posts.length} posts`);
+    return { posts, comments };
+
+  } catch (error) {
+    console.error(`[RSS] Error scraping r/${subreddit}:`, error);
+    return { posts, comments };
+  }
+}
+
+// Scrape via Arctic Shift API (recent archive, up to Oct 2025)
+async function scrapeViaArcticShift(
+  subreddit: string,
+  timeRange: TimeRange,
   limit: number = 50
 ): Promise<{ posts: RedditPost[]; comments: RedditComment[] }> {
   const posts: RedditPost[] = [];
@@ -91,9 +230,9 @@ async function scrapeSubredditPullpush(
   const afterTimestamp = getTimestampForRange(timeRange);
 
   try {
-    // Fetch posts using Pullpush.io API
-    const postsUrl = `https://api.pullpush.io/reddit/search/submission/?subreddit=${subreddit}&after=${afterTimestamp}&size=${limit}&sort=desc&sort_type=score`;
-    console.log(`Fetching posts: ${postsUrl}`);
+    // Fetch posts from Arctic Shift
+    const postsUrl = `https://arctic-shift.photon-reddit.com/api/posts/search?subreddit=${subreddit}&after=${afterTimestamp}&limit=${limit}&sort=desc&sort_type=score`;
+    console.log(`[ArcticShift] Fetching posts: ${postsUrl}`);
 
     const postsResponse = await fetch(postsUrl, {
       headers: {
@@ -102,30 +241,31 @@ async function scrapeSubredditPullpush(
     });
 
     if (!postsResponse.ok) {
-      console.error(`Failed to fetch posts from r/${subreddit}: ${postsResponse.status}`);
-      return { posts, comments };
+      console.error(`[ArcticShift] Failed to fetch posts from r/${subreddit}: ${postsResponse.status}`);
+      // Fallback to RSS if Arctic Shift fails
+      console.log(`[ArcticShift] Falling back to RSS for r/${subreddit}`);
+      return scrapeViaRSS(subreddit);
     }
 
     const postsData = await postsResponse.json();
-    
-    if (!postsData?.data || postsData.data.length === 0) {
-      console.log(`No posts found in r/${subreddit} for time range ${timeRange}`);
-      return { posts, comments };
+    const postsArray = postsData?.data || postsData || [];
+
+    if (!Array.isArray(postsArray) || postsArray.length === 0) {
+      console.log(`[ArcticShift] No posts found in r/${subreddit}, trying RSS fallback`);
+      return scrapeViaRSS(subreddit);
     }
 
-    console.log(`Found ${postsData.data.length} posts in r/${subreddit}`);
+    console.log(`[ArcticShift] Found ${postsArray.length} posts in r/${subreddit}`);
 
-    // Process each post from Pullpush response
-    for (const postData of postsData.data) {
-      // Skip deleted/removed posts
+    for (const postData of postsArray) {
       if (postData.author === '[deleted]' || postData.removed_by_category) continue;
 
-      const createdAt = new Date(postData.created_utc * 1000);
+      const createdAt = new Date((postData.created_utc || postData.created) * 1000);
 
       const post: RedditPost = {
         id: postData.id,
         parsedId: `t3_${postData.id}`,
-        url: `https://www.reddit.com${postData.permalink}`,
+        url: `https://www.reddit.com${postData.permalink || `/r/${subreddit}/comments/${postData.id}`}`,
         username: postData.author || '[unknown]',
         userId: postData.author_fullname || '',
         title: postData.title || '',
@@ -150,65 +290,89 @@ async function scrapeSubredditPullpush(
       posts.push(post);
     }
 
-    // Fetch comments using Pullpush.io API
-    const commentsUrl = `https://api.pullpush.io/reddit/search/comment/?subreddit=${subreddit}&after=${afterTimestamp}&size=${Math.min(limit * 3, 100)}&sort=desc&sort_type=score`;
-    console.log(`Fetching comments: ${commentsUrl}`);
+    // Try to fetch comments from Arctic Shift
+    try {
+      const commentsUrl = `https://arctic-shift.photon-reddit.com/api/comments/search?subreddit=${subreddit}&after=${afterTimestamp}&limit=${Math.min(limit * 2, 100)}&sort=desc&sort_type=score`;
+      console.log(`[ArcticShift] Fetching comments: ${commentsUrl}`);
 
-    const commentsResponse = await fetch(commentsUrl, {
-      headers: {
-        'User-Agent': 'ResearchSentimentTracker/1.0'
-      }
-    });
+      const commentsResponse = await fetch(commentsUrl, {
+        headers: {
+          'User-Agent': 'ResearchSentimentTracker/1.0'
+        }
+      });
 
-    if (commentsResponse.ok) {
-      const commentsData = await commentsResponse.json();
-      
-      if (commentsData?.data && commentsData.data.length > 0) {
-        console.log(`Found ${commentsData.data.length} comments in r/${subreddit}`);
+      if (commentsResponse.ok) {
+        const commentsData = await commentsResponse.json();
+        const commentsArray = commentsData?.data || commentsData || [];
 
-        for (const commentData of commentsData.data) {
-          // Skip deleted/removed comments
-          if (!commentData.body || 
-              commentData.body === '[deleted]' || 
-              commentData.body === '[removed]' ||
-              commentData.author === '[deleted]') {
-            continue;
+        if (Array.isArray(commentsArray) && commentsArray.length > 0) {
+          console.log(`[ArcticShift] Found ${commentsArray.length} comments in r/${subreddit}`);
+
+          for (const commentData of commentsArray) {
+            if (!commentData.body || 
+                commentData.body === '[deleted]' || 
+                commentData.body === '[removed]' ||
+                commentData.author === '[deleted]') {
+              continue;
+            }
+
+            const createdAt = new Date((commentData.created_utc || commentData.created) * 1000);
+
+            const comment: RedditComment = {
+              id: commentData.id,
+              parsedId: `t1_${commentData.id}`,
+              url: `https://www.reddit.com${commentData.permalink || ''}`,
+              postId: commentData.link_id || '',
+              parentId: commentData.parent_id || '',
+              username: commentData.author || '[unknown]',
+              userId: commentData.author_fullname || '',
+              category: '',
+              communityName: `r/${subreddit}`,
+              body: commentData.body,
+              createdAt: createdAt.toISOString(),
+              scrapedAt,
+              upVotes: commentData.score || 0,
+              numberOfreplies: 0,
+              html: '',
+              dataType: 'comment'
+            };
+
+            comments.push(comment);
           }
-
-          const createdAt = new Date(commentData.created_utc * 1000);
-
-          const comment: RedditComment = {
-            id: commentData.id,
-            parsedId: `t1_${commentData.id}`,
-            url: `https://www.reddit.com${commentData.permalink || ''}`,
-            postId: commentData.link_id || '',
-            parentId: commentData.parent_id || '',
-            username: commentData.author || '[unknown]',
-            userId: commentData.author_fullname || '',
-            category: '',
-            communityName: `r/${subreddit}`,
-            body: commentData.body,
-            createdAt: createdAt.toISOString(),
-            scrapedAt,
-            upVotes: commentData.score || 0,
-            numberOfreplies: 0,
-            html: '',
-            dataType: 'comment'
-          };
-
-          comments.push(comment);
         }
       }
-    } else {
-      console.error(`Failed to fetch comments from r/${subreddit}: ${commentsResponse.status}`);
+    } catch (commentError) {
+      console.error(`[ArcticShift] Error fetching comments for r/${subreddit}:`, commentError);
     }
 
-    console.log(`r/${subreddit}: ${posts.length} posts, ${comments.length} comments`);
+    console.log(`[ArcticShift] r/${subreddit}: ${posts.length} posts, ${comments.length} comments`);
     return { posts, comments };
 
   } catch (error) {
-    console.error(`Error scraping r/${subreddit}:`, error);
-    return { posts, comments };
+    console.error(`[ArcticShift] Error scraping r/${subreddit}:`, error);
+    // Fallback to RSS
+    console.log(`[ArcticShift] Falling back to RSS for r/${subreddit}`);
+    return scrapeViaRSS(subreddit);
+  }
+}
+
+// Main scraping function that selects the best source
+async function scrapeSubreddit(
+  subreddit: string,
+  timeRange: TimeRange,
+  limit: number = 50
+): Promise<{ posts: RedditPost[]; comments: RedditComment[] }> {
+  const source = selectDataSource(timeRange);
+  
+  console.log(`[Scraper] Using ${source} for r/${subreddit} (timeRange: ${timeRange})`);
+  
+  switch (source) {
+    case 'rss':
+      return scrapeViaRSS(subreddit);
+    case 'arctic_shift':
+      return scrapeViaArcticShift(subreddit, timeRange, limit);
+    default:
+      return scrapeViaRSS(subreddit);
   }
 }
 
@@ -225,7 +389,8 @@ serve(async (req) => {
       saveToDb = true
     } = await req.json();
 
-    console.log(`Starting bulk Reddit scrape via Pullpush.io: ${subreddits.length} subreddits, timeRange=${timeRange}`);
+    const source = selectDataSource(timeRange as TimeRange);
+    console.log(`Starting bulk Reddit scrape: ${subreddits.length} subreddits, timeRange=${timeRange}, source=${source}`);
 
     // Get auth header
     const authHeader = req.headers.get('Authorization');
@@ -240,7 +405,6 @@ serve(async (req) => {
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const jwt = authHeader.replace('Bearer ', '');
     
-    // Create client with anon key, then set auth header with JWT
     const supabase = createClient(supabaseUrl, supabaseAnonKey, {
       global: {
         headers: {
@@ -264,15 +428,17 @@ serve(async (req) => {
     const allComments: RedditComment[] = [];
     const subredditStats: Record<string, { posts: number; comments: number }> = {};
 
-    // Process in batches of 3 (Pullpush is more lenient but let's be safe)
-    const batchSize = 3;
+    // Process in batches (smaller for RSS to avoid rate limiting)
+    const batchSize = source === 'rss' ? 2 : 3;
+    const delayBetweenBatches = source === 'rss' ? 1500 : 500;
+
     for (let i = 0; i < subreddits.length; i += batchSize) {
       const batch = subreddits.slice(i, i + batchSize);
       
       console.log(`Processing batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(subreddits.length/batchSize)}: ${batch.join(', ')}`);
       
       const batchResults = await Promise.all(
-        batch.map((sub: string) => scrapeSubredditPullpush(sub, timeRange as TimeRange, postsPerSubreddit))
+        batch.map((sub: string) => scrapeSubreddit(sub, timeRange as TimeRange, postsPerSubreddit))
       );
 
       for (let j = 0; j < batch.length; j++) {
@@ -284,9 +450,9 @@ serve(async (req) => {
         subredditStats[subreddit] = { posts: posts.length, comments: comments.length };
       }
 
-      // Small delay between batches
+      // Delay between batches to avoid rate limiting
       if (i + batchSize < subreddits.length) {
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, delayBetweenBatches));
       }
     }
 
@@ -295,13 +461,22 @@ serve(async (req) => {
     // Combine all data
     const allData = [...allPosts, ...allComments];
 
-    // Sort by engagement (upvotes)
+    // Sort by engagement (upvotes) - RSS posts won't have upvotes
     allPosts.sort((a, b) => b.upVotes - a.upVotes);
     allComments.sort((a, b) => b.upVotes - a.upVotes);
 
+    // Filter by time range for RSS posts (they come without timestamp filtering)
+    const cutoffTimestamp = getTimestampForRange(timeRange as TimeRange) * 1000;
+    const filteredPosts = allPosts.filter(p => new Date(p.createdAt).getTime() >= cutoffTimestamp);
+    const filteredComments = allComments.filter(c => new Date(c.createdAt).getTime() >= cutoffTimestamp);
+
+    console.log(`After time filtering: ${filteredPosts.length} posts, ${filteredComments.length} comments`);
+
     // Save to database if requested
     let dataSourceId = null;
-    if (saveToDb && allData.length > 0) {
+    const finalData = [...filteredPosts, ...filteredComments];
+    
+    if (saveToDb && finalData.length > 0) {
       const timeRangeLabel = {
         'day': 'Today',
         '3days': 'Past 3 Days',
@@ -317,14 +492,15 @@ serve(async (req) => {
           source_type: 'reddit_bulk',
           url: null,
           content: {
-            posts: allPosts,
-            comments: allComments,
+            posts: filteredPosts,
+            comments: filteredComments,
             subredditStats,
             timeRange,
+            dataSource: source,
             scrapedAt: new Date().toISOString(),
             totalSubreddits: subreddits.length
           },
-          item_count: allData.length
+          item_count: finalData.length
         })
         .select()
         .single();
@@ -342,14 +518,14 @@ serve(async (req) => {
         success: true,
         dataSourceId,
         summary: {
-          totalPosts: allPosts.length,
-          totalComments: allComments.length,
+          totalPosts: filteredPosts.length,
+          totalComments: filteredComments.length,
           subredditsScraped: Object.keys(subredditStats).filter(k => subredditStats[k].posts > 0 || subredditStats[k].comments > 0).length,
           timeRange,
+          dataSource: source,
           subredditStats
         },
-        // Return the data for immediate analysis
-        data: allData
+        data: finalData
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
