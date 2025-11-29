@@ -7,7 +7,7 @@ interface FloatingWindowProps {
 
 export function FloatingWindow({ children, header }: FloatingWindowProps) {
   return (
-    <div className="relative w-full max-w-4xl mx-auto">
+    <div className="relative w-full max-w-2xl mx-auto">
       {/* Window shadow/glow - subtle */}
       <div className="absolute -inset-1 bg-gradient-to-br from-primary/10 via-transparent to-accent/10 rounded-xl blur-xl opacity-30" />
       

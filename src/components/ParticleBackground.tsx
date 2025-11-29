@@ -1,25 +1,14 @@
 import { useEffect, useRef, useCallback } from 'react';
 
-interface NebulaParticle {
+interface MilkyWayStar {
   x: number;
   y: number;
-  baseX: number;
-  baseY: number;
-  angle: number;
-  radius: number;
-  angularVelocity: number;
-  radialDrift: number;
   size: number;
-  coreColor: string;
-  outerColor: string;
   alpha: number;
-  pulse: number;
-  pulseSpeed: number;
+  twinkleSpeed: number;
   twinklePhase: number;
-  trail: { x: number; y: number; alpha: number }[];
-  type: 'nebula' | 'star' | 'dust';
-  hasFlare: boolean;
-  depth: number; // 0 = far (slow parallax), 1 = close (fast parallax)
+  color: string;
+  colorTemp: number; // For realistic star distribution
 }
 
 interface BackgroundStar {
@@ -29,8 +18,22 @@ interface BackgroundStar {
   alpha: number;
   twinkleSpeed: number;
   twinklePhase: number;
-  depth: number;
   color: string;
+}
+
+interface DustLane {
+  points: { x: number; y: number }[];
+  width: number;
+  opacity: number;
+}
+
+interface NebulaPatch {
+  x: number;
+  y: number;
+  size: number;
+  color: string;
+  alpha: number;
+  rotation: number;
 }
 
 interface ShootingStar {
@@ -50,34 +53,46 @@ interface ParticleBackgroundProps {
   dataCount?: number;
 }
 
-// Nebula colors (vibrant for nebulae)
-const nebulaColors = [
-  { core: 'hsl(280, 70%, 60%)', outer: 'hsl(260, 50%, 30%)' },
-  { core: 'hsl(185, 70%, 50%)', outer: 'hsl(200, 50%, 25%)' },
-  { core: 'hsl(340, 70%, 55%)', outer: 'hsl(320, 40%, 25%)' },
-  { core: 'hsl(45, 80%, 55%)', outer: 'hsl(30, 60%, 30%)' },
-  { core: 'hsl(160, 65%, 50%)', outer: 'hsl(140, 40%, 25%)' },
+// Realistic stellar classification colors with weights
+// O/B (hot blue) → A (blue-white) → F (white) → G (yellow-white) → K (orange) → M (red)
+const stellarColors = [
+  { color: 'hsl(210, 100%, 92%)', weight: 0.03, name: 'O/B' },   // Hot blue - rare, very bright
+  { color: 'hsl(200, 80%, 90%)', weight: 0.07, name: 'A' },      // Blue-white
+  { color: 'hsl(45, 15%, 96%)', weight: 0.12, name: 'F' },       // White
+  { color: 'hsl(45, 35%, 88%)', weight: 0.20, name: 'G' },       // Yellow-white (Sun-like)
+  { color: 'hsl(30, 55%, 78%)', weight: 0.30, name: 'K' },       // Orange - most common
+  { color: 'hsl(15, 65%, 68%)', weight: 0.28, name: 'M' },       // Red - numerous but dim
 ];
 
-// Natural star color temperatures (realistic astronomy colors)
-const starTemperatureColors = [
-  { core: 'hsl(210, 80%, 95%)', outer: 'hsl(210, 60%, 70%)' },
-  { core: 'hsl(200, 50%, 90%)', outer: 'hsl(200, 40%, 65%)' },
-  { core: 'hsl(45, 10%, 98%)', outer: 'hsl(45, 8%, 80%)' },
-  { core: 'hsl(45, 30%, 92%)', outer: 'hsl(45, 25%, 75%)' },
-  { core: 'hsl(35, 60%, 80%)', outer: 'hsl(35, 50%, 60%)' },
-  { core: 'hsl(15, 70%, 70%)', outer: 'hsl(15, 60%, 50%)' },
+// Nebula colors for patches
+const nebulaPatchColors = [
+  'hsl(280, 60%, 50%)',  // Purple
+  'hsl(340, 50%, 45%)',  // Magenta/pink
+  'hsl(185, 60%, 40%)',  // Cyan
+  'hsl(200, 50%, 35%)',  // Blue
 ];
 
-// Background star colors (dim, natural)
+// Background star colors (scattered, dimmer)
 const bgStarColors = [
-  'hsl(210, 30%, 85%)',
-  'hsl(200, 20%, 80%)',
-  'hsl(45, 15%, 90%)',
-  'hsl(35, 25%, 75%)',
-  'hsl(15, 30%, 70%)',
-  'hsl(0, 0%, 85%)',
+  'hsl(210, 25%, 80%)',
+  'hsl(200, 20%, 75%)',
+  'hsl(45, 10%, 85%)',
+  'hsl(35, 20%, 70%)',
+  'hsl(0, 0%, 80%)',
 ];
+
+// Select star color based on weighted distribution
+const selectStarColor = (): { color: string; temp: number } => {
+  const rand = Math.random();
+  let cumulative = 0;
+  for (let i = 0; i < stellarColors.length; i++) {
+    cumulative += stellarColors[i].weight;
+    if (rand < cumulative) {
+      return { color: stellarColors[i].color, temp: i };
+    }
+  }
+  return { color: stellarColors[4].color, temp: 4 }; // Default to K-type
+};
 
 export function ParticleBackground({ 
   particleCount = 40, 
@@ -85,87 +100,142 @@ export function ParticleBackground({
   dataCount = 0 
 }: ParticleBackgroundProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const particlesRef = useRef<NebulaParticle[]>([]);
+  const milkyWayStarsRef = useRef<MilkyWayStar[]>([]);
   const backgroundStarsRef = useRef<BackgroundStar[]>([]);
+  const dustLanesRef = useRef<DustLane[]>([]);
+  const nebulaPatchesRef = useRef<NebulaPatch[]>([]);
   const shootingStarsRef = useRef<ShootingStar[]>([]);
   const mouseRef = useRef({ x: 0, y: 0 });
   const smoothMouseRef = useRef({ x: 0, y: 0 });
   const animationRef = useRef<number>();
-  const centerRef = useRef({ x: 0, y: 0 });
   const lastShootingStarRef = useRef(0);
 
-  // Create dense background starfield
+  // Create Milky Way stars concentrated in horizontal band
+  const createMilkyWayStars = useCallback((width: number, height: number): MilkyWayStar[] => {
+    const stars: MilkyWayStar[] = [];
+    const starCount = 800;
+    
+    // Galaxy band parameters
+    const bandCenterY = height * 0.45; // Slightly above center
+    const bandWidth = height * 0.28;   // Width of the dense band
+    
+    for (let i = 0; i < starCount; i++) {
+      // Gaussian-like distribution to concentrate stars in band
+      // Using Box-Muller transform approximation
+      const u1 = Math.random();
+      const u2 = Math.random();
+      const gaussianOffset = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+      const y = bandCenterY + gaussianOffset * bandWidth * 0.5;
+      
+      // Stars denser toward galactic center (horizontal middle)
+      const xBias = Math.random();
+      const centerBias = 0.6 + 0.4 * Math.pow(Math.sin(xBias * Math.PI), 0.5);
+      const x = xBias * width;
+      
+      // Distance from band center affects brightness
+      const distFromBand = Math.abs(y - bandCenterY) / bandWidth;
+      const bandAlphaMultiplier = 1 - Math.pow(distFromBand, 2) * 0.7;
+      
+      // Distance from horizontal center affects brightness (core is brighter)
+      const distFromCenterX = Math.abs(x - width / 2) / (width / 2);
+      const coreAlphaMultiplier = 1 - distFromCenterX * 0.3;
+      
+      const starColor = selectStarColor();
+      // Blue stars (low temp number) are brighter
+      const tempBrightness = starColor.temp < 2 ? 1.5 : (starColor.temp < 4 ? 1.0 : 0.7);
+      
+      stars.push({
+        x,
+        y: Math.max(0, Math.min(height, y)),
+        size: (Math.random() * 1.8 + 0.3) * (starColor.temp < 2 ? 1.4 : 1),
+        alpha: (Math.random() * 0.5 + 0.3) * bandAlphaMultiplier * coreAlphaMultiplier * tempBrightness,
+        twinkleSpeed: Math.random() * 0.015 + 0.005,
+        twinklePhase: Math.random() * Math.PI * 2,
+        color: starColor.color,
+        colorTemp: starColor.temp,
+      });
+    }
+    return stars;
+  }, []);
+
+  // Create scattered background stars (outside the main band)
   const createBackgroundStars = useCallback((width: number, height: number): BackgroundStar[] => {
     const stars: BackgroundStar[] = [];
-    const starCount = 300; // Dense starfield
+    const starCount = 200; // Fewer, scattered everywhere
     
     for (let i = 0; i < starCount; i++) {
       stars.push({
         x: Math.random() * width,
         y: Math.random() * height,
-        size: Math.random() * 1.2 + 0.3, // Tiny stars
-        alpha: Math.random() * 0.4 + 0.1,
-        twinkleSpeed: Math.random() * 0.02 + 0.005,
+        size: Math.random() * 0.9 + 0.2,
+        alpha: Math.random() * 0.25 + 0.05,
+        twinkleSpeed: Math.random() * 0.01 + 0.003,
         twinklePhase: Math.random() * Math.PI * 2,
-        depth: Math.random() * 0.3, // Far away (slow parallax)
         color: bgStarColors[Math.floor(Math.random() * bgStarColors.length)],
       });
     }
     return stars;
   }, []);
 
-  const createNebulaParticle = useCallback((width: number, height: number): NebulaParticle => {
-    const centerX = width / 2;
-    const centerY = height / 2;
-    const angle = Math.random() * Math.PI * 2;
-    // Increased spread to fill more of the screen
-    const maxRadius = Math.max(width, height) * 0.6;
-    const radius = Math.random() * maxRadius + 30;
+  // Create dark dust lanes that weave through the galaxy band
+  const createDustLanes = useCallback((width: number, height: number): DustLane[] => {
+    const lanes: DustLane[] = [];
+    const bandCenterY = height * 0.45;
+    const laneCount = 4;
     
-    const isNebula = Math.random() > 0.55;
-    const isStar = !isNebula && Math.random() > 0.4;
-    
-    const colorSet = isStar 
-      ? starTemperatureColors[Math.floor(Math.random() * starTemperatureColors.length)]
-      : nebulaColors[Math.floor(Math.random() * nebulaColors.length)];
-    
-    // Depth: nebulae are far (0.1-0.3), stars closer (0.4-0.8), dust mid (0.2-0.5)
-    const depth = isNebula 
-      ? Math.random() * 0.2 + 0.1 
-      : isStar 
-        ? Math.random() * 0.4 + 0.4 
-        : Math.random() * 0.3 + 0.2;
+    for (let i = 0; i < laneCount; i++) {
+      const points: { x: number; y: number }[] = [];
+      const baseY = bandCenterY + (i - laneCount / 2 + 0.5) * (height * 0.06);
+      const waveAmplitude = 20 + Math.random() * 30;
+      const waveFreq = 0.003 + Math.random() * 0.002;
+      const phase = Math.random() * Math.PI * 2;
+      
+      // Generate serpentine path across screen
+      for (let x = -100; x <= width + 100; x += 60) {
+        const waveY = Math.sin(x * waveFreq + phase) * waveAmplitude;
+        const secondaryWave = Math.sin(x * waveFreq * 2.5 + phase * 1.5) * waveAmplitude * 0.3;
+        points.push({
+          x,
+          y: baseY + waveY + secondaryWave
+        });
+      }
+      
+      lanes.push({
+        points,
+        width: 12 + Math.random() * 20,
+        opacity: 0.25 + Math.random() * 0.25
+      });
+    }
+    return lanes;
+  }, []);
 
-    const baseX = centerX + Math.cos(angle) * radius;
-    const baseY = centerY + Math.sin(angle) * radius;
+  // Create subtle nebula patches within the galaxy band
+  const createNebulae = useCallback((width: number, height: number): NebulaPatch[] => {
+    const patches: NebulaPatch[] = [];
+    const bandCenterY = height * 0.45;
+    const bandWidth = height * 0.3;
+    const patchCount = 8;
     
-    return {
-      x: baseX,
-      y: baseY,
-      baseX,
-      baseY,
-      angle,
-      radius,
-      angularVelocity: (0.0002 + Math.random() * 0.0006) * (Math.random() > 0.5 ? 1 : -1) * (1 - radius / maxRadius * 0.5),
-      radialDrift: (Math.random() - 0.5) * 0.03,
-      size: isNebula ? Math.random() * 70 + 30 : isStar ? Math.random() * 3 + 1.5 : Math.random() * 2 + 1,
-      coreColor: colorSet.core,
-      outerColor: colorSet.outer,
-      alpha: isNebula ? Math.random() * 0.2 + 0.08 : Math.random() * 0.5 + 0.25,
-      pulse: Math.random() * Math.PI * 2,
-      pulseSpeed: Math.random() * 0.02 + 0.008,
-      twinklePhase: Math.random() * Math.PI * 2,
-      trail: [],
-      type: isNebula ? 'nebula' : isStar ? 'star' : 'dust',
-      hasFlare: isNebula && Math.random() > 0.75,
-      depth,
-    };
+    for (let i = 0; i < patchCount; i++) {
+      const y = bandCenterY + (Math.random() - 0.5) * bandWidth;
+      const x = Math.random() * width;
+      
+      patches.push({
+        x,
+        y,
+        size: Math.random() * 50 + 25,
+        color: nebulaPatchColors[Math.floor(Math.random() * nebulaPatchColors.length)],
+        alpha: Math.random() * 0.12 + 0.04,
+        rotation: Math.random() * Math.PI * 2,
+      });
+    }
+    return patches;
   }, []);
 
   const createShootingStar = useCallback((width: number, height: number): ShootingStar => {
     const startEdge = Math.floor(Math.random() * 4);
     let x: number, y: number, vx: number, vy: number;
-    const speed = 8 + Math.random() * 6;
+    const speed = 7 + Math.random() * 5;
     
     switch (startEdge) {
       case 0:
@@ -196,9 +266,9 @@ export function ParticleBackground({
     return {
       x, y, vx, vy,
       life: 0,
-      maxLife: 80 + Math.random() * 40,
+      maxLife: 70 + Math.random() * 40,
       trail: [],
-      color: nebulaColors[Math.floor(Math.random() * nebulaColors.length)].core,
+      color: stellarColors[Math.floor(Math.random() * 3)].color,
     };
   }, []);
 
@@ -206,61 +276,104 @@ export function ParticleBackground({
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    centerRef.current = { x: canvas.width / 2, y: canvas.height / 2 };
-    const count = Math.min(particleCount + Math.floor(dataCount / 15), 90);
-    particlesRef.current = Array.from({ length: count }, () => 
-      createNebulaParticle(canvas.width, canvas.height)
-    );
+    milkyWayStarsRef.current = createMilkyWayStars(canvas.width, canvas.height);
     backgroundStarsRef.current = createBackgroundStars(canvas.width, canvas.height);
+    dustLanesRef.current = createDustLanes(canvas.width, canvas.height);
+    nebulaPatchesRef.current = createNebulae(canvas.width, canvas.height);
     shootingStarsRef.current = [];
-  }, [particleCount, dataCount, createNebulaParticle, createBackgroundStars]);
+  }, [createMilkyWayStars, createBackgroundStars, createDustLanes, createNebulae]);
 
-  const updateParticle = useCallback((particle: NebulaParticle, width: number, height: number, deltaTime: number) => {
-    const centerX = centerRef.current.x;
-    const centerY = centerRef.current.y;
-
-    particle.angle += particle.angularVelocity * deltaTime;
-    particle.radius += particle.radialDrift * deltaTime * 0.1;
+  // Draw galactic core glow
+  const drawGalacticCore = useCallback((ctx: CanvasRenderingContext2D, width: number, height: number, parallaxX: number, parallaxY: number) => {
+    const coreX = width * 0.5 + parallaxX * 20;
+    const coreY = height * 0.45 + parallaxY * 20;
     
-    const maxRadius = Math.max(width, height) * 0.6;
-    if (particle.radius > maxRadius) {
-      particle.radialDrift = -Math.abs(particle.radialDrift);
-    } else if (particle.radius < 30) {
-      particle.radialDrift = Math.abs(particle.radialDrift);
-    }
-
-    particle.baseX = centerX + Math.cos(particle.angle) * particle.radius;
-    particle.baseY = centerY + Math.sin(particle.angle) * particle.radius;
-
-    if (particle.type !== 'dust') {
-      particle.trail.unshift({ x: particle.x, y: particle.y, alpha: particle.alpha });
-      if (particle.trail.length > 8) particle.trail.pop();
-    }
-
-    particle.pulse += particle.pulseSpeed * deltaTime;
-    particle.twinklePhase += 0.05 * deltaTime;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    
+    // Outer warm glow
+    const outerGlow = ctx.createRadialGradient(
+      coreX, coreY, 0,
+      coreX, coreY, width * 0.35
+    );
+    outerGlow.addColorStop(0, 'hsla(40, 80%, 70%, 0.12)');
+    outerGlow.addColorStop(0.2, 'hsla(35, 70%, 60%, 0.08)');
+    outerGlow.addColorStop(0.5, 'hsla(30, 60%, 50%, 0.04)');
+    outerGlow.addColorStop(0.8, 'hsla(25, 50%, 40%, 0.01)');
+    outerGlow.addColorStop(1, 'transparent');
+    
+    ctx.fillStyle = outerGlow;
+    ctx.fillRect(0, 0, width, height);
+    
+    // Inner bright core
+    const innerGlow = ctx.createRadialGradient(
+      coreX, coreY, 0,
+      coreX, coreY, width * 0.15
+    );
+    innerGlow.addColorStop(0, 'hsla(45, 90%, 85%, 0.15)');
+    innerGlow.addColorStop(0.3, 'hsla(40, 80%, 70%, 0.08)');
+    innerGlow.addColorStop(0.7, 'hsla(35, 60%, 55%, 0.03)');
+    innerGlow.addColorStop(1, 'transparent');
+    
+    ctx.fillStyle = innerGlow;
+    ctx.fillRect(0, 0, width, height);
+    
+    ctx.restore();
   }, []);
 
-  // Draw background starfield with parallax
+  // Draw dark dust lanes
+  const drawDustLanes = useCallback((ctx: CanvasRenderingContext2D, parallaxX: number, parallaxY: number) => {
+    ctx.save();
+    ctx.globalCompositeOperation = 'multiply';
+    
+    dustLanesRef.current.forEach(lane => {
+      if (lane.points.length < 2) return;
+      
+      ctx.strokeStyle = `rgba(5, 5, 15, ${lane.opacity})`;
+      ctx.lineWidth = lane.width;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      
+      ctx.beginPath();
+      const offsetX = parallaxX * 15;
+      const offsetY = parallaxY * 15;
+      
+      ctx.moveTo(lane.points[0].x + offsetX, lane.points[0].y + offsetY);
+      
+      for (let i = 1; i < lane.points.length - 1; i++) {
+        const p0 = lane.points[i - 1];
+        const p1 = lane.points[i];
+        const midX = (p0.x + p1.x) / 2 + offsetX;
+        const midY = (p0.y + p1.y) / 2 + offsetY;
+        ctx.quadraticCurveTo(p0.x + offsetX, p0.y + offsetY, midX, midY);
+      }
+      
+      const last = lane.points[lane.points.length - 1];
+      ctx.lineTo(last.x + offsetX, last.y + offsetY);
+      ctx.stroke();
+    });
+    
+    ctx.restore();
+  }, []);
+
+  // Draw scattered background stars
   const drawBackgroundStars = useCallback((ctx: CanvasRenderingContext2D, time: number, parallaxX: number, parallaxY: number) => {
     backgroundStarsRef.current.forEach(star => {
       star.twinklePhase += star.twinkleSpeed;
       const twinkle = Math.sin(star.twinklePhase) * 0.3 + 0.7;
       const alpha = star.alpha * twinkle;
       
-      // Parallax offset based on depth
-      const offsetX = parallaxX * star.depth * 15;
-      const offsetY = parallaxY * star.depth * 15;
+      const offsetX = parallaxX * 8;
+      const offsetY = parallaxY * 8;
       const x = star.x + offsetX;
       const y = star.y + offsetY;
       
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
       
-      // Simple point star with subtle glow
       const gradient = ctx.createRadialGradient(x, y, 0, x, y, star.size * 2);
       gradient.addColorStop(0, star.color.replace(')', `, ${alpha})`).replace('hsl', 'hsla'));
-      gradient.addColorStop(0.5, star.color.replace(')', `, ${alpha * 0.3})`).replace('hsl', 'hsla'));
+      gradient.addColorStop(0.6, star.color.replace(')', `, ${alpha * 0.2})`).replace('hsl', 'hsla'));
       gradient.addColorStop(1, 'transparent');
       
       ctx.fillStyle = gradient;
@@ -272,174 +385,76 @@ export function ParticleBackground({
     });
   }, []);
 
-  const drawNebulaCloud = useCallback((ctx: CanvasRenderingContext2D, particle: NebulaParticle, parallaxX: number, parallaxY: number) => {
-    const pulseAlpha = particle.alpha + Math.sin(particle.pulse) * 0.08;
-    const pulseSize = particle.size + Math.sin(particle.pulse * 0.5) * particle.size * 0.15;
-    const twinkle = Math.sin(particle.twinklePhase) * 0.5 + 0.5;
+  // Draw Milky Way band stars
+  const drawMilkyWayStars = useCallback((ctx: CanvasRenderingContext2D, time: number, parallaxX: number, parallaxY: number) => {
+    milkyWayStarsRef.current.forEach(star => {
+      star.twinklePhase += star.twinkleSpeed;
+      const twinkle = Math.sin(star.twinklePhase) * 0.25 + 0.75;
+      const alpha = star.alpha * twinkle;
+      
+      const offsetX = parallaxX * 25;
+      const offsetY = parallaxY * 25;
+      const x = star.x + offsetX;
+      const y = star.y + offsetY;
+      
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      
+      // Draw glow for brighter stars (hot blue and white)
+      if (star.colorTemp < 3 && star.alpha > 0.4) {
+        const glowGradient = ctx.createRadialGradient(x, y, 0, x, y, star.size * 4);
+        glowGradient.addColorStop(0, star.color.replace(')', `, ${alpha * 0.5})`).replace('hsl', 'hsla'));
+        glowGradient.addColorStop(0.4, star.color.replace(')', `, ${alpha * 0.15})`).replace('hsl', 'hsla'));
+        glowGradient.addColorStop(1, 'transparent');
+        
+        ctx.fillStyle = glowGradient;
+        ctx.beginPath();
+        ctx.arc(x, y, star.size * 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      
+      // Core point
+      const coreGradient = ctx.createRadialGradient(x, y, 0, x, y, star.size * 1.5);
+      coreGradient.addColorStop(0, star.color.replace(')', `, ${alpha})`).replace('hsl', 'hsla'));
+      coreGradient.addColorStop(0.5, star.color.replace(')', `, ${alpha * 0.4})`).replace('hsl', 'hsla'));
+      coreGradient.addColorStop(1, 'transparent');
+      
+      ctx.fillStyle = coreGradient;
+      ctx.beginPath();
+      ctx.arc(x, y, star.size * 1.5, 0, Math.PI * 2);
+      ctx.fill();
+      
+      ctx.restore();
+    });
+  }, []);
 
-    // Apply parallax based on depth
-    const offsetX = parallaxX * particle.depth * 40;
-    const offsetY = parallaxY * particle.depth * 40;
-    const x = particle.baseX + offsetX;
-    const y = particle.baseY + offsetY;
-    particle.x = x;
-    particle.y = y;
-
+  // Draw nebula patches
+  const drawNebulae = useCallback((ctx: CanvasRenderingContext2D, parallaxX: number, parallaxY: number) => {
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
-
-    // Draw trail
-    particle.trail.forEach((point, i) => {
-      const trailAlpha = (1 - i / particle.trail.length) * pulseAlpha * 0.3;
-      const trailSize = pulseSize * (1 - i / particle.trail.length * 0.5);
+    
+    nebulaPatchesRef.current.forEach(patch => {
+      const offsetX = parallaxX * 18;
+      const offsetY = parallaxY * 18;
+      const x = patch.x + offsetX;
+      const y = patch.y + offsetY;
       
-      const trailGradient = ctx.createRadialGradient(point.x, point.y, 0, point.x, point.y, trailSize);
-      trailGradient.addColorStop(0, particle.outerColor.replace(')', `, ${trailAlpha * 0.3})`).replace('hsl', 'hsla'));
-      trailGradient.addColorStop(1, 'transparent');
+      const gradient = ctx.createRadialGradient(x, y, 0, x, y, patch.size);
+      gradient.addColorStop(0, patch.color.replace(')', `, ${patch.alpha})`).replace('hsl', 'hsla'));
+      gradient.addColorStop(0.4, patch.color.replace(')', `, ${patch.alpha * 0.4})`).replace('hsl', 'hsla'));
+      gradient.addColorStop(0.7, patch.color.replace(')', `, ${patch.alpha * 0.1})`).replace('hsl', 'hsla'));
+      gradient.addColorStop(1, 'transparent');
       
-      ctx.fillStyle = trailGradient;
+      ctx.fillStyle = gradient;
       ctx.beginPath();
-      ctx.arc(point.x, point.y, trailSize, 0, Math.PI * 2);
+      ctx.arc(x, y, patch.size, 0, Math.PI * 2);
       ctx.fill();
     });
-
-    // Outer nebula glow
-    const outerGradient = ctx.createRadialGradient(x, y, 0, x, y, pulseSize * 1.5);
-    outerGradient.addColorStop(0, particle.outerColor.replace(')', `, ${pulseAlpha * 0.4})`).replace('hsl', 'hsla'));
-    outerGradient.addColorStop(0.5, particle.outerColor.replace(')', `, ${pulseAlpha * 0.2})`).replace('hsl', 'hsla'));
-    outerGradient.addColorStop(1, 'transparent');
-
-    ctx.fillStyle = outerGradient;
-    ctx.beginPath();
-    ctx.arc(x, y, pulseSize * 1.5, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Core nebula
-    const coreGradient = ctx.createRadialGradient(x, y, 0, x, y, pulseSize);
-    coreGradient.addColorStop(0, particle.coreColor.replace(')', `, ${pulseAlpha * 0.6 * twinkle})`).replace('hsl', 'hsla'));
-    coreGradient.addColorStop(0.4, particle.coreColor.replace(')', `, ${pulseAlpha * 0.3})`).replace('hsl', 'hsla'));
-    coreGradient.addColorStop(1, 'transparent');
-
-    ctx.fillStyle = coreGradient;
-    ctx.beginPath();
-    ctx.arc(x, y, pulseSize, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Lens flare
-    if (particle.hasFlare && twinkle > 0.7) {
-      drawLensFlare(ctx, x, y, pulseSize * 0.3, particle.coreColor, twinkle);
-    }
-
+    
     ctx.restore();
   }, []);
 
-  const drawStar = useCallback((ctx: CanvasRenderingContext2D, particle: NebulaParticle, parallaxX: number, parallaxY: number) => {
-    const twinkle = Math.sin(particle.twinklePhase * 2) * 0.3 + 0.7;
-    const size = particle.size * twinkle;
-    const alpha = particle.alpha * twinkle;
-
-    // Apply parallax - stars move more (higher depth)
-    const offsetX = parallaxX * particle.depth * 40;
-    const offsetY = parallaxY * particle.depth * 40;
-    const x = particle.baseX + offsetX;
-    const y = particle.baseY + offsetY;
-    particle.x = x;
-    particle.y = y;
-
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-
-    // Soft outer glow
-    const outerGlow = ctx.createRadialGradient(x, y, 0, x, y, size * 2);
-    outerGlow.addColorStop(0, particle.outerColor.replace(')', `, ${alpha * 0.6})`).replace('hsl', 'hsla'));
-    outerGlow.addColorStop(0.5, particle.outerColor.replace(')', `, ${alpha * 0.2})`).replace('hsl', 'hsla'));
-    outerGlow.addColorStop(1, 'transparent');
-
-    ctx.fillStyle = outerGlow;
-    ctx.beginPath();
-    ctx.arc(x, y, size * 2, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Core
-    const coreGradient = ctx.createRadialGradient(x, y, 0, x, y, size * 0.8);
-    coreGradient.addColorStop(0, particle.coreColor.replace(')', `, ${alpha * 0.9})`).replace('hsl', 'hsla'));
-    coreGradient.addColorStop(0.6, particle.coreColor.replace(')', `, ${alpha * 0.4})`).replace('hsl', 'hsla'));
-    coreGradient.addColorStop(1, 'transparent');
-
-    ctx.fillStyle = coreGradient;
-    ctx.beginPath();
-    ctx.arc(x, y, size * 0.8, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.restore();
-  }, []);
-
-  const drawDust = useCallback((ctx: CanvasRenderingContext2D, particle: NebulaParticle, parallaxX: number, parallaxY: number) => {
-    const alpha = particle.alpha * (0.5 + Math.sin(particle.pulse) * 0.3);
-    
-    const offsetX = parallaxX * particle.depth * 40;
-    const offsetY = parallaxY * particle.depth * 40;
-    const x = particle.baseX + offsetX;
-    const y = particle.baseY + offsetY;
-    particle.x = x;
-    particle.y = y;
-    
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.fillStyle = particle.coreColor.replace(')', `, ${alpha * 0.5})`).replace('hsl', 'hsla');
-    ctx.beginPath();
-    ctx.arc(x, y, particle.size, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  }, []);
-
-  const drawLensFlare = (ctx: CanvasRenderingContext2D, x: number, y: number, size: number, color: string, intensity: number) => {
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    
-    const flareLength = size * 2.5 * intensity;
-    const flareWidth = size * 0.15;
-    
-    ctx.strokeStyle = color.replace(')', `, ${0.12 * intensity})`).replace('hsl', 'hsla');
-    ctx.lineWidth = flareWidth;
-    ctx.lineCap = 'round';
-
-    ctx.beginPath();
-    ctx.moveTo(x - flareLength, y);
-    ctx.lineTo(x + flareLength, y);
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.moveTo(x, y - flareLength);
-    ctx.lineTo(x, y + flareLength);
-    ctx.stroke();
-
-    ctx.strokeStyle = color.replace(')', `, ${0.06 * intensity})`).replace('hsl', 'hsla');
-    ctx.lineWidth = flareWidth * 0.4;
-
-    ctx.beginPath();
-    ctx.moveTo(x - flareLength * 0.5, y - flareLength * 0.5);
-    ctx.lineTo(x + flareLength * 0.5, y + flareLength * 0.5);
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.moveTo(x + flareLength * 0.5, y - flareLength * 0.5);
-    ctx.lineTo(x - flareLength * 0.5, y + flareLength * 0.5);
-    ctx.stroke();
-
-    const pointGradient = ctx.createRadialGradient(x, y, 0, x, y, size * 0.8);
-    pointGradient.addColorStop(0, `hsla(0, 0%, 100%, ${0.5 * intensity})`);
-    pointGradient.addColorStop(0.4, color.replace(')', `, ${0.2 * intensity})`).replace('hsl', 'hsla'));
-    pointGradient.addColorStop(1, 'transparent');
-    
-    ctx.fillStyle = pointGradient;
-    ctx.beginPath();
-    ctx.arc(x, y, size * 0.8, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.restore();
-  };
-
+  // Draw shooting stars
   const drawShootingStar = useCallback((ctx: CanvasRenderingContext2D, star: ShootingStar) => {
     const lifeRatio = star.life / star.maxLife;
     const fadeIn = Math.min(star.life / 10, 1);
@@ -449,13 +464,14 @@ export function ParticleBackground({
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
 
+    // Trail
     star.trail.forEach((point, i) => {
-      const trailAlpha = (1 - i / star.trail.length) * alpha * 0.6;
-      const trailSize = 3 * (1 - i / star.trail.length);
+      const trailAlpha = (1 - i / star.trail.length) * alpha * 0.5;
+      const trailSize = 2.5 * (1 - i / star.trail.length);
       
       const gradient = ctx.createRadialGradient(point.x, point.y, 0, point.x, point.y, trailSize * 3);
       gradient.addColorStop(0, `hsla(0, 0%, 100%, ${trailAlpha})`);
-      gradient.addColorStop(0.3, star.color.replace(')', `, ${trailAlpha * 0.6})`).replace('hsl', 'hsla'));
+      gradient.addColorStop(0.4, star.color.replace(')', `, ${trailAlpha * 0.5})`).replace('hsl', 'hsla'));
       gradient.addColorStop(1, 'transparent');
 
       ctx.fillStyle = gradient;
@@ -464,60 +480,15 @@ export function ParticleBackground({
       ctx.fill();
     });
 
-    const headGradient = ctx.createRadialGradient(star.x, star.y, 0, star.x, star.y, 8);
+    // Head
+    const headGradient = ctx.createRadialGradient(star.x, star.y, 0, star.x, star.y, 6);
     headGradient.addColorStop(0, `hsla(0, 0%, 100%, ${alpha})`);
-    headGradient.addColorStop(0.3, star.color.replace(')', `, ${alpha * 0.8})`).replace('hsl', 'hsla'));
+    headGradient.addColorStop(0.4, star.color.replace(')', `, ${alpha * 0.7})`).replace('hsl', 'hsla'));
     headGradient.addColorStop(1, 'transparent');
 
     ctx.fillStyle = headGradient;
     ctx.beginPath();
-    ctx.arc(star.x, star.y, 8, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.restore();
-  }, []);
-
-  const drawGravitationalThread = useCallback((ctx: CanvasRenderingContext2D, p1: NebulaParticle, p2: NebulaParticle, dist: number, time: number) => {
-    const maxDist = 180;
-    const alpha = (1 - dist / maxDist) * 0.25;
-    
-    const larger = p1.size > p2.size ? p1 : p2;
-    const smaller = p1.size > p2.size ? p2 : p1;
-
-    const midX = (p1.x + p2.x) / 2;
-    const midY = (p1.y + p2.y) / 2;
-    const pullStrength = 0.3;
-    const ctrlX = midX + (larger.x - midX) * pullStrength;
-    const ctrlY = midY + (larger.y - midY) * pullStrength;
-
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-
-    const gradient = ctx.createLinearGradient(smaller.x, smaller.y, larger.x, larger.y);
-    gradient.addColorStop(0, smaller.coreColor.replace(')', `, ${alpha * 0.5})`).replace('hsl', 'hsla'));
-    gradient.addColorStop(0.5, `hsla(185, 70%, 50%, ${alpha})`);
-    gradient.addColorStop(1, larger.coreColor.replace(')', `, ${alpha * 0.8})`).replace('hsl', 'hsla'));
-
-    ctx.strokeStyle = gradient;
-    ctx.lineWidth = 0.5 + (1 - dist / maxDist) * 1.5;
-    ctx.lineCap = 'round';
-    
-    ctx.beginPath();
-    ctx.moveTo(p1.x, p1.y);
-    ctx.quadraticCurveTo(ctrlX, ctrlY, p2.x, p2.y);
-    ctx.stroke();
-
-    const pulsePos = (Math.sin(time * 0.003 + dist * 0.01) + 1) / 2;
-    const pulseX = p1.x + (p2.x - p1.x) * pulsePos;
-    const pulseY = p1.y + (p2.y - p1.y) * pulsePos;
-    
-    const pulseGradient = ctx.createRadialGradient(pulseX, pulseY, 0, pulseX, pulseY, 4);
-    pulseGradient.addColorStop(0, `hsla(185, 70%, 70%, ${alpha * 1.5})`);
-    pulseGradient.addColorStop(1, 'transparent');
-    
-    ctx.fillStyle = pulseGradient;
-    ctx.beginPath();
-    ctx.arc(pulseX, pulseY, 4, 0, Math.PI * 2);
+    ctx.arc(star.x, star.y, 6, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.restore();
@@ -526,13 +497,14 @@ export function ParticleBackground({
   // Draw vignette overlay
   const drawVignette = useCallback((ctx: CanvasRenderingContext2D, width: number, height: number) => {
     const gradient = ctx.createRadialGradient(
-      width / 2, height / 2, Math.min(width, height) * 0.2,
-      width / 2, height / 2, Math.max(width, height) * 0.8
+      width / 2, height / 2, Math.min(width, height) * 0.15,
+      width / 2, height / 2, Math.max(width, height) * 0.85
     );
     gradient.addColorStop(0, 'transparent');
-    gradient.addColorStop(0.5, 'transparent');
-    gradient.addColorStop(0.8, 'rgba(0, 0, 0, 0.3)');
-    gradient.addColorStop(1, 'rgba(0, 0, 0, 0.7)');
+    gradient.addColorStop(0.4, 'transparent');
+    gradient.addColorStop(0.7, 'rgba(0, 0, 0, 0.2)');
+    gradient.addColorStop(0.9, 'rgba(0, 0, 0, 0.5)');
+    gradient.addColorStop(1, 'rgba(0, 0, 0, 0.75)');
     
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, width, height);
@@ -543,21 +515,21 @@ export function ParticleBackground({
     const ctx = canvas?.getContext('2d');
     if (!canvas || !ctx) return;
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // Clear with deep space black
+    ctx.fillStyle = 'hsl(230, 30%, 3%)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     // Smooth mouse tracking for parallax
-    smoothMouseRef.current.x += (mouseRef.current.x - smoothMouseRef.current.x) * 0.05;
-    smoothMouseRef.current.y += (mouseRef.current.y - smoothMouseRef.current.y) * 0.05;
+    smoothMouseRef.current.x += (mouseRef.current.x - smoothMouseRef.current.x) * 0.04;
+    smoothMouseRef.current.y += (mouseRef.current.y - smoothMouseRef.current.y) * 0.04;
     
     // Calculate parallax offset from center
     const parallaxX = (smoothMouseRef.current.x - canvas.width / 2) / canvas.width;
     const parallaxY = (smoothMouseRef.current.y - canvas.height / 2) / canvas.height;
 
-    const deltaTime = 1;
-
     // Spawn shooting stars
     const now = Date.now();
-    if (now - lastShootingStarRef.current > 3000 + Math.random() * 5000) {
+    if (now - lastShootingStarRef.current > 4000 + Math.random() * 6000) {
       shootingStarsRef.current.push(createShootingStar(canvas.width, canvas.height));
       lastShootingStarRef.current = now;
     }
@@ -565,7 +537,7 @@ export function ParticleBackground({
     // Update shooting stars
     shootingStarsRef.current = shootingStarsRef.current.filter(star => {
       star.trail.unshift({ x: star.x, y: star.y, alpha: 1 });
-      if (star.trail.length > 15) star.trail.pop();
+      if (star.trail.length > 12) star.trail.pop();
       
       star.x += star.vx;
       star.y += star.vy;
@@ -576,50 +548,33 @@ export function ParticleBackground({
              star.y > -50 && star.y < canvas.height + 50;
     });
 
-    // Draw background starfield first (furthest layer)
+    // DRAW ORDER (back to front):
+    
+    // 1. Galactic core glow (furthest back)
+    drawGalacticCore(ctx, canvas.width, canvas.height, parallaxX, parallaxY);
+    
+    // 2. Scattered background stars (outside main band)
     drawBackgroundStars(ctx, time, parallaxX, parallaxY);
-
-    // Draw gravitational threads
-    const nebulaParticles = particlesRef.current.filter(p => p.type === 'nebula');
-    nebulaParticles.forEach((p1, i) => {
-      nebulaParticles.slice(i + 1).forEach(p2 => {
-        const dx = p1.x - p2.x;
-        const dy = p1.y - p2.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-
-        if (dist < 180) {
-          drawGravitationalThread(ctx, p1, p2, dist, time);
-        }
-      });
-    });
-
-    // Update and draw particles with parallax
-    particlesRef.current.forEach(particle => {
-      updateParticle(particle, canvas.width, canvas.height, deltaTime);
-
-      switch (particle.type) {
-        case 'nebula':
-          drawNebulaCloud(ctx, particle, parallaxX, parallaxY);
-          break;
-        case 'star':
-          drawStar(ctx, particle, parallaxX, parallaxY);
-          break;
-        case 'dust':
-          drawDust(ctx, particle, parallaxX, parallaxY);
-          break;
-      }
-    });
-
-    // Draw shooting stars on top
+    
+    // 3. Dark dust lanes (weaving through band)
+    drawDustLanes(ctx, parallaxX, parallaxY);
+    
+    // 4. Milky Way band stars (main feature)
+    drawMilkyWayStars(ctx, time, parallaxX, parallaxY);
+    
+    // 5. Nebula patches (colorful emission nebulae)
+    drawNebulae(ctx, parallaxX, parallaxY);
+    
+    // 6. Shooting stars (foreground)
     shootingStarsRef.current.forEach(star => {
       drawShootingStar(ctx, star);
     });
-
-    // Draw vignette overlay (on top of everything)
+    
+    // 7. Vignette (top layer)
     drawVignette(ctx, canvas.width, canvas.height);
 
     animationRef.current = requestAnimationFrame(draw);
-  }, [updateParticle, drawBackgroundStars, drawNebulaCloud, drawStar, drawDust, drawShootingStar, drawGravitationalThread, createShootingStar, drawVignette]);
+  }, [drawGalacticCore, drawBackgroundStars, drawDustLanes, drawMilkyWayStars, drawNebulae, drawShootingStar, drawVignette, createShootingStar]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -628,7 +583,6 @@ export function ParticleBackground({
     const handleResize = () => {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
-      centerRef.current = { x: canvas.width / 2, y: canvas.height / 2 };
       initParticles();
     };
 
@@ -665,7 +619,7 @@ export function ParticleBackground({
     <canvas
       ref={canvasRef}
       className="fixed inset-0 pointer-events-none z-0"
-      style={{ opacity: 0.9 }}
+      style={{ opacity: 1 }}
     />
   );
 }
