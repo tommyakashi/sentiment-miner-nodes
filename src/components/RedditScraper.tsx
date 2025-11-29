@@ -218,7 +218,7 @@ export function RedditScraper({ onDataScraped }: RedditScraperProps) {
         {/* Fast Mode Toggle */}
         <div className="flex items-center gap-2">
           <Clock className="w-4 h-4 text-muted-foreground" />
-          <span className="text-sm text-muted-foreground">Fast</span>
+          <span className="text-sm text-muted-foreground">{fastMode ? 'Fast' : 'Full'}</span>
           <Switch
             checked={fastMode}
             onCheckedChange={(checked) => {
