@@ -240,7 +240,7 @@
 
   .gradient-shift {
     background-size: 200% 200%;
-    animation: gradient-shift 3s ease infinite;
+    animation: gradient-shift 18s ease infinite;
   }
 
   .gradient-rotate {
