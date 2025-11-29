@@ -127,18 +127,12 @@ export function ParticleBackground({
       const gaussianOffset = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
       const y = bandCenterY + gaussianOffset * bandWidth * 0.5;
       
-      // Stars denser toward galactic center (horizontal middle)
-      const xBias = Math.random();
-      const centerBias = 0.6 + 0.4 * Math.pow(Math.sin(xBias * Math.PI), 0.5);
-      const x = xBias * width;
+      // Spread stars evenly across full width (not biased to center since window blocks it)
+      const x = Math.random() * width;
       
       // Distance from band center affects brightness
       const distFromBand = Math.abs(y - bandCenterY) / bandWidth;
-      const bandAlphaMultiplier = 1 - Math.pow(distFromBand, 2) * 0.7;
-      
-      // Distance from horizontal center affects brightness (core is brighter)
-      const distFromCenterX = Math.abs(x - width / 2) / (width / 2);
-      const coreAlphaMultiplier = 1 - distFromCenterX * 0.3;
+      const bandAlphaMultiplier = 1 - Math.pow(distFromBand, 2) * 0.5;
       
       const starColor = selectStarColor();
       // Blue stars (low temp number) are brighter
@@ -147,8 +141,8 @@ export function ParticleBackground({
       stars.push({
         x,
         y: Math.max(0, Math.min(height, y)),
-        size: (Math.random() * 1.8 + 0.3) * (starColor.temp < 2 ? 1.4 : 1),
-        alpha: (Math.random() * 0.5 + 0.3) * bandAlphaMultiplier * coreAlphaMultiplier * tempBrightness,
+        size: (Math.random() * 2.5 + 0.5) * (starColor.temp < 2 ? 1.6 : 1),
+        alpha: (Math.random() * 0.6 + 0.4) * bandAlphaMultiplier * tempBrightness,
         twinkleSpeed: Math.random() * 0.015 + 0.005,
         twinklePhase: Math.random() * Math.PI * 2,
         color: starColor.color,
