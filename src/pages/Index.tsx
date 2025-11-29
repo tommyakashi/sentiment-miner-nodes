@@ -42,7 +42,9 @@ const Index = () => {
   const [overallSentiment, setOverallSentiment] = useState<number>(0);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [showWindow, setShowWindow] = useState(true);
+  const [isWindowHiding, setIsWindowHiding] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [currentStep, setCurrentStep] = useState(1);
   const [analysisStatus, setAnalysisStatus] = useState<string>('');
   const [sources, setSources] = useState<Array<{ name: string; value: number }>>([]);
   const [stagedContent, setStagedContent] = useState<any[]>([]);
@@ -50,6 +52,8 @@ const Index = () => {
   const [modelsPreloaded, setModelsPreloaded] = useState(false);
   const [scrapedPosts, setScrapedPosts] = useState<RedditPost[]>([]);
   const { toast } = useToast();
+  
+  const TOTAL_STEPS = 5;
 
   // Check auth status
   useEffect(() => {
@@ -145,14 +149,27 @@ const Index = () => {
       return;
     }
 
-    setIsAnalyzing(true);
-    setShowWindow(false);
+    // Step 1: Initializing - fade out window
+    setCurrentStep(1);
+    setIsWindowHiding(true);
     setProgress(0);
+    setAnalysisStatus('Initializing...');
+    
+    // Wait for fade-out animation
+    await new Promise(resolve => setTimeout(resolve, 300));
+    setShowWindow(false);
+    setIsWindowHiding(false);
+    setIsAnalyzing(true);
 
     try {
       let textsToAnalyze: string[] = [];
       let rawData: RedditData[] = [];
       let participantsList: any[] = [];
+
+      // Step 2: Loading models
+      setCurrentStep(2);
+      setAnalysisStatus('Loading AI models...');
+      setProgress(10);
 
       rawData = stagedContent as RedditData[];
       
@@ -179,13 +196,24 @@ const Index = () => {
         setSources([{ name: 'Text/Other', value: textsToAnalyze.length }]);
       }
 
-      setAnalysisStatus('Analyzing sentiment...');
+      // Step 3: Processing embeddings
+      setCurrentStep(3);
+      setAnalysisStatus('Processing embeddings...');
+      setProgress(20);
+
+      // Step 4: Analyzing sentiment
+      setCurrentStep(4);
       const analysisResults = await performSentimentAnalysis(
         textsToAnalyze, 
         nodes,
-        (progress) => setProgress(progress),
+        (progress) => setProgress(20 + progress * 0.6),
         (status) => setAnalysisStatus(status)
       );
+
+      // Step 5: Aggregating results
+      setCurrentStep(5);
+      setAnalysisStatus('Aggregating results...');
+      setProgress(85);
 
       if (rawData.length > 0) {
         try {
@@ -225,6 +253,7 @@ const Index = () => {
         setParticipants(participantsWithSentiment);
       }
 
+      setProgress(100);
       setResults(analysisResults);
       setOverallSentiment(avgSentiment * 100);
       setNodeAnalysis(nodeAnalysisData);
@@ -246,6 +275,7 @@ const Index = () => {
       setShowWindow(true);
       setActiveTab('analysis');
       setProgress(0);
+      setCurrentStep(1);
       setAnalysisStatus('');
     }
   };
@@ -434,11 +464,17 @@ const Index = () => {
         isVisible={isAnalyzing && !showWindow}
         progress={progress}
         status={analysisStatus}
+        currentStep={currentStep}
+        totalSteps={TOTAL_STEPS}
       />
       
-      {/* Floating Window - conditionally visible */}
-      {showWindow && (
-        <div className="relative z-10 w-full animate-fade-in">
+      {/* Floating Window - with fade animations */}
+      {(showWindow || isWindowHiding) && (
+        <div className={`relative z-10 w-full transition-all duration-300 ${
+          isWindowHiding 
+            ? 'opacity-0 scale-95' 
+            : 'opacity-100 scale-100 animate-fade-in'
+        }`}>
           <FloatingWindow
             header={
               <WindowTabs 
