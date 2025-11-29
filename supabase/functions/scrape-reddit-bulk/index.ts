@@ -26,6 +26,7 @@ const DEFAULT_SUBREDDITS = [
 ];
 
 type TimeRange = 'day' | 'week' | 'month' | '3days';
+type SortMode = 'top' | 'hot' | 'rising';
 
 interface RedditPost {
   id: string;
@@ -111,18 +112,6 @@ function getRedditTimeParam(timeRange: TimeRange): string {
   }
 }
 
-// Rotating user agents for better success rate
-const USER_AGENTS = [
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15',
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
-  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-];
-
-function getRandomUserAgent(): string {
-  return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
-}
-
 function decodeHTMLEntities(text: string): string {
   return text
     .replace(/&amp;/g, '&')
@@ -133,10 +122,208 @@ function decodeHTMLEntities(text: string): string {
     .replace(/&apos;/g, "'");
 }
 
-// PRIMARY: Reddit JSON endpoint - has full engagement data
+// Cache for Reddit OAuth token
+let cachedToken: { token: string; expiresAt: number } | null = null;
+
+// Get Reddit OAuth access token using client credentials
+async function getRedditAccessToken(): Promise<string | null> {
+  // Check if we have a valid cached token
+  if (cachedToken && Date.now() < cachedToken.expiresAt) {
+    return cachedToken.token;
+  }
+
+  const clientId = Deno.env.get('REDDIT_CLIENT_ID');
+  const clientSecret = Deno.env.get('REDDIT_CLIENT_SECRET');
+
+  if (!clientId || !clientSecret) {
+    console.log('[OAuth] Missing REDDIT_CLIENT_ID or REDDIT_CLIENT_SECRET');
+    return null;
+  }
+
+  try {
+    const auth = btoa(`${clientId}:${clientSecret}`);
+    
+    const response = await fetch('https://www.reddit.com/api/v1/access_token', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${auth}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': 'ResearchSentimentTracker/1.0 (by /u/research_tracker)'
+      },
+      body: 'grant_type=client_credentials'
+    });
+
+    if (!response.ok) {
+      console.log(`[OAuth] Token request failed: ${response.status}`);
+      return null;
+    }
+
+    const data = await response.json();
+    
+    if (data.access_token) {
+      // Cache token with 5 minute buffer before expiry
+      cachedToken = {
+        token: data.access_token,
+        expiresAt: Date.now() + ((data.expires_in - 300) * 1000)
+      };
+      console.log('[OAuth] Token obtained successfully');
+      return data.access_token;
+    }
+
+    return null;
+  } catch (error) {
+    console.log(`[OAuth] Error getting token: ${error}`);
+    return null;
+  }
+}
+
+// PRIMARY: Reddit OAuth API - has full engagement data and proper sorting
+async function scrapeViaRedditOAuth(
+  subreddit: string,
+  timeRange: TimeRange,
+  sortMode: SortMode,
+  limit: number = 25
+): Promise<{ posts: RedditPost[]; comments: RedditComment[]; method: string }> {
+  const posts: RedditPost[] = [];
+  const comments: RedditComment[] = [];
+  const scrapedAt = new Date().toISOString();
+  const redditTime = getRedditTimeParam(timeRange);
+
+  const accessToken = await getRedditAccessToken();
+  
+  if (!accessToken) {
+    console.log(`[OAuth] No token available for r/${subreddit}`);
+    return { posts, comments, method: 'oauth_no_token' };
+  }
+
+  try {
+    // Build URL based on sort mode
+    // For 'top', we need the time parameter. For 'hot' and 'rising', no time param needed
+    let url = `https://oauth.reddit.com/r/${subreddit}/${sortMode}?limit=${limit}&raw_json=1`;
+    if (sortMode === 'top') {
+      url += `&t=${redditTime}`;
+    }
+    
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'User-Agent': 'ResearchSentimentTracker/1.0 (by /u/research_tracker)'
+      }
+    });
+
+    if (!response.ok) {
+      console.log(`[OAuth] Failed r/${subreddit}: ${response.status}`);
+      return { posts, comments, method: 'oauth_failed' };
+    }
+
+    const data = await response.json();
+    const children = data?.data?.children || [];
+
+    for (const child of children) {
+      if (child.kind !== 't3') continue;
+      const p = child.data;
+      
+      if (p.author === '[deleted]' || p.removed_by_category) continue;
+
+      posts.push({
+        id: p.id,
+        parsedId: `t3_${p.id}`,
+        url: `https://www.reddit.com${p.permalink}`,
+        username: p.author || '[unknown]',
+        userId: p.author_fullname || '',
+        title: p.title || '',
+        communityName: `r/${subreddit}`,
+        parsedCommunityName: subreddit,
+        body: p.selftext || '',
+        html: '',
+        link: p.url || '',
+        numberOfComments: p.num_comments || 0,
+        flair: p.link_flair_text || '',
+        upVotes: p.score || 0,
+        upVoteRatio: p.upvote_ratio || 0,
+        isVideo: p.is_video || false,
+        isAd: false,
+        over18: p.over_18 || false,
+        thumbnailUrl: p.thumbnail || '',
+        createdAt: new Date((p.created_utc || p.created) * 1000).toISOString(),
+        scrapedAt,
+        dataType: 'post'
+      });
+    }
+
+    // Fetch comments for top 3 posts that have comments
+    const postsWithComments = posts.filter(p => p.numberOfComments > 0).slice(0, 3);
+    
+    for (const post of postsWithComments) {
+      try {
+        const commentsUrl = `https://oauth.reddit.com/r/${subreddit}/comments/${post.id}?limit=10&depth=1&raw_json=1`;
+        
+        const commentsResponse = await fetch(commentsUrl, {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'User-Agent': 'ResearchSentimentTracker/1.0 (by /u/research_tracker)'
+          }
+        });
+
+        if (commentsResponse.ok) {
+          const commentsData = await commentsResponse.json();
+          
+          if (Array.isArray(commentsData) && commentsData.length >= 2) {
+            const commentsListing = commentsData[1]?.data?.children || [];
+            
+            for (const item of commentsListing) {
+              if (item.kind !== 't1') continue;
+              const c = item.data;
+              
+              if (!c.body || c.body === '[deleted]' || c.body === '[removed]' || c.author === '[deleted]') continue;
+              
+              comments.push({
+                id: c.id,
+                parsedId: `t1_${c.id}`,
+                url: `https://www.reddit.com${c.permalink || ''}`,
+                postId: `t3_${post.id}`,
+                parentId: c.parent_id || '',
+                username: c.author || '[unknown]',
+                userId: c.author_fullname || '',
+                category: '',
+                communityName: `r/${subreddit}`,
+                body: c.body,
+                createdAt: new Date((c.created_utc || c.created || Date.now() / 1000) * 1000).toISOString(),
+                scrapedAt,
+                upVotes: c.score || 0,
+                numberOfreplies: c.replies?.data?.children?.length || 0,
+                html: '',
+                dataType: 'comment'
+              });
+            }
+          }
+        }
+        
+        // Small delay between comment fetches
+        await new Promise(r => setTimeout(r, 100));
+      } catch {
+        // Continue without comments for this post
+      }
+    }
+
+    if (posts.length > 0) {
+      const avgUpvotes = Math.round(posts.reduce((a, p) => a + p.upVotes, 0) / posts.length);
+      console.log(`[OAuth] r/${subreddit} (${sortMode}): ${posts.length} posts (avg ${avgUpvotes} upvotes), ${comments.length} comments`);
+    }
+
+    return { posts, comments, method: 'oauth' };
+
+  } catch (error) {
+    console.log(`[OAuth] Error r/${subreddit}: ${error}`);
+    return { posts, comments, method: 'oauth_error' };
+  }
+}
+
+// FALLBACK 1: Public Reddit JSON (may get rate limited)
 async function scrapeViaRedditJSON(
   subreddit: string,
   timeRange: TimeRange,
+  sortMode: SortMode,
   limit: number = 25
 ): Promise<{ posts: RedditPost[]; comments: RedditComment[]; method: string }> {
   const posts: RedditPost[] = [];
@@ -145,12 +332,15 @@ async function scrapeViaRedditJSON(
   const redditTime = getRedditTimeParam(timeRange);
 
   try {
-    // Use /top.json with time parameter to get TOP posts for the period
-    const url = `https://www.reddit.com/r/${subreddit}/top.json?t=${redditTime}&limit=${limit}&raw_json=1`;
+    // Build URL based on sort mode
+    let url = `https://www.reddit.com/r/${subreddit}/${sortMode}.json?limit=${limit}&raw_json=1`;
+    if (sortMode === 'top') {
+      url += `&t=${redditTime}`;
+    }
     
     const response = await fetch(url, {
       headers: {
-        'User-Agent': getRandomUserAgent(),
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'application/json',
         'Accept-Language': 'en-US,en;q=0.9'
       }
@@ -196,63 +386,9 @@ async function scrapeViaRedditJSON(
       });
     }
 
-    // Fetch comments for top 3 posts that have comments
-    const postsWithComments = posts.filter(p => p.numberOfComments > 0).slice(0, 3);
-    
-    for (const post of postsWithComments) {
-      try {
-        const commentsUrl = `https://www.reddit.com/r/${subreddit}/comments/${post.id}.json?limit=10&depth=1&raw_json=1`;
-        
-        const commentsResponse = await fetch(commentsUrl, {
-          headers: {
-            'User-Agent': getRandomUserAgent(),
-            'Accept': 'application/json'
-          }
-        });
-
-        if (commentsResponse.ok) {
-          const commentsData = await commentsResponse.json();
-          
-          if (Array.isArray(commentsData) && commentsData.length >= 2) {
-            const commentsListing = commentsData[1]?.data?.children || [];
-            
-            for (const item of commentsListing) {
-              if (item.kind !== 't1') continue;
-              const c = item.data;
-              
-              if (!c.body || c.body === '[deleted]' || c.body === '[removed]' || c.author === '[deleted]') continue;
-              
-              comments.push({
-                id: c.id,
-                parsedId: `t1_${c.id}`,
-                url: `https://www.reddit.com${c.permalink || ''}`,
-                postId: `t3_${post.id}`,
-                parentId: c.parent_id || '',
-                username: c.author || '[unknown]',
-                userId: c.author_fullname || '',
-                category: '',
-                communityName: `r/${subreddit}`,
-                body: c.body,
-                createdAt: new Date((c.created_utc || c.created || Date.now() / 1000) * 1000).toISOString(),
-                scrapedAt,
-                upVotes: c.score || 0,
-                numberOfreplies: c.replies?.data?.children?.length || 0,
-                html: '',
-                dataType: 'comment'
-              });
-            }
-          }
-        }
-        
-        // Small delay between comment fetches to avoid rate limiting
-        await new Promise(r => setTimeout(r, 100));
-      } catch {
-        // Continue without comments for this post
-      }
-    }
-
     if (posts.length > 0) {
-      console.log(`[JSON] r/${subreddit}: ${posts.length} posts (avg ${Math.round(posts.reduce((a, p) => a + p.upVotes, 0) / posts.length)} upvotes), ${comments.length} comments`);
+      const avgUpvotes = Math.round(posts.reduce((a, p) => a + p.upVotes, 0) / posts.length);
+      console.log(`[JSON] r/${subreddit} (${sortMode}): ${posts.length} posts (avg ${avgUpvotes} upvotes)`);
     }
 
     return { posts, comments, method: 'json' };
@@ -331,10 +467,11 @@ function parseRSSXML(xmlText: string, subreddit: string, scrapedAt: string): Red
   return posts;
 }
 
-// FALLBACK: RSS scrape - uses /top/ with time parameter
+// FALLBACK 2: RSS scrape - uses sort mode with time parameter
 async function scrapeViaRSS(
   subreddit: string, 
-  timeRange: TimeRange
+  timeRange: TimeRange,
+  sortMode: SortMode
 ): Promise<{ posts: RedditPost[]; comments: RedditComment[]; method: string }> {
   const posts: RedditPost[] = [];
   const comments: RedditComment[] = [];
@@ -342,12 +479,15 @@ async function scrapeViaRSS(
   const redditTime = getRedditTimeParam(timeRange);
 
   try {
-    // Use /top/.rss with time parameter
-    const rssUrl = `https://www.reddit.com/r/${subreddit}/top/.rss?t=${redditTime}&limit=25`;
+    // Build RSS URL based on sort mode
+    let rssUrl = `https://www.reddit.com/r/${subreddit}/${sortMode}/.rss?limit=25`;
+    if (sortMode === 'top') {
+      rssUrl += `&t=${redditTime}`;
+    }
     
     const response = await fetch(rssUrl, {
       headers: {
-        'User-Agent': getRandomUserAgent(),
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15',
         'Accept': 'application/rss+xml, application/xml, text/xml, */*'
       }
     });
@@ -362,7 +502,7 @@ async function scrapeViaRSS(
     posts.push(...parsedPosts);
     
     if (posts.length > 0) {
-      console.log(`[RSS] r/${subreddit}: ${posts.length} posts (no engagement data)`);
+      console.log(`[RSS] r/${subreddit} (${sortMode}): ${posts.length} posts (no engagement data)`);
     }
 
   } catch (error) {
@@ -372,7 +512,7 @@ async function scrapeViaRSS(
   return { posts, comments, method: 'rss' };
 }
 
-// Arctic Shift API (archive data with engagement)
+// FALLBACK 3: Arctic Shift API (archive data with engagement) - only supports 'top' by score
 async function scrapeViaArcticShift(
   subreddit: string,
   timeRange: TimeRange,
@@ -384,7 +524,7 @@ async function scrapeViaArcticShift(
   const afterTimestamp = getTimestampForRange(timeRange);
 
   try {
-    // Fetch posts sorted by score
+    // Fetch posts sorted by score (top)
     const postsUrl = `https://arctic-shift.photon-reddit.com/api/posts/search?subreddit=${subreddit}&after=${afterTimestamp}&limit=${limit}&sort=desc&sort_type=score`;
     
     const postsResponse = await fetch(postsUrl, {
@@ -474,7 +614,8 @@ async function scrapeViaArcticShift(
     }
 
     if (posts.length > 0) {
-      console.log(`[Arctic] r/${subreddit}: ${posts.length} posts (avg ${Math.round(posts.reduce((a, p) => a + p.upVotes, 0) / posts.length)} upvotes), ${comments.length} comments`);
+      const avgUpvotes = Math.round(posts.reduce((a, p) => a + p.upVotes, 0) / posts.length);
+      console.log(`[Arctic] r/${subreddit}: ${posts.length} posts (avg ${avgUpvotes} upvotes), ${comments.length} comments`);
     }
 
     return { posts, comments, method: 'arctic' };
@@ -485,31 +626,41 @@ async function scrapeViaArcticShift(
   }
 }
 
-// Scrape with fallback chain: JSON → Arctic Shift → RSS
+// Scrape with fallback chain: OAuth → JSON → RSS → Arctic Shift
 async function scrapeWithFallback(
   subreddit: string,
   timeRange: TimeRange,
+  sortMode: SortMode,
   limit: number
 ): Promise<{ posts: RedditPost[]; comments: RedditComment[]; method: string; success: boolean }> {
   
-  // Try Reddit JSON first (best engagement data for recent posts)
-  const jsonResult = await scrapeViaRedditJSON(subreddit, timeRange, limit);
+  // Try Reddit OAuth first (best - authenticated, proper sorting, full data)
+  const oauthResult = await scrapeViaRedditOAuth(subreddit, timeRange, sortMode, limit);
+  if (oauthResult.posts.length > 0) {
+    return { ...oauthResult, success: true };
+  }
+
+  // Try public JSON endpoint (may get rate limited)
+  const jsonResult = await scrapeViaRedditJSON(subreddit, timeRange, sortMode, limit);
   if (jsonResult.posts.length > 0) {
     return { ...jsonResult, success: true };
   }
 
-  // Fallback to Arctic Shift (good for historical data)
-  const arcticResult = await scrapeViaArcticShift(subreddit, timeRange, limit);
-  if (arcticResult.posts.length > 0) {
-    return { ...arcticResult, success: true };
+  // Try RSS (no engagement data but reliable)
+  const rssResult = await scrapeViaRSS(subreddit, timeRange, sortMode);
+  if (rssResult.posts.length > 0) {
+    return { ...rssResult, success: true };
   }
 
-  // Last resort: RSS (no engagement data but reliable)
-  const rssResult = await scrapeViaRSS(subreddit, timeRange);
-  return { 
-    ...rssResult, 
-    success: rssResult.posts.length > 0 
-  };
+  // Last resort: Arctic Shift (only has 'top' by score, historical data)
+  if (sortMode === 'top') {
+    const arcticResult = await scrapeViaArcticShift(subreddit, timeRange, limit);
+    if (arcticResult.posts.length > 0) {
+      return { ...arcticResult, success: true };
+    }
+  }
+
+  return { posts: [], comments: [], method: 'all_failed', success: false };
 }
 
 serve(async (req) => {
@@ -521,6 +672,7 @@ serve(async (req) => {
     const { 
       subreddits, 
       timeRange = 'day',
+      sortMode = 'top',
       postsPerSubreddit = 25,
       saveToDb = true,
       fastMode = true
@@ -528,7 +680,7 @@ serve(async (req) => {
 
     const targetSubreddits = subreddits || (fastMode ? FAST_MODE_SUBREDDITS : DEFAULT_SUBREDDITS);
     
-    console.log(`[Scraper] Starting: ${targetSubreddits.length} subreddits, timeRange=${timeRange}, fastMode=${fastMode}`);
+    console.log(`[Scraper] Starting: ${targetSubreddits.length} subreddits, timeRange=${timeRange}, sortMode=${sortMode}, fastMode=${fastMode}`);
 
     // Auth check
     const authHeader = req.headers.get('Authorization');
@@ -560,9 +712,9 @@ serve(async (req) => {
     const allComments: RedditComment[] = [];
     const subredditStats: Record<string, { posts: number; comments: number; method: string }> = {};
     const failedSubreddits: string[] = [];
-    const methodStats = { json: 0, arctic: 0, rss: 0, failed: 0 };
+    const methodStats = { oauth: 0, json: 0, rss: 0, arctic: 0, failed: 0 };
 
-    // Batch size 3 for JSON endpoint to avoid rate limiting
+    // Batch size 3 for API requests to avoid rate limiting
     const batchSize = 3;
     const delayBetweenBatches = 1000; // 1 second between batches
 
@@ -576,7 +728,7 @@ serve(async (req) => {
       console.log(`[Batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(targetSubreddits.length/batchSize)}] ${batch.join(', ')}`);
       
       const batchResults = await Promise.all(
-        batch.map((sub: string) => scrapeWithFallback(sub, timeRange as TimeRange, postsPerSubreddit))
+        batch.map((sub: string) => scrapeWithFallback(sub, timeRange as TimeRange, sortMode as SortMode, postsPerSubreddit))
       );
 
       for (let j = 0; j < batch.length; j++) {
@@ -587,9 +739,10 @@ serve(async (req) => {
           failedSubreddits.push(subreddit);
           methodStats.failed++;
         } else {
-          if (method === 'json') methodStats.json++;
-          else if (method === 'arctic') methodStats.arctic++;
+          if (method === 'oauth') methodStats.oauth++;
+          else if (method === 'json') methodStats.json++;
           else if (method === 'rss') methodStats.rss++;
+          else if (method === 'arctic') methodStats.arctic++;
         }
         
         allPosts.push(...posts);
@@ -608,7 +761,7 @@ serve(async (req) => {
     const postsWithEngagement = allPosts.filter(p => p.upVotes > 0 || p.numberOfComments > 0).length;
     
     console.log(`[Scraper] Raw total: ${allPosts.length} posts (${postsWithEngagement} with engagement, avg ${avgUpvotes} upvotes), ${allComments.length} comments`);
-    console.log(`[Scraper] Methods: JSON=${methodStats.json}, Arctic=${methodStats.arctic}, RSS=${methodStats.rss}, Failed=${methodStats.failed}`);
+    console.log(`[Scraper] Methods: OAuth=${methodStats.oauth}, JSON=${methodStats.json}, RSS=${methodStats.rss}, Arctic=${methodStats.arctic}, Failed=${methodStats.failed}`);
 
     // Sort by engagement
     allPosts.sort((a, b) => (b.upVotes + b.numberOfComments) - (a.upVotes + a.numberOfComments));
@@ -633,11 +786,17 @@ serve(async (req) => {
         'month': 'Past Month'
       }[timeRange as string] || timeRange;
 
+      const sortModeLabel = {
+        'top': 'Top',
+        'hot': 'Hot',
+        'rising': 'Rising'
+      }[sortMode as string] || sortMode;
+
       const { data: dataSource, error: insertError } = await supabase
         .from('data_sources')
         .insert({
           user_id: user.id,
-          name: `Reddit Scrape - ${timeRangeLabel} (${new Date().toLocaleDateString()})`,
+          name: `Reddit ${sortModeLabel} - ${timeRangeLabel} (${new Date().toLocaleDateString()})`,
           source_type: 'reddit_json',
           url: null,
           content: {
@@ -645,6 +804,7 @@ serve(async (req) => {
             comments: filteredComments,
             subredditStats,
             timeRange,
+            sortMode,
             fastMode,
             failedSubreddits,
             methodStats,
@@ -679,6 +839,7 @@ serve(async (req) => {
           subredditsRequested: targetSubreddits.length,
           failedSubreddits: failedSubreddits.length,
           timeRange,
+          sortMode,
           fastMode,
           methodStats,
           subredditStats

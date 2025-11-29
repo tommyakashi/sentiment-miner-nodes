@@ -5,7 +5,6 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { 
@@ -19,7 +18,9 @@ import {
   AlertCircle,
   Zap,
   Clock,
-  CircleDot
+  CircleDot,
+  Flame,
+  ArrowUpRight
 } from 'lucide-react';
 import type { RedditData } from '@/types/reddit';
 
@@ -43,6 +44,7 @@ const ALL_SUBREDDITS = [
 ];
 
 type TimeRange = 'day' | '3days' | 'week' | 'month';
+type SortMode = 'top' | 'hot' | 'rising';
 
 interface ScrapeSummary {
   totalPosts: number;
@@ -51,7 +53,11 @@ interface ScrapeSummary {
   subredditsRequested?: number;
   failedSubreddits?: number;
   timeRange: string;
+  sortMode?: string;
   fastMode?: boolean;
+  avgUpvotes?: number;
+  postsWithEngagement?: number;
+  methodStats?: { oauth: number; json: number; rss: number; arctic: number; failed: number };
   subredditStats: Record<string, { posts: number; comments: number }>;
 }
 
@@ -62,6 +68,7 @@ interface RedditScraperProps {
 export function RedditScraper({ onDataScraped }: RedditScraperProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [selectedTimeRange, setSelectedTimeRange] = useState<TimeRange>('day');
+  const [selectedSortMode, setSelectedSortMode] = useState<SortMode>('top');
   const [progress, setProgress] = useState(0);
   const [currentBatch, setCurrentBatch] = useState<string[]>([]);
   const [completedSubreddits, setCompletedSubreddits] = useState<string[]>([]);
@@ -84,12 +91,18 @@ export function RedditScraper({ onDataScraped }: RedditScraperProps) {
     { value: 'month', label: '1 Month', description: 'Past 30 days' },
   ];
 
+  const sortModeOptions: { value: SortMode; label: string; icon: React.ReactNode; description: string }[] = [
+    { value: 'top', label: 'Top', icon: <TrendingUp className="w-3.5 h-3.5" />, description: 'Most upvoted' },
+    { value: 'hot', label: 'Hot', icon: <Flame className="w-3.5 h-3.5" />, description: 'Trending now' },
+    { value: 'rising', label: 'Rising', icon: <ArrowUpRight className="w-3.5 h-3.5" />, description: 'Gaining momentum' },
+  ];
+
   // Simulate real-time progress based on known batch timing
   useEffect(() => {
     if (!isLoading) return;
 
-    const BATCH_SIZE = 5;
-    const TIME_PER_BATCH_MS = 2500; // ~2.5s per batch (fetch + 500ms delay)
+    const BATCH_SIZE = 3;
+    const TIME_PER_BATCH_MS = 3000; // ~3s per batch with OAuth
     const totalBatches = Math.ceil(activeSubreddits.length / BATCH_SIZE);
 
     const interval = setInterval(() => {
@@ -141,6 +154,7 @@ export function RedditScraper({ onDataScraped }: RedditScraperProps) {
         body: {
           subreddits: customSubreddits.length > 0 ? customSubreddits : undefined,
           timeRange: selectedTimeRange,
+          sortMode: selectedSortMode,
           postsPerSubreddit: 25,
           saveToDb: true,
           fastMode: customSubreddits.length === 0 ? fastMode : false
@@ -159,9 +173,10 @@ export function RedditScraper({ onDataScraped }: RedditScraperProps) {
         onDataScraped(data.data);
         
         const hasPartialData = data.summary.failedSubreddits > 0;
+        const avgUpvotes = data.summary.avgUpvotes || 0;
         toast({
           title: hasPartialData ? 'Scrape Complete (Partial)' : 'Scrape Complete',
-          description: `${data.summary.totalPosts} posts, ${data.summary.totalComments} comments from ${data.summary.subredditsScraped} subreddits.`,
+          description: `${data.summary.totalPosts} posts (avg ${avgUpvotes} upvotes), ${data.summary.totalComments} comments from ${data.summary.subredditsScraped} subreddits.`,
         });
       } else {
         toast({
@@ -249,19 +264,43 @@ export function RedditScraper({ onDataScraped }: RedditScraperProps) {
         {fastMode ? (
           <>
             <Zap className="w-3 h-3" />
-            15 core subreddits (~15s)
+            15 core subreddits (~20s)
           </>
         ) : (
           <>
             <Clock className="w-3 h-3" />
-            39 subreddits (~45s)
+            39 subreddits (~60s)
           </>
         )}
       </div>
 
+      {/* Sort Mode Selection */}
+      <div className="space-y-3">
+        <label className="text-sm font-medium">Sort By</label>
+        <div className="flex gap-2">
+          {sortModeOptions.map((option) => (
+            <Button
+              key={option.value}
+              variant={selectedSortMode === option.value ? 'default' : 'outline'}
+              size="sm"
+              className={`flex items-center gap-1.5 ${selectedSortMode === option.value ? 'bg-gradient-to-r from-orange-500 to-red-500' : ''}`}
+              onClick={() => setSelectedSortMode(option.value)}
+              disabled={isLoading}
+            >
+              {option.icon}
+              <span>{option.label}</span>
+            </Button>
+          ))}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {sortModeOptions.find(o => o.value === selectedSortMode)?.description}
+          {selectedSortMode === 'top' && ' for the selected time range'}
+        </p>
+      </div>
+
       {/* Time Range Selection */}
       <div className="space-y-3">
-        <label className="text-sm font-medium">Time Range</label>
+        <label className="text-sm font-medium">Time Range {selectedSortMode !== 'top' && <span className="text-muted-foreground">(filter only)</span>}</label>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
           {timeRangeOptions.map((option) => (
             <Button
@@ -408,8 +447,10 @@ export function RedditScraper({ onDataScraped }: RedditScraperProps) {
           </>
         ) : (
           <>
-            <TrendingUp className="w-5 h-5 mr-2" />
-            Scan {timeRangeOptions.find(o => o.value === selectedTimeRange)?.label} Signals
+            {selectedSortMode === 'top' && <TrendingUp className="w-5 h-5 mr-2" />}
+            {selectedSortMode === 'hot' && <Flame className="w-5 h-5 mr-2" />}
+            {selectedSortMode === 'rising' && <ArrowUpRight className="w-5 h-5 mr-2" />}
+            Scan {sortModeOptions.find(o => o.value === selectedSortMode)?.label} {timeRangeOptions.find(o => o.value === selectedTimeRange)?.label}
           </>
         )}
       </Button>
@@ -425,8 +466,13 @@ export function RedditScraper({ onDataScraped }: RedditScraperProps) {
                 {lastScrape.fastMode ? 'Fast' : 'Full'}
               </Badge>
             )}
+            {lastScrape.sortMode && (
+              <Badge variant="outline" className="text-xs capitalize">
+                {lastScrape.sortMode}
+              </Badge>
+            )}
           </div>
-          <div className="grid grid-cols-3 gap-4 text-center">
+          <div className="grid grid-cols-4 gap-4 text-center">
             <div>
               <p className="text-2xl font-bold">{lastScrape.totalPosts}</p>
               <p className="text-xs text-muted-foreground">Posts</p>
@@ -439,7 +485,42 @@ export function RedditScraper({ onDataScraped }: RedditScraperProps) {
               <p className="text-2xl font-bold">{lastScrape.subredditsScraped}</p>
               <p className="text-xs text-muted-foreground">Subreddits</p>
             </div>
+            <div>
+              <p className="text-2xl font-bold">{lastScrape.avgUpvotes || 0}</p>
+              <p className="text-xs text-muted-foreground">Avg Upvotes</p>
+            </div>
           </div>
+
+          {/* Method Stats */}
+          {lastScrape.methodStats && (
+            <div className="flex gap-2 flex-wrap pt-2 border-t">
+              {lastScrape.methodStats.oauth > 0 && (
+                <Badge variant="secondary" className="text-xs bg-green-500/20 text-green-600">
+                  OAuth: {lastScrape.methodStats.oauth}
+                </Badge>
+              )}
+              {lastScrape.methodStats.json > 0 && (
+                <Badge variant="secondary" className="text-xs bg-blue-500/20 text-blue-600">
+                  JSON: {lastScrape.methodStats.json}
+                </Badge>
+              )}
+              {lastScrape.methodStats.rss > 0 && (
+                <Badge variant="secondary" className="text-xs bg-amber-500/20 text-amber-600">
+                  RSS: {lastScrape.methodStats.rss}
+                </Badge>
+              )}
+              {lastScrape.methodStats.arctic > 0 && (
+                <Badge variant="secondary" className="text-xs bg-purple-500/20 text-purple-600">
+                  Arctic: {lastScrape.methodStats.arctic}
+                </Badge>
+              )}
+              {lastScrape.methodStats.failed > 0 && (
+                <Badge variant="secondary" className="text-xs bg-red-500/20 text-red-600">
+                  Failed: {lastScrape.methodStats.failed}
+                </Badge>
+              )}
+            </div>
+          )}
           
           {/* Top Subreddits */}
           <div className="pt-2 border-t">
