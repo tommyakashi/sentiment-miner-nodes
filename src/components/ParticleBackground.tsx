@@ -3,21 +3,31 @@ import { useEffect, useRef, useCallback } from 'react';
 interface MilkyWayStar {
   x: number;
   y: number;
+  baseX: number; // Original position for drift animation
+  baseY: number;
+  vx: number; // Drift velocity
+  vy: number;
   size: number;
   alpha: number;
   twinkleSpeed: number;
   twinklePhase: number;
+  driftPhase: number; // For smooth oscillating movement
+  driftSpeed: number;
   color: string;
-  colorTemp: number; // For realistic star distribution
+  colorTemp: number;
 }
 
 interface BackgroundStar {
   x: number;
   y: number;
+  baseX: number;
+  baseY: number;
   size: number;
   alpha: number;
   twinkleSpeed: number;
   twinklePhase: number;
+  driftPhase: number;
+  driftSpeed: number;
   color: string;
 }
 
@@ -113,64 +123,116 @@ export function ParticleBackground({
   // Create Milky Way stars in a diagonal sweeping band like the real galaxy
   const createMilkyWayStars = useCallback((width: number, height: number): MilkyWayStar[] => {
     const stars: MilkyWayStar[] = [];
-    const starCount = 1200; // More stars for denser band
+    const starCount = 1200;
+    const bulgeStarCount = 400; // Extra stars for galactic bulge
     
     // Galaxy band parameters - diagonal sweep from top-left to bottom-right
-    const bandWidth = height * 0.5; // Much wider band
+    const bandWidth = height * 0.5;
     
+    // Regular band stars
     for (let i = 0; i < starCount; i++) {
-      // Spread stars across full width
       const x = Math.random() * width;
-      
-      // Calculate the band center at this x position (diagonal sweep)
-      // Band goes from top-left corner to bottom-right with a gentle curve
       const xRatio = x / width;
-      const diagonalY = height * 0.2 + xRatio * height * 0.6; // Diagonal from 20% to 80%
-      // Add slight S-curve for more natural look
+      const diagonalY = height * 0.2 + xRatio * height * 0.6;
       const curveOffset = Math.sin(xRatio * Math.PI) * height * 0.08;
       const bandCenterAtX = diagonalY + curveOffset;
       
-      // Gaussian distribution around the diagonal band center
       const u1 = Math.random();
       const u2 = Math.random();
       const gaussianOffset = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
       const y = bandCenterAtX + gaussianOffset * bandWidth * 0.35;
       
-      // Distance from band center affects brightness
       const distFromBand = Math.abs(y - bandCenterAtX) / bandWidth;
       const bandAlphaMultiplier = 1 - Math.pow(distFromBand, 2) * 0.4;
       
       const starColor = selectStarColor();
-      // Blue stars (low temp number) are brighter
       const tempBrightness = starColor.temp < 2 ? 1.5 : (starColor.temp < 4 ? 1.0 : 0.7);
       
       stars.push({
         x,
         y: Math.max(0, Math.min(height, y)),
+        baseX: x,
+        baseY: Math.max(0, Math.min(height, y)),
+        vx: (Math.random() - 0.5) * 0.3,
+        vy: (Math.random() - 0.5) * 0.3,
         size: (Math.random() * 2.5 + 0.5) * (starColor.temp < 2 ? 1.6 : 1),
         alpha: (Math.random() * 0.6 + 0.4) * bandAlphaMultiplier * tempBrightness,
-        twinkleSpeed: Math.random() * 0.015 + 0.005,
+        twinkleSpeed: Math.random() * 0.02 + 0.008,
         twinklePhase: Math.random() * Math.PI * 2,
+        driftPhase: Math.random() * Math.PI * 2,
+        driftSpeed: Math.random() * 0.008 + 0.003,
         color: starColor.color,
         colorTemp: starColor.temp,
       });
     }
+    
+    // Galactic bulge - dense cluster of stars near the center
+    const bulgeCenterX = width * 0.5;
+    const bulgeCenterY = height * 0.2 + 0.5 * height * 0.6 + Math.sin(0.5 * Math.PI) * height * 0.08;
+    const bulgeRadiusX = width * 0.2;
+    const bulgeRadiusY = height * 0.18;
+    
+    for (let i = 0; i < bulgeStarCount; i++) {
+      // Use 2D Gaussian for elliptical bulge
+      const u1 = Math.random();
+      const u2 = Math.random();
+      const g1 = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+      const g2 = Math.sqrt(-2 * Math.log(u1)) * Math.sin(2 * Math.PI * u2);
+      
+      const x = bulgeCenterX + g1 * bulgeRadiusX * 0.5;
+      const y = bulgeCenterY + g2 * bulgeRadiusY * 0.5;
+      
+      // Bulge stars are warmer colors (older stars)
+      const bulgeColors = [stellarColors[3], stellarColors[4], stellarColors[5]]; // G, K, M types
+      const starColor = bulgeColors[Math.floor(Math.random() * bulgeColors.length)];
+      
+      // Distance from bulge center for brightness falloff
+      const distFromCenter = Math.sqrt(
+        Math.pow((x - bulgeCenterX) / bulgeRadiusX, 2) + 
+        Math.pow((y - bulgeCenterY) / bulgeRadiusY, 2)
+      );
+      const bulgeAlpha = Math.max(0.3, 1 - distFromCenter * 0.6);
+      
+      stars.push({
+        x,
+        y,
+        baseX: x,
+        baseY: y,
+        vx: (Math.random() - 0.5) * 0.2,
+        vy: (Math.random() - 0.5) * 0.2,
+        size: Math.random() * 2 + 0.8,
+        alpha: (Math.random() * 0.5 + 0.4) * bulgeAlpha,
+        twinkleSpeed: Math.random() * 0.015 + 0.005,
+        twinklePhase: Math.random() * Math.PI * 2,
+        driftPhase: Math.random() * Math.PI * 2,
+        driftSpeed: Math.random() * 0.006 + 0.002,
+        color: starColor.color,
+        colorTemp: stellarColors.indexOf(starColor),
+      });
+    }
+    
     return stars;
   }, []);
 
   // Create scattered background stars (outside the main band)
   const createBackgroundStars = useCallback((width: number, height: number): BackgroundStar[] => {
     const stars: BackgroundStar[] = [];
-    const starCount = 200; // Fewer, scattered everywhere
+    const starCount = 250;
     
     for (let i = 0; i < starCount; i++) {
+      const x = Math.random() * width;
+      const y = Math.random() * height;
       stars.push({
-        x: Math.random() * width,
-        y: Math.random() * height,
-        size: Math.random() * 0.9 + 0.2,
-        alpha: Math.random() * 0.25 + 0.05,
-        twinkleSpeed: Math.random() * 0.01 + 0.003,
+        x,
+        y,
+        baseX: x,
+        baseY: y,
+        size: Math.random() * 1.2 + 0.3,
+        alpha: Math.random() * 0.3 + 0.08,
+        twinkleSpeed: Math.random() * 0.015 + 0.005,
         twinklePhase: Math.random() * Math.PI * 2,
+        driftPhase: Math.random() * Math.PI * 2,
+        driftSpeed: Math.random() * 0.004 + 0.001,
         color: bgStarColors[Math.floor(Math.random() * bgStarColors.length)],
       });
     }
@@ -369,8 +431,17 @@ export function ParticleBackground({
   // Draw scattered background stars
   const drawBackgroundStars = useCallback((ctx: CanvasRenderingContext2D, time: number, parallaxX: number, parallaxY: number) => {
     backgroundStarsRef.current.forEach(star => {
+      // Update phases
       star.twinklePhase += star.twinkleSpeed;
-      const twinkle = Math.sin(star.twinklePhase) * 0.3 + 0.7;
+      star.driftPhase += star.driftSpeed;
+      
+      // Smooth oscillating drift
+      const driftX = Math.sin(star.driftPhase) * 8;
+      const driftY = Math.cos(star.driftPhase * 0.7) * 6;
+      star.x = star.baseX + driftX;
+      star.y = star.baseY + driftY;
+      
+      const twinkle = Math.sin(star.twinklePhase) * 0.4 + 0.6;
       const alpha = star.alpha * twinkle;
       
       const offsetX = parallaxX * 8;
@@ -381,14 +452,14 @@ export function ParticleBackground({
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
       
-      const gradient = ctx.createRadialGradient(x, y, 0, x, y, star.size * 2);
+      const gradient = ctx.createRadialGradient(x, y, 0, x, y, star.size * 2.5);
       gradient.addColorStop(0, star.color.replace(')', `, ${alpha})`).replace('hsl', 'hsla'));
-      gradient.addColorStop(0.6, star.color.replace(')', `, ${alpha * 0.2})`).replace('hsl', 'hsla'));
+      gradient.addColorStop(0.5, star.color.replace(')', `, ${alpha * 0.3})`).replace('hsl', 'hsla'));
       gradient.addColorStop(1, 'transparent');
       
       ctx.fillStyle = gradient;
       ctx.beginPath();
-      ctx.arc(x, y, star.size * 2, 0, Math.PI * 2);
+      ctx.arc(x, y, star.size * 2.5, 0, Math.PI * 2);
       ctx.fill();
       
       ctx.restore();
@@ -398,8 +469,17 @@ export function ParticleBackground({
   // Draw Milky Way band stars
   const drawMilkyWayStars = useCallback((ctx: CanvasRenderingContext2D, time: number, parallaxX: number, parallaxY: number) => {
     milkyWayStarsRef.current.forEach(star => {
+      // Update phases
       star.twinklePhase += star.twinkleSpeed;
-      const twinkle = Math.sin(star.twinklePhase) * 0.25 + 0.75;
+      star.driftPhase += star.driftSpeed;
+      
+      // Smooth oscillating drift - more movement for Milky Way stars
+      const driftX = Math.sin(star.driftPhase) * 12 + Math.sin(star.driftPhase * 1.5) * 5;
+      const driftY = Math.cos(star.driftPhase * 0.8) * 10 + Math.cos(star.driftPhase * 1.3) * 4;
+      star.x = star.baseX + driftX;
+      star.y = star.baseY + driftY;
+      
+      const twinkle = Math.sin(star.twinklePhase) * 0.3 + 0.7;
       const alpha = star.alpha * twinkle;
       
       const offsetX = parallaxX * 25;
@@ -412,26 +492,26 @@ export function ParticleBackground({
       
       // Draw glow for brighter stars (hot blue and white)
       if (star.colorTemp < 3 && star.alpha > 0.4) {
-        const glowGradient = ctx.createRadialGradient(x, y, 0, x, y, star.size * 4);
-        glowGradient.addColorStop(0, star.color.replace(')', `, ${alpha * 0.5})`).replace('hsl', 'hsla'));
-        glowGradient.addColorStop(0.4, star.color.replace(')', `, ${alpha * 0.15})`).replace('hsl', 'hsla'));
+        const glowGradient = ctx.createRadialGradient(x, y, 0, x, y, star.size * 5);
+        glowGradient.addColorStop(0, star.color.replace(')', `, ${alpha * 0.6})`).replace('hsl', 'hsla'));
+        glowGradient.addColorStop(0.3, star.color.replace(')', `, ${alpha * 0.2})`).replace('hsl', 'hsla'));
         glowGradient.addColorStop(1, 'transparent');
         
         ctx.fillStyle = glowGradient;
         ctx.beginPath();
-        ctx.arc(x, y, star.size * 4, 0, Math.PI * 2);
+        ctx.arc(x, y, star.size * 5, 0, Math.PI * 2);
         ctx.fill();
       }
       
-      // Core point
-      const coreGradient = ctx.createRadialGradient(x, y, 0, x, y, star.size * 1.5);
+      // Core point - larger and brighter
+      const coreGradient = ctx.createRadialGradient(x, y, 0, x, y, star.size * 2);
       coreGradient.addColorStop(0, star.color.replace(')', `, ${alpha})`).replace('hsl', 'hsla'));
-      coreGradient.addColorStop(0.5, star.color.replace(')', `, ${alpha * 0.4})`).replace('hsl', 'hsla'));
+      coreGradient.addColorStop(0.4, star.color.replace(')', `, ${alpha * 0.5})`).replace('hsl', 'hsla'));
       coreGradient.addColorStop(1, 'transparent');
       
       ctx.fillStyle = coreGradient;
       ctx.beginPath();
-      ctx.arc(x, y, star.size * 1.5, 0, Math.PI * 2);
+      ctx.arc(x, y, star.size * 2, 0, Math.PI * 2);
       ctx.fill();
       
       ctx.restore();
