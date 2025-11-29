@@ -436,7 +436,8 @@ export function RedditScraper({ onDataScraped }: RedditScraperProps) {
 
       {/* Scrape Button */}
       <Button
-        className="w-full h-12 text-lg bg-gradient-to-r from-orange-500 to-red-500 hover:opacity-90 transition-opacity"
+        variant="secondary"
+        className="w-full h-12 text-lg"
         onClick={handleScrape}
         disabled={isLoading || activeSubreddits.length === 0}
       >
