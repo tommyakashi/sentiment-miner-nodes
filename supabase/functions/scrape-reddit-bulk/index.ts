@@ -236,14 +236,15 @@ async function fetchCommentsForPost(
   return comments;
 }
 
-// RSS scrape with optional comment fetching
+// RSS scrape with optional comment fetching - uses /hot/ for posts with engagement
 async function scrapeViaRSS(subreddit: string, fetchComments: boolean = true): Promise<{ posts: RedditPost[]; comments: RedditComment[] }> {
   const posts: RedditPost[] = [];
   const comments: RedditComment[] = [];
   const scrapedAt = new Date().toISOString();
 
   try {
-    const rssUrl = `https://www.reddit.com/r/${subreddit}/new/.rss`;
+    // Use /hot/ instead of /new/ to get posts that actually have comments and engagement
+    const rssUrl = `https://www.reddit.com/r/${subreddit}/hot/.rss?limit=25`;
     
     const response = await fetch(rssUrl, {
       headers: {
@@ -261,9 +262,9 @@ async function scrapeViaRSS(subreddit: string, fetchComments: boolean = true): P
     const parsedPosts = parseRSSXML(xmlText, subreddit, scrapedAt);
     posts.push(...parsedPosts);
     
-    // Fetch comments for top 3 posts (to stay within rate limits and timeout)
+    // Fetch comments for top 5 posts (hot posts have comments)
     if (fetchComments && posts.length > 0) {
-      const topPosts = posts.slice(0, 3);
+      const topPosts = posts.slice(0, 5);
       const commentPromises = topPosts.map(post => 
         fetchCommentsForPost(subreddit, post.id, scrapedAt)
       );
