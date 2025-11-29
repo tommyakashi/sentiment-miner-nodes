@@ -21,39 +21,41 @@ export function NodeManager({ nodes, onNodesChange }: NodeManagerProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const { toast } = useToast();
 
-  // Load nodes from localStorage on mount
+  const DEFAULT_NODES: Node[] = [
+    { id: '1', name: 'Funding Outlook & Sustainability', keywords: [] },
+    { id: '2', name: 'Open Science & Transparency', keywords: [] },
+    { id: '3', name: 'Collaboration & Community', keywords: [] },
+    { id: '4', name: 'Institutional Trust', keywords: [] },
+    { id: '5', name: 'Administrative Load', keywords: [] },
+    { id: '6', name: 'Technological Enablement', keywords: [] },
+    { id: '7', name: 'Future of AI & U.S. vs China Race', keywords: [] },
+    { id: '8', name: 'Ethical Responsibility', keywords: [] },
+    { id: '9', name: 'Career Outlook & Researcher Well-being', keywords: [] },
+    { id: '10', name: 'Impact & Recognition', keywords: [] },
+  ];
+
+  // Load nodes from localStorage on mount - run immediately
   useEffect(() => {
     const savedNodes = localStorage.getItem('sentiment-nodes');
     if (savedNodes) {
       try {
         const parsed = JSON.parse(savedNodes);
-        if (parsed.length > 0) {
+        if (Array.isArray(parsed) && parsed.length > 0) {
           onNodesChange(parsed);
-          toast({
-            title: "Nodes loaded",
-            description: `Loaded ${parsed.length} saved nodes from previous session`,
-          });
+        } else {
+          onNodesChange(DEFAULT_NODES);
+          localStorage.setItem('sentiment-nodes', JSON.stringify(DEFAULT_NODES));
         }
       } catch (error) {
         console.error('Error loading saved nodes:', error);
+        onNodesChange(DEFAULT_NODES);
+        localStorage.setItem('sentiment-nodes', JSON.stringify(DEFAULT_NODES));
       }
     } else {
-      // Set default nodes if nothing saved
-      const defaultNodes: Node[] = [
-        { id: '1', name: 'Funding Outlook & Sustainability', keywords: [] },
-        { id: '2', name: 'Open Science & Transparency', keywords: [] },
-        { id: '3', name: 'Collaboration & Community', keywords: [] },
-        { id: '4', name: 'Institutional Trust', keywords: [] },
-        { id: '5', name: 'Administrative Load', keywords: [] },
-        { id: '6', name: 'Technological Enablement', keywords: [] },
-        { id: '7', name: 'Future of AI & U.S. vs China Race', keywords: [] },
-        { id: '8', name: 'Ethical Responsibility', keywords: [] },
-        { id: '9', name: 'Career Outlook & Researcher Well-being', keywords: [] },
-        { id: '10', name: 'Impact & Recognition', keywords: [] },
-      ];
-      onNodesChange(defaultNodes);
+      onNodesChange(DEFAULT_NODES);
+      localStorage.setItem('sentiment-nodes', JSON.stringify(DEFAULT_NODES));
     }
-  }, []);
+  }, [onNodesChange]);
 
   // Save nodes to localStorage whenever they change
   useEffect(() => {
