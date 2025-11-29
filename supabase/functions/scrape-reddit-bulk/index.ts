@@ -180,12 +180,132 @@ function decodeHTMLEntities(text: string): string {
     .replace(/&apos;/g, "'");
 }
 
+// Fetch comments for a specific post via JSON endpoint (with fallback)
+async function fetchPostComments(
+  subreddit: string,
+  postId: string,
+  scrapedAt: string
+): Promise<RedditComment[]> {
+  const comments: RedditComment[] = [];
+  
+  try {
+    // Try the Reddit JSON endpoint for post comments
+    const jsonUrl = `https://www.reddit.com/r/${subreddit}/comments/${postId}.json?limit=25&depth=1`;
+    
+    const response = await fetch(jsonUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json'
+      }
+    });
+    
+    if (!response.ok) {
+      // Try RSS fallback for comments
+      const rssUrl = `https://www.reddit.com/r/${subreddit}/comments/${postId}/.rss`;
+      const rssResponse = await fetch(rssUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Accept': 'application/rss+xml, application/xml, text/xml'
+        }
+      });
+      
+      if (rssResponse.ok) {
+        const rssText = await rssResponse.text();
+        const commentMatches = rssText.match(/<entry>[\s\S]*?<\/entry>/g) || [];
+        
+        // Skip first entry (it's the post itself)
+        for (let i = 1; i < commentMatches.length; i++) {
+          const entry = commentMatches[i];
+          const idMatch = entry.match(/<id>([^<]+)<\/id>/);
+          const id = idMatch ? idMatch[1].split('/').pop() || '' : '';
+          
+          const authorMatch = entry.match(/<author><name>\/u\/([^<]+)<\/name><\/author>/);
+          const username = authorMatch ? authorMatch[1] : '[unknown]';
+          
+          const contentMatch = entry.match(/<content type="html">([^]*?)<\/content>/);
+          let body = '';
+          if (contentMatch) {
+            body = decodeHTMLEntities(contentMatch[1])
+              .replace(/<[^>]*>/g, ' ')
+              .replace(/\s+/g, ' ')
+              .trim();
+          }
+          
+          const publishedMatch = entry.match(/<published>([^<]+)<\/published>/);
+          const createdAt = publishedMatch ? publishedMatch[1] : new Date().toISOString();
+          
+          if (id && body && body !== '[deleted]' && body !== '[removed]') {
+            comments.push({
+              id: id.replace('t1_', ''),
+              parsedId: id.startsWith('t1_') ? id : `t1_${id}`,
+              url: `https://www.reddit.com/r/${subreddit}/comments/${postId}/_/${id}`,
+              postId: `t3_${postId}`,
+              parentId: `t3_${postId}`,
+              username,
+              userId: '',
+              category: '',
+              communityName: `r/${subreddit}`,
+              body,
+              createdAt,
+              scrapedAt,
+              upVotes: 0,
+              numberOfreplies: 0,
+              html: '',
+              dataType: 'comment'
+            });
+          }
+        }
+      }
+      return comments;
+    }
+    
+    const jsonData = await response.json();
+    
+    // JSON response is an array: [post data, comments data]
+    if (Array.isArray(jsonData) && jsonData.length > 1) {
+      const commentsData = jsonData[1]?.data?.children || [];
+      
+      for (const child of commentsData) {
+        if (child.kind !== 't1') continue;
+        const c = child.data;
+        
+        if (!c.body || c.body === '[deleted]' || c.body === '[removed]') continue;
+        
+        comments.push({
+          id: c.id,
+          parsedId: `t1_${c.id}`,
+          url: `https://www.reddit.com${c.permalink || ''}`,
+          postId: c.link_id || `t3_${postId}`,
+          parentId: c.parent_id || `t3_${postId}`,
+          username: c.author || '[unknown]',
+          userId: c.author_fullname || '',
+          category: '',
+          communityName: `r/${subreddit}`,
+          body: c.body,
+          createdAt: new Date((c.created_utc || c.created) * 1000).toISOString(),
+          scrapedAt,
+          upVotes: c.score || 0,
+          numberOfreplies: c.replies?.data?.children?.length || 0,
+          html: '',
+          dataType: 'comment'
+        });
+      }
+    }
+  } catch (error) {
+    // Silently fail - comment fetching is optional
+    console.log(`[Comments] Could not fetch comments for ${postId}: ${error}`);
+  }
+  
+  return comments;
+}
+
 // Scrape via Reddit RSS feeds (real-time, works reliably)
 async function scrapeViaRSS(
-  subreddit: string
+  subreddit: string,
+  fetchComments: boolean = true
 ): Promise<{ posts: RedditPost[]; comments: RedditComment[] }> {
   const posts: RedditPost[] = [];
-  const comments: RedditComment[] = [];
+  let comments: RedditComment[] = [];
   const scrapedAt = new Date().toISOString();
 
   try {
@@ -209,7 +329,19 @@ async function scrapeViaRSS(
     const parsedPosts = parseRSSXML(xmlText, subreddit, scrapedAt);
     posts.push(...parsedPosts);
 
-    console.log(`[RSS] r/${subreddit}: ${posts.length} posts`);
+    // Fetch comments for top 3 posts to get some comment data
+    if (fetchComments && posts.length > 0) {
+      const topPosts = posts.slice(0, 3);
+      for (const post of topPosts) {
+        await new Promise(resolve => setTimeout(resolve, 300)); // Small delay
+        const postComments = await fetchPostComments(subreddit, post.id, scrapedAt);
+        comments.push(...postComments);
+      }
+      console.log(`[RSS] r/${subreddit}: ${posts.length} posts, ${comments.length} comments`);
+    } else {
+      console.log(`[RSS] r/${subreddit}: ${posts.length} posts`);
+    }
+
     return { posts, comments };
 
   } catch (error) {
@@ -489,7 +621,7 @@ serve(async (req) => {
         .insert({
           user_id: user.id,
           name: `Reddit Bulk Scrape - ${timeRangeLabel} (${new Date().toLocaleDateString()})`,
-          source_type: 'reddit_bulk',
+          source_type: 'reddit_json',
           url: null,
           content: {
             posts: filteredPosts,

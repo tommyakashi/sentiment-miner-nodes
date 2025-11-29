@@ -14,6 +14,7 @@ import { KPIHeatmap } from '@/components/KPIHeatmap';
 import { ExemplarQuotes } from '@/components/ExemplarQuotes';
 import { SourceDistribution } from '@/components/SourceDistribution';
 import { ConfidenceDistribution } from '@/components/ConfidenceDistribution';
+import { TopPosts } from '@/components/TopPosts';
 import { InsightButton } from '@/components/InsightButton';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
@@ -23,7 +24,7 @@ import { useToast } from '@/hooks/use-toast';
 import { performSentimentAnalysis, aggregateNodeAnalysis } from '@/utils/sentiment/analyzers/sentimentAnalyzer';
 import { parseRedditJSON, extractTimeSeriesData } from '@/utils/redditParser';
 import type { Node, SentimentResult, NodeAnalysis } from '@/types/sentiment';
-import type { RedditData } from '@/types/reddit';
+import type { RedditData, RedditPost } from '@/types/reddit';
 import { Brain, ChevronDown, ChevronUp, Settings2 } from 'lucide-react';
 
 const Index = () => {
@@ -43,6 +44,7 @@ const Index = () => {
   const [isDataReady, setIsDataReady] = useState(false);
   const [modelsPreloaded, setModelsPreloaded] = useState(false);
   const [showNodeConfig, setShowNodeConfig] = useState(false);
+  const [scrapedPosts, setScrapedPosts] = useState<RedditPost[]>([]);
   const { toast } = useToast();
 
   // Check auth status
@@ -78,11 +80,16 @@ const Index = () => {
       setTimeSeriesData([]);
       setParticipants([]);
       setOverallSentiment(0);
+      setScrapedPosts([]);
       return;
     }
     
     setStagedContent(content);
     setIsDataReady(true);
+    
+    // Extract posts for TopPosts component
+    const posts = content.filter((item: any) => item.dataType === 'post') as RedditPost[];
+    setScrapedPosts(posts);
     
     // Preload models
     if (!modelsPreloaded) {
@@ -345,6 +352,13 @@ const Index = () => {
             <NodeManager nodes={nodes} onNodesChange={setNodes} />
           </CollapsibleContent>
         </Collapsible>
+
+        {/* Top Posts Section */}
+        {scrapedPosts.length > 0 && (
+          <div className="mb-6">
+            <TopPosts posts={scrapedPosts} title="Trending Posts" />
+          </div>
+        )}
 
         {/* Results Section */}
         {results.length > 0 && (
