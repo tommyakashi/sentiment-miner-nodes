@@ -5,17 +5,16 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
-        default: "bg-gradient-to-r from-primary via-[hsl(220,70%,55%)] to-accent text-primary-foreground bg-[length:200%_200%] animate-[gradient-shift_18s_ease_infinite] hover:shadow-[0_0_20px_hsl(var(--primary)/0.4)]",
-        destructive: "bg-gradient-to-r from-destructive via-[hsl(350,70%,50%)] to-[hsl(20,80%,50%)] text-destructive-foreground bg-[length:200%_200%] animate-[gradient-shift_18s_ease_infinite] hover:shadow-[0_0_20px_hsl(var(--destructive)/0.4)]",
-        outline: "border border-input bg-background hover:bg-accent/10 hover:text-accent-foreground hover:border-primary/50",
+        default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+        outline: "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
         secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-        ghost: "hover:bg-accent/10 hover:text-accent-foreground",
+        ghost: "hover:bg-accent hover:text-accent-foreground",
         link: "text-primary underline-offset-4 hover:underline",
-        gradient: "bg-gradient-to-r from-primary via-accent to-[hsl(320,70%,55%)] text-white bg-[length:200%_200%] animate-[gradient-shift_18s_ease_infinite] hover:shadow-[0_0_25px_hsl(var(--primary)/0.5)]",
       },
       size: {
         default: "h-10 px-4 py-2",
