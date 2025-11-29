@@ -6,7 +6,8 @@ import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { Brain, Loader2 } from 'lucide-react';
+import { ParticleBackground } from '@/components/ParticleBackground';
+import { Activity, Loader2, Zap } from 'lucide-react';
 import { User, Session } from '@supabase/supabase-js';
 
 export default function Auth() {
@@ -102,34 +103,51 @@ export default function Auth() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted flex items-center justify-center p-4">
-      <Card className="w-full max-w-md p-8">
+    <div className="min-h-screen bg-background flex items-center justify-center p-4 relative overflow-hidden">
+      {/* Particle Background */}
+      <ParticleBackground particleCount={35} interactive={true} />
+      
+      {/* Grid Overlay */}
+      <div className="fixed inset-0 observatory-grid pointer-events-none z-0" />
+      
+      {/* Auth Card */}
+      <Card className="w-full max-w-md p-8 relative z-10 bg-card/90 backdrop-blur-md border-border/50 animate-fade-in-up">
+        {/* Gradient Border Effect */}
+        <div className="absolute inset-0 rounded-lg p-[1px] bg-gradient-to-br from-primary/50 via-transparent to-accent/50 -z-10" />
+        
         <div className="flex flex-col items-center mb-8">
-          <div className="p-3 bg-primary rounded-lg mb-4">
-            <Brain className="w-10 h-10 text-primary-foreground" />
+          <div className="relative mb-6">
+            <div className="p-4 bg-gradient-to-br from-primary to-accent rounded-xl glow-primary">
+              <Activity className="w-10 h-10 text-primary-foreground" />
+            </div>
+            <div className="absolute inset-0 rounded-xl bg-primary/20 animate-ping" style={{ animationDuration: '2s' }} />
           </div>
-          <h1 className="text-3xl font-bold">Sentiment Insights</h1>
-          <p className="text-muted-foreground mt-2">
-            {isSignUp ? 'Create an account' : 'Sign in to your account'}
+          <h1 className="text-3xl font-bold tracking-tight">
+            <span className="gradient-text">Research Sentiment</span>
+          </h1>
+          <h2 className="text-2xl font-semibold text-foreground">Observatory</h2>
+          <p className="text-muted-foreground mt-3 text-sm font-mono">
+            {isSignUp ? 'Create your research account' : 'Sign in to continue'}
           </p>
         </div>
 
-        <form onSubmit={handleAuth} className="space-y-4">
+        <form onSubmit={handleAuth} className="space-y-5">
           <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email" className="text-sm font-medium">Email</Label>
             <Input
               id="email"
               type="email"
-              placeholder="you@example.com"
+              placeholder="researcher@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               disabled={isLoading}
               required
+              className="bg-background/50 border-border/50 focus:border-primary/50 transition-colors"
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
+            <Label htmlFor="password" className="text-sm font-medium">Password</Label>
             <Input
               id="password"
               type="password"
@@ -138,17 +156,25 @@ export default function Auth() {
               onChange={(e) => setPassword(e.target.value)}
               disabled={isLoading}
               required
+              className="bg-background/50 border-border/50 focus:border-primary/50 transition-colors"
             />
           </div>
 
-          <Button type="submit" className="w-full" disabled={isLoading}>
+          <Button 
+            type="submit" 
+            className="w-full bg-gradient-to-r from-primary to-accent hover:opacity-90 transition-opacity gap-2" 
+            disabled={isLoading}
+          >
             {isLoading ? (
               <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Loader2 className="h-4 w-4 animate-spin" />
                 {isSignUp ? 'Creating account...' : 'Signing in...'}
               </>
             ) : (
-              <>{isSignUp ? 'Sign Up' : 'Sign In'}</>
+              <>
+                <Zap className="h-4 w-4" />
+                {isSignUp ? 'Create Account' : 'Sign In'}
+              </>
             )}
           </Button>
         </form>
@@ -157,7 +183,7 @@ export default function Auth() {
           <button
             type="button"
             onClick={() => setIsSignUp(!isSignUp)}
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+            className="text-sm text-muted-foreground hover:text-primary transition-colors"
             disabled={isLoading}
           >
             {isSignUp
@@ -165,6 +191,10 @@ export default function Auth() {
               : "Don't have an account? Sign up"}
           </button>
         </div>
+        
+        {/* Decorative Elements */}
+        <div className="absolute -bottom-20 -right-20 w-40 h-40 bg-primary/5 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -top-20 -left-20 w-40 h-40 bg-accent/5 rounded-full blur-3xl pointer-events-none" />
       </Card>
     </div>
   );

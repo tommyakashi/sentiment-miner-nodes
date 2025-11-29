@@ -171,16 +171,16 @@ export function ScrapeHistory({ onLoadScrape }: ScrapeHistoryProps) {
   }
 
   return (
-    <Card className="p-6 space-y-4">
+    <Card className="p-6 space-y-4 bg-card/80 backdrop-blur-sm border-border/50 data-card">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-blue-500/10 rounded-lg">
-            <History className="w-6 h-6 text-blue-500" />
+          <div className="p-2.5 bg-gradient-to-br from-blue-500 to-purple-500 rounded-lg" style={{ boxShadow: '0 0 20px hsl(220 90% 56% / 0.3)' }}>
+            <History className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h3 className="text-lg font-semibold">Scrape History</h3>
-            <p className="text-sm text-muted-foreground">
-              {scrapes.length} past scrapes
+            <h3 className="text-lg font-semibold tracking-tight">Signal Archive</h3>
+            <p className="text-sm text-muted-foreground font-mono">
+              {scrapes.length} stored datasets
             </p>
           </div>
         </div>

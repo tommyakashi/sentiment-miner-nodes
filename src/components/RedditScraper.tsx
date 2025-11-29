@@ -201,16 +201,16 @@ export function RedditScraper({ onDataScraped }: RedditScraperProps) {
   };
 
   return (
-    <Card className="p-6 space-y-6">
+    <Card className="p-6 space-y-6 bg-card/80 backdrop-blur-sm border-border/50 data-card">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-orange-500/10 rounded-lg">
-            <Radio className="w-6 h-6 text-orange-500" />
+          <div className="p-2.5 bg-gradient-to-br from-orange-500 to-red-500 rounded-lg glow-primary" style={{ boxShadow: '0 0 20px hsl(25 95% 53% / 0.3)' }}>
+            <Radio className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h3 className="text-lg font-semibold">Reddit Sentiment Scraper</h3>
-            <p className="text-sm text-muted-foreground">
-              {activeSubreddits.length} research subreddits
+            <h3 className="text-lg font-semibold tracking-tight">Reddit Signal Scanner</h3>
+            <p className="text-sm text-muted-foreground font-mono">
+              {activeSubreddits.length} research communities
             </p>
           </div>
         </div>
@@ -384,19 +384,19 @@ export function RedditScraper({ onDataScraped }: RedditScraperProps) {
 
       {/* Scrape Button */}
       <Button
-        className="w-full h-12 text-lg"
+        className="w-full h-12 text-lg bg-gradient-to-r from-orange-500 to-red-500 hover:opacity-90 transition-opacity"
         onClick={handleScrape}
         disabled={isLoading || activeSubreddits.length === 0}
       >
         {isLoading ? (
           <>
             <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-            Scraping...
+            Scanning...
           </>
         ) : (
           <>
             <TrendingUp className="w-5 h-5 mr-2" />
-            Scrape {timeRangeOptions.find(o => o.value === selectedTimeRange)?.label} Sentiment
+            Scan {timeRangeOptions.find(o => o.value === selectedTimeRange)?.label} Signals
           </>
         )}
       </Button>
