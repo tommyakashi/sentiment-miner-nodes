@@ -44,12 +44,23 @@ interface ParticleBackgroundProps {
   dataCount?: number;
 }
 
+// Nebula colors (vibrant for nebulae)
 const nebulaColors = [
   { core: 'hsl(280, 70%, 60%)', outer: 'hsl(260, 50%, 30%)' },  // Purple nebula
   { core: 'hsl(185, 70%, 50%)', outer: 'hsl(200, 50%, 25%)' },  // Cyan nebula
   { core: 'hsl(340, 70%, 55%)', outer: 'hsl(320, 40%, 25%)' },  // Pink nebula
   { core: 'hsl(45, 80%, 55%)', outer: 'hsl(30, 60%, 30%)' },    // Gold nebula
   { core: 'hsl(160, 65%, 50%)', outer: 'hsl(140, 40%, 25%)' },  // Teal nebula
+];
+
+// Natural star color temperatures (realistic astronomy colors)
+const starTemperatureColors = [
+  { core: 'hsl(210, 80%, 95%)', outer: 'hsl(210, 60%, 70%)' },   // Hot blue-white (O/B stars)
+  { core: 'hsl(200, 50%, 90%)', outer: 'hsl(200, 40%, 65%)' },   // Blue-white (A stars)
+  { core: 'hsl(45, 10%, 98%)', outer: 'hsl(45, 8%, 80%)' },      // White (F stars)
+  { core: 'hsl(45, 30%, 92%)', outer: 'hsl(45, 25%, 75%)' },     // Yellow-white (G stars - like Sun)
+  { core: 'hsl(35, 60%, 80%)', outer: 'hsl(35, 50%, 60%)' },     // Yellow-orange (K stars)
+  { core: 'hsl(15, 70%, 70%)', outer: 'hsl(15, 60%, 50%)' },     // Orange-red (M stars)
 ];
 
 export function ParticleBackground({ 
@@ -73,9 +84,13 @@ export function ParticleBackground({
     const maxRadius = Math.min(width, height) * 0.45;
     const radius = Math.random() * maxRadius + 50;
     
-    const colorSet = nebulaColors[Math.floor(Math.random() * nebulaColors.length)];
     const isNebula = Math.random() > 0.6;
     const isStar = !isNebula && Math.random() > 0.5;
+    
+    // Use natural star colors for stars, vibrant colors for nebulae
+    const colorSet = isStar 
+      ? starTemperatureColors[Math.floor(Math.random() * starTemperatureColors.length)]
+      : nebulaColors[Math.floor(Math.random() * nebulaColors.length)];
     
     return {
       x: centerX + Math.cos(angle) * radius,
@@ -84,12 +99,12 @@ export function ParticleBackground({
       radius,
       angularVelocity: (0.0003 + Math.random() * 0.0008) * (Math.random() > 0.5 ? 1 : -1) * (1 - radius / maxRadius * 0.5),
       radialDrift: (Math.random() - 0.5) * 0.05,
-      size: isNebula ? Math.random() * 60 + 25 : isStar ? Math.random() * 4 + 2 : Math.random() * 2 + 1,
+      size: isNebula ? Math.random() * 60 + 25 : isStar ? Math.random() * 3 + 1.5 : Math.random() * 2 + 1,
       coreColor: colorSet.core,
       outerColor: colorSet.outer,
-      alpha: isNebula ? Math.random() * 0.25 + 0.1 : Math.random() * 0.6 + 0.3,
+      alpha: isNebula ? Math.random() * 0.25 + 0.1 : Math.random() * 0.5 + 0.25,
       pulse: Math.random() * Math.PI * 2,
-      pulseSpeed: Math.random() * 0.03 + 0.01,
+      pulseSpeed: Math.random() * 0.02 + 0.008,
       twinklePhase: Math.random() * Math.PI * 2,
       trail: [],
       type: isNebula ? 'nebula' : isStar ? 'star' : 'dust',
@@ -259,32 +274,40 @@ export function ParticleBackground({
   }, []);
 
   const drawStar = useCallback((ctx: CanvasRenderingContext2D, particle: NebulaParticle) => {
-    const twinkle = (Math.sin(particle.twinklePhase * 3) * 0.5 + 0.5);
-    const burstTwinkle = Math.random() > 0.995 ? 1.5 : 1;
-    const size = particle.size * (0.8 + twinkle * 0.4) * burstTwinkle;
-    const alpha = particle.alpha * (0.6 + twinkle * 0.4) * burstTwinkle;
+    // Smooth sine-wave twinkling only (no random bursts)
+    const twinkle = Math.sin(particle.twinklePhase * 2) * 0.3 + 0.7;
+    const size = particle.size * twinkle;
+    const alpha = particle.alpha * twinkle;
 
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
 
-    // Star glow
-    const gradient = ctx.createRadialGradient(
+    // Soft outer glow with natural color
+    const outerGlow = ctx.createRadialGradient(
       particle.x, particle.y, 0,
-      particle.x, particle.y, size * 3
+      particle.x, particle.y, size * 2
     );
-    gradient.addColorStop(0, particle.coreColor.replace(')', `, ${alpha})`).replace('hsl', 'hsla'));
-    gradient.addColorStop(0.3, particle.coreColor.replace(')', `, ${alpha * 0.4})`).replace('hsl', 'hsla'));
-    gradient.addColorStop(1, 'transparent');
+    outerGlow.addColorStop(0, particle.outerColor.replace(')', `, ${alpha * 0.6})`).replace('hsl', 'hsla'));
+    outerGlow.addColorStop(0.5, particle.outerColor.replace(')', `, ${alpha * 0.2})`).replace('hsl', 'hsla'));
+    outerGlow.addColorStop(1, 'transparent');
 
-    ctx.fillStyle = gradient;
+    ctx.fillStyle = outerGlow;
     ctx.beginPath();
-    ctx.arc(particle.x, particle.y, size * 3, 0, Math.PI * 2);
+    ctx.arc(particle.x, particle.y, size * 2, 0, Math.PI * 2);
     ctx.fill();
 
-    // Star core
-    ctx.fillStyle = `hsla(0, 0%, 100%, ${alpha})`;
+    // Core with natural temperature color
+    const coreGradient = ctx.createRadialGradient(
+      particle.x, particle.y, 0,
+      particle.x, particle.y, size * 0.8
+    );
+    coreGradient.addColorStop(0, particle.coreColor.replace(')', `, ${alpha * 0.9})`).replace('hsl', 'hsla'));
+    coreGradient.addColorStop(0.6, particle.coreColor.replace(')', `, ${alpha * 0.4})`).replace('hsl', 'hsla'));
+    coreGradient.addColorStop(1, 'transparent');
+
+    ctx.fillStyle = coreGradient;
     ctx.beginPath();
-    ctx.arc(particle.x, particle.y, size * 0.5, 0, Math.PI * 2);
+    ctx.arc(particle.x, particle.y, size * 0.8, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.restore();
@@ -306,11 +329,12 @@ export function ParticleBackground({
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     
-    // Cross flare
-    const flareLength = size * 4 * intensity;
-    const flareWidth = size * 0.3;
+    // Soft, subtle flare - much gentler
+    const flareLength = size * 2.5 * intensity;
+    const flareWidth = size * 0.15;
     
-    ctx.strokeStyle = color.replace(')', `, ${0.4 * intensity})`).replace('hsl', 'hsla');
+    // Very subtle cross flare
+    ctx.strokeStyle = color.replace(')', `, ${0.12 * intensity})`).replace('hsl', 'hsla');
     ctx.lineWidth = flareWidth;
     ctx.lineCap = 'round';
 
@@ -326,29 +350,29 @@ export function ParticleBackground({
     ctx.lineTo(x, y + flareLength);
     ctx.stroke();
 
-    // Diagonal lines (dimmer)
-    ctx.strokeStyle = color.replace(')', `, ${0.2 * intensity})`).replace('hsl', 'hsla');
-    ctx.lineWidth = flareWidth * 0.5;
+    // Diagonal lines (very subtle)
+    ctx.strokeStyle = color.replace(')', `, ${0.06 * intensity})`).replace('hsl', 'hsla');
+    ctx.lineWidth = flareWidth * 0.4;
 
     ctx.beginPath();
-    ctx.moveTo(x - flareLength * 0.7, y - flareLength * 0.7);
-    ctx.lineTo(x + flareLength * 0.7, y + flareLength * 0.7);
+    ctx.moveTo(x - flareLength * 0.5, y - flareLength * 0.5);
+    ctx.lineTo(x + flareLength * 0.5, y + flareLength * 0.5);
     ctx.stroke();
 
     ctx.beginPath();
-    ctx.moveTo(x + flareLength * 0.7, y - flareLength * 0.7);
-    ctx.lineTo(x - flareLength * 0.7, y + flareLength * 0.7);
+    ctx.moveTo(x + flareLength * 0.5, y - flareLength * 0.5);
+    ctx.lineTo(x - flareLength * 0.5, y + flareLength * 0.5);
     ctx.stroke();
 
-    // Central bright point
-    const pointGradient = ctx.createRadialGradient(x, y, 0, x, y, size);
-    pointGradient.addColorStop(0, `hsla(0, 0%, 100%, ${0.8 * intensity})`);
-    pointGradient.addColorStop(0.5, color.replace(')', `, ${0.4 * intensity})`).replace('hsl', 'hsla'));
+    // Soft central glow
+    const pointGradient = ctx.createRadialGradient(x, y, 0, x, y, size * 0.8);
+    pointGradient.addColorStop(0, `hsla(0, 0%, 100%, ${0.5 * intensity})`);
+    pointGradient.addColorStop(0.4, color.replace(')', `, ${0.2 * intensity})`).replace('hsl', 'hsla'));
     pointGradient.addColorStop(1, 'transparent');
     
     ctx.fillStyle = pointGradient;
     ctx.beginPath();
-    ctx.arc(x, y, size, 0, Math.PI * 2);
+    ctx.arc(x, y, size * 0.8, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.restore();
