@@ -215,33 +215,46 @@ export function RedditScraper({ onDataScraped }: RedditScraperProps) {
           </div>
         </div>
 
-        {/* Fast Mode Toggle */}
-        <div className="flex items-center gap-2">
-          <Clock className="w-4 h-4 text-muted-foreground" />
-          <span className="text-sm text-muted-foreground">{fastMode ? 'Fast' : 'Full'}</span>
-          <Switch
-            checked={fastMode}
-            onCheckedChange={(checked) => {
-              setFastMode(checked);
-              setCustomSubreddits([]);
+        {/* Mode Toggle - ON AIR style */}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => {
+              if (!isLoading && customSubreddits.length === 0) {
+                setFastMode(!fastMode);
+                setCustomSubreddits([]);
+              }
             }}
             disabled={isLoading || customSubreddits.length > 0}
-          />
-          <Zap className={`w-4 h-4 ${fastMode ? 'text-amber-500' : 'text-muted-foreground'}`} />
+            className={`
+              relative px-4 py-2 rounded-md font-bold text-sm uppercase tracking-wider
+              border-2 transition-all duration-300
+              ${fastMode 
+                ? 'bg-amber-500/20 border-amber-500 text-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.4)]' 
+                : 'bg-blue-500/20 border-blue-500 text-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.4)]'
+              }
+              ${isLoading || customSubreddits.length > 0 ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105 cursor-pointer'}
+            `}
+          >
+            <div className="flex items-center gap-2">
+              <span className={`w-2 h-2 rounded-full animate-pulse ${fastMode ? 'bg-amber-400' : 'bg-blue-400'}`} />
+              <span className="text-[10px] text-muted-foreground">MODE</span>
+              <span>{fastMode ? 'FAST' : 'FULL'}</span>
+            </div>
+          </button>
         </div>
       </div>
 
-      {/* Mode indicator */}
-      <div className={`text-xs px-3 py-1.5 rounded-full inline-flex items-center gap-1.5 ${fastMode ? 'bg-amber-500/10 text-amber-600' : 'bg-blue-500/10 text-blue-600'}`}>
+      {/* Mode details */}
+      <div className={`text-xs px-3 py-1.5 rounded-md inline-flex items-center gap-1.5 border ${fastMode ? 'bg-amber-500/5 border-amber-500/30 text-amber-500' : 'bg-blue-500/5 border-blue-500/30 text-blue-500'}`}>
         {fastMode ? (
           <>
             <Zap className="w-3 h-3" />
-            Fast Mode: 15 core subreddits (~15s)
+            15 core subreddits (~15s)
           </>
         ) : (
           <>
             <Clock className="w-3 h-3" />
-            Full Mode: 39 subreddits (~45s)
+            39 subreddits (~45s)
           </>
         )}
       </div>
