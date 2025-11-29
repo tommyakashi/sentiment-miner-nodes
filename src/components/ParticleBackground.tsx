@@ -110,29 +110,35 @@ export function ParticleBackground({
   const animationRef = useRef<number>();
   const lastShootingStarRef = useRef(0);
 
-  // Create Milky Way stars concentrated in horizontal band
+  // Create Milky Way stars in a diagonal sweeping band like the real galaxy
   const createMilkyWayStars = useCallback((width: number, height: number): MilkyWayStar[] => {
     const stars: MilkyWayStar[] = [];
-    const starCount = 800;
+    const starCount = 1200; // More stars for denser band
     
-    // Galaxy band parameters
-    const bandCenterY = height * 0.45; // Slightly above center
-    const bandWidth = height * 0.28;   // Width of the dense band
+    // Galaxy band parameters - diagonal sweep from top-left to bottom-right
+    const bandWidth = height * 0.5; // Much wider band
     
     for (let i = 0; i < starCount; i++) {
-      // Gaussian-like distribution to concentrate stars in band
-      // Using Box-Muller transform approximation
+      // Spread stars across full width
+      const x = Math.random() * width;
+      
+      // Calculate the band center at this x position (diagonal sweep)
+      // Band goes from top-left corner to bottom-right with a gentle curve
+      const xRatio = x / width;
+      const diagonalY = height * 0.2 + xRatio * height * 0.6; // Diagonal from 20% to 80%
+      // Add slight S-curve for more natural look
+      const curveOffset = Math.sin(xRatio * Math.PI) * height * 0.08;
+      const bandCenterAtX = diagonalY + curveOffset;
+      
+      // Gaussian distribution around the diagonal band center
       const u1 = Math.random();
       const u2 = Math.random();
       const gaussianOffset = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
-      const y = bandCenterY + gaussianOffset * bandWidth * 0.5;
-      
-      // Spread stars evenly across full width (not biased to center since window blocks it)
-      const x = Math.random() * width;
+      const y = bandCenterAtX + gaussianOffset * bandWidth * 0.35;
       
       // Distance from band center affects brightness
-      const distFromBand = Math.abs(y - bandCenterY) / bandWidth;
-      const bandAlphaMultiplier = 1 - Math.pow(distFromBand, 2) * 0.5;
+      const distFromBand = Math.abs(y - bandCenterAtX) / bandWidth;
+      const bandAlphaMultiplier = 1 - Math.pow(distFromBand, 2) * 0.4;
       
       const starColor = selectStarColor();
       // Blue stars (low temp number) are brighter
@@ -171,55 +177,64 @@ export function ParticleBackground({
     return stars;
   }, []);
 
-  // Create dark dust lanes that weave through the galaxy band
+  // Create dark dust lanes that weave through the diagonal galaxy band
   const createDustLanes = useCallback((width: number, height: number): DustLane[] => {
     const lanes: DustLane[] = [];
-    const bandCenterY = height * 0.45;
-    const laneCount = 4;
+    const laneCount = 5;
     
     for (let i = 0; i < laneCount; i++) {
       const points: { x: number; y: number }[] = [];
-      const baseY = bandCenterY + (i - laneCount / 2 + 0.5) * (height * 0.06);
-      const waveAmplitude = 20 + Math.random() * 30;
-      const waveFreq = 0.003 + Math.random() * 0.002;
+      const laneOffset = (i - laneCount / 2 + 0.5) * (height * 0.05);
+      const waveAmplitude = 25 + Math.random() * 35;
+      const waveFreq = 0.004 + Math.random() * 0.003;
       const phase = Math.random() * Math.PI * 2;
       
-      // Generate serpentine path across screen
-      for (let x = -100; x <= width + 100; x += 60) {
+      // Generate serpentine path following the diagonal band
+      for (let x = -100; x <= width + 100; x += 50) {
+        const xRatio = x / width;
+        // Follow the diagonal band center
+        const diagonalY = height * 0.2 + xRatio * height * 0.6;
+        const curveOffset = Math.sin(xRatio * Math.PI) * height * 0.08;
+        const bandCenterAtX = diagonalY + curveOffset;
+        
         const waveY = Math.sin(x * waveFreq + phase) * waveAmplitude;
         const secondaryWave = Math.sin(x * waveFreq * 2.5 + phase * 1.5) * waveAmplitude * 0.3;
         points.push({
           x,
-          y: baseY + waveY + secondaryWave
+          y: bandCenterAtX + laneOffset + waveY + secondaryWave
         });
       }
       
       lanes.push({
         points,
-        width: 12 + Math.random() * 20,
-        opacity: 0.25 + Math.random() * 0.25
+        width: 15 + Math.random() * 25,
+        opacity: 0.2 + Math.random() * 0.25
       });
     }
     return lanes;
   }, []);
 
-  // Create subtle nebula patches within the galaxy band
+  // Create subtle nebula patches along the diagonal galaxy band
   const createNebulae = useCallback((width: number, height: number): NebulaPatch[] => {
     const patches: NebulaPatch[] = [];
-    const bandCenterY = height * 0.45;
-    const bandWidth = height * 0.3;
-    const patchCount = 8;
+    const bandWidth = height * 0.4;
+    const patchCount = 12;
     
     for (let i = 0; i < patchCount; i++) {
-      const y = bandCenterY + (Math.random() - 0.5) * bandWidth;
       const x = Math.random() * width;
+      const xRatio = x / width;
+      // Follow the diagonal band
+      const diagonalY = height * 0.2 + xRatio * height * 0.6;
+      const curveOffset = Math.sin(xRatio * Math.PI) * height * 0.08;
+      const bandCenterAtX = diagonalY + curveOffset;
+      const y = bandCenterAtX + (Math.random() - 0.5) * bandWidth;
       
       patches.push({
         x,
         y,
-        size: Math.random() * 50 + 25,
+        size: Math.random() * 60 + 30,
         color: nebulaPatchColors[Math.floor(Math.random() * nebulaPatchColors.length)],
-        alpha: Math.random() * 0.12 + 0.04,
+        alpha: Math.random() * 0.15 + 0.05,
         rotation: Math.random() * Math.PI * 2,
       });
     }
@@ -277,10 +292,11 @@ export function ParticleBackground({
     shootingStarsRef.current = [];
   }, [createMilkyWayStars, createBackgroundStars, createDustLanes, createNebulae]);
 
-  // Draw galactic core glow
+  // Draw galactic core glow - positioned along the diagonal band
   const drawGalacticCore = useCallback((ctx: CanvasRenderingContext2D, width: number, height: number, parallaxX: number, parallaxY: number) => {
+    // Core at center of diagonal band (at x=0.5, y follows diagonal formula)
     const coreX = width * 0.5 + parallaxX * 20;
-    const coreY = height * 0.45 + parallaxY * 20;
+    const coreY = height * 0.2 + 0.5 * height * 0.6 + Math.sin(0.5 * Math.PI) * height * 0.08 + parallaxY * 20;
     
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
