@@ -54,13 +54,13 @@ export function WindowTabs({ activeTab, onTabChange, dataCount = 0 }: WindowTabs
               )}
               
               <span className={cn(
-                "transition-colors",
+                "transition-colors select-none",
                 isActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
               )}>
                 {tab.icon}
               </span>
               
-              <span className="truncate">{tab.label}</span>
+              <span className="truncate select-none">{tab.label}</span>
               
               {/* Data indicator for scanner tab */}
               {tab.id === 'scanner' && dataCount > 0 && (
