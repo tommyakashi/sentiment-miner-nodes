@@ -283,7 +283,7 @@ export function RedditScraper({ onDataScraped }: RedditScraperProps) {
               key={option.value}
               variant={selectedSortMode === option.value ? 'default' : 'outline'}
               size="sm"
-              className={`flex items-center gap-1.5 ${selectedSortMode === option.value ? 'bg-gradient-to-r from-orange-500 to-red-500' : ''}`}
+              className="flex items-center gap-1.5"
               onClick={() => setSelectedSortMode(option.value)}
               disabled={isLoading}
             >
@@ -436,7 +436,7 @@ export function RedditScraper({ onDataScraped }: RedditScraperProps) {
 
       {/* Scrape Button */}
       <Button
-        className="w-full h-12 text-lg bg-gradient-to-r from-orange-500 to-red-500 hover:opacity-90 transition-opacity"
+        className="w-full h-12 text-lg"
         onClick={handleScrape}
         disabled={isLoading || activeSubreddits.length === 0}
       >
