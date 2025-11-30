@@ -1,8 +1,49 @@
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Bookmark, Star, MessageSquare, Clock, ExternalLink, User } from 'lucide-react';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Bookmark, ArrowBigUp, MessageSquare, Clock, ExternalLink } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import type { RedditPost } from '@/types/reddit';
+
+// Generate a brief summary from post title and body
+const generateSummary = (post: RedditPost): string => {
+  const title = post.title.toLowerCase();
+  const body = post.body?.toLowerCase() || '';
+  
+  // Extract key themes
+  const themes: string[] = [];
+  
+  if (title.includes('warning') || title.includes('beware') || body.includes('warning')) {
+    themes.push('raises concerns');
+  }
+  if (title.includes('question') || title.includes('?') || title.includes('how')) {
+    themes.push('seeking advice');
+  }
+  if (title.includes('leaving') || title.includes('quit') || body.includes('leaving')) {
+    themes.push('discusses career transition');
+  }
+  if (title.includes('ai') || body.includes('artificial intelligence') || body.includes(' ai ')) {
+    themes.push('discusses AI');
+  }
+  if (title.includes('research') || body.includes('research')) {
+    themes.push('research-related');
+  }
+  if (title.includes('funding') || body.includes('funding') || body.includes('grant')) {
+    themes.push('funding discussion');
+  }
+  
+  // Build summary
+  if (themes.length > 0) {
+    return `Post ${themes.slice(0, 2).join(' and ')}. ${post.numberOfComments} community responses.`;
+  }
+  
+  // Fallback: truncate body or use generic
+  if (post.body && post.body.length > 20) {
+    return post.body.slice(0, 100).trim() + '...';
+  }
+  
+  return `Discussion with ${post.numberOfComments} community responses.`;
+};
 
 interface TopPostsProps {
   posts: RedditPost[];
@@ -73,18 +114,16 @@ export function TopPosts({ posts, title = "Top Posts" }: TopPostsProps) {
                 </div>
               </div>
               
-              {/* Description */}
-              {post.body && (
-                <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
-                  {post.body.slice(0, 150)}{post.body.length > 150 ? '...' : ''}
-                </p>
-              )}
+              {/* Summary */}
+              <p className="text-sm text-muted-foreground mb-3">
+                {generateSummary(post)}
+              </p>
               
               {/* Stats Row */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4 text-sm text-muted-foreground">
                   <span className="flex items-center gap-1">
-                    <Star className="w-4 h-4 text-amber-500" />
+                    <ArrowBigUp className="w-4 h-4" />
                     <span className="font-medium text-foreground">{post.upVotes.toLocaleString()}</span>
                     <span>upvotes</span>
                   </span>
@@ -114,9 +153,13 @@ export function TopPosts({ posts, title = "Top Posts" }: TopPostsProps) {
                     href={`https://www.reddit.com/user/${post.username}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-primary hover:underline flex items-center gap-1"
+                    className="text-muted-foreground hover:text-foreground flex items-center gap-1"
                   >
-                    <User className="w-3 h-3" />
+                    <Avatar className="w-4 h-4">
+                      <AvatarFallback className="text-[8px] bg-muted">
+                        {post.username.slice(0, 2).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
                     {post.username}
                   </a>
                 </div>
