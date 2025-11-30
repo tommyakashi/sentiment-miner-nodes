@@ -19,6 +19,7 @@ export function NodeManager({ nodes, onNodesChange }: NodeManagerProps) {
   const [bulkNodeText, setBulkNodeText] = useState('');
   const [newKeyword, setNewKeyword] = useState<Record<string, string>>({});
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generatingProgress, setGeneratingProgress] = useState({ current: 0, total: 0, nodeName: '' });
   const { toast } = useToast();
 
   const DEFAULT_NODES: Node[] = [
@@ -199,11 +200,14 @@ export function NodeManager({ nodes, onNodesChange }: NodeManagerProps) {
     if (nodes.length === 0) return;
 
     setIsGenerating(true);
+    setGeneratingProgress({ current: 0, total: nodes.length, nodeName: '' });
     let successCount = 0;
     const updatedNodes = [...nodes];
 
     for (let i = 0; i < updatedNodes.length; i++) {
       const node = updatedNodes[i];
+      setGeneratingProgress({ current: i + 1, total: nodes.length, nodeName: node.name });
+      
       try {
         const { data, error } = await supabase.functions.invoke('generate-keywords', {
           body: { 
@@ -228,6 +232,7 @@ export function NodeManager({ nodes, onNodesChange }: NodeManagerProps) {
 
     onNodesChange(updatedNodes);
     setIsGenerating(false);
+    setGeneratingProgress({ current: 0, total: 0, nodeName: '' });
     
     toast({
       title: "Batch generation complete",
@@ -341,7 +346,9 @@ export function NodeManager({ nodes, onNodesChange }: NodeManagerProps) {
                   variant="outline"
                 >
                   <Sparkles className="w-4 h-4 mr-2" />
-                  {isGenerating ? 'Generating...' : 'Generate Keywords for All'}
+                  {isGenerating 
+                    ? `Generating ${generatingProgress.current}/${generatingProgress.total}...` 
+                    : 'Generate Keywords for All'}
                 </Button>
               )}
             </div>
