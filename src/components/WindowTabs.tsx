@@ -1,7 +1,7 @@
 import { cn } from '@/lib/utils';
-import { X, Plus, Radio, History, Activity, Settings, BarChart3 } from 'lucide-react';
+import { X, Plus, Radio, History, Activity, Settings, BarChart3, Upload, Home } from 'lucide-react';
 
-export type TabId = 'scanner' | 'archive' | 'analysis' | 'settings';
+export type TabId = 'scanner' | 'archive' | 'analysis' | 'upload' | 'settings';
 
 interface Tab {
   id: TabId;
@@ -13,6 +13,7 @@ const tabs: Tab[] = [
   { id: 'scanner', label: 'Signal Scanner', icon: <Radio className="w-3.5 h-3.5" /> },
   { id: 'archive', label: 'Archive', icon: <History className="w-3.5 h-3.5" /> },
   { id: 'analysis', label: 'Analysis', icon: <BarChart3 className="w-3.5 h-3.5" /> },
+  { id: 'upload', label: 'Manual Upload', icon: <Upload className="w-3.5 h-3.5" /> },
   { id: 'settings', label: 'Settings', icon: <Settings className="w-3.5 h-3.5" /> },
 ];
 
@@ -20,16 +21,29 @@ interface WindowTabsProps {
   activeTab: TabId;
   onTabChange: (tab: TabId) => void;
   dataCount?: number;
+  onBackToHome?: () => void;
 }
 
-export function WindowTabs({ activeTab, onTabChange, dataCount = 0 }: WindowTabsProps) {
+export function WindowTabs({ activeTab, onTabChange, dataCount = 0, onBackToHome }: WindowTabsProps) {
   return (
     <div className="flex items-center bg-[hsl(230,15%,8%)] rounded-t-xl border-b border-border/30">
-      {/* Window Controls */}
+      {/* Window Controls / Home Button */}
       <div className="flex items-center gap-2 px-4 py-3">
-        <div className="w-3 h-3 rounded-full bg-red-500/80 hover:bg-red-500 transition-colors cursor-pointer" />
-        <div className="w-3 h-3 rounded-full bg-yellow-500/80 hover:bg-yellow-500 transition-colors cursor-pointer" />
-        <div className="w-3 h-3 rounded-full bg-green-500/80 hover:bg-green-500 transition-colors cursor-pointer" />
+        {onBackToHome ? (
+          <button
+            onClick={onBackToHome}
+            className="w-7 h-7 rounded-full bg-muted/50 hover:bg-primary/20 transition-all flex items-center justify-center group"
+            title="Back to home"
+          >
+            <Home className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary transition-colors" />
+          </button>
+        ) : (
+          <>
+            <div className="w-3 h-3 rounded-full bg-red-500/80 hover:bg-red-500 transition-colors cursor-pointer" />
+            <div className="w-3 h-3 rounded-full bg-yellow-500/80 hover:bg-yellow-500 transition-colors cursor-pointer" />
+            <div className="w-3 h-3 rounded-full bg-green-500/80 hover:bg-green-500 transition-colors cursor-pointer" />
+          </>
+        )}
       </div>
 
       {/* Tabs */}
