@@ -61,6 +61,7 @@ interface ParticleBackgroundProps {
   particleCount?: number;
   interactive?: boolean;
   dataCount?: number;
+  spiralActive?: boolean;
 }
 
 // Realistic stellar classification colors with weights
@@ -107,7 +108,8 @@ const selectStarColor = (): { color: string; temp: number } => {
 export function ParticleBackground({ 
   particleCount = 40, 
   interactive = true,
-  dataCount = 0 
+  dataCount = 0,
+  spiralActive = false
 }: ParticleBackgroundProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const milkyWayStarsRef = useRef<MilkyWayStar[]>([]);
@@ -119,6 +121,9 @@ export function ParticleBackground({
   const smoothMouseRef = useRef({ x: 0, y: 0 });
   const animationRef = useRef<number>();
   const lastShootingStarRef = useRef(0);
+  const spiralProgressRef = useRef(0);
+  const spiralActiveRef = useRef(false);
+  const starOriginalPositionsRef = useRef<Map<number, { x: number; y: number }>>(new Map());
 
   // Create Milky Way stars in a diagonal sweeping band like the real galaxy
   const createMilkyWayStars = useCallback((width: number, height: number): MilkyWayStar[] => {
@@ -600,10 +605,105 @@ export function ParticleBackground({
     ctx.fillRect(0, 0, width, height);
   }, []);
 
+  // Apply spiral animation to stars
+  const applySpiralAnimation = useCallback((centerX: number, centerY: number) => {
+    const progress = spiralProgressRef.current;
+    const easeIn = Math.pow(progress, 2); // Accelerating spiral
+    
+    // Apply to Milky Way stars
+    milkyWayStarsRef.current.forEach((star, index) => {
+      // Store original position if not stored
+      if (!starOriginalPositionsRef.current.has(index)) {
+        starOriginalPositionsRef.current.set(index, { x: star.baseX, y: star.baseY });
+      }
+      
+      const original = starOriginalPositionsRef.current.get(index)!;
+      const dx = centerX - star.x;
+      const dy = centerY - star.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      const angle = Math.atan2(dy, dx);
+      
+      // Angular velocity (spin) - increases as stars get closer
+      const angularSpeed = 0.08 * easeIn * (1 + 200 / (distance + 50));
+      // Radial velocity (pull toward center) - accelerates with progress
+      const radialPull = distance * 0.035 * easeIn;
+      
+      // Apply spiral motion
+      const newAngle = angle + angularSpeed;
+      const newDistance = Math.max(5, distance - radialPull);
+      
+      star.x = centerX - Math.cos(newAngle) * newDistance;
+      star.y = centerY - Math.sin(newAngle) * newDistance;
+    });
+    
+    // Apply to background stars (slower effect)
+    backgroundStarsRef.current.forEach((star, index) => {
+      const bgIndex = index + 100000; // Offset to avoid collision with milky way indices
+      if (!starOriginalPositionsRef.current.has(bgIndex)) {
+        starOriginalPositionsRef.current.set(bgIndex, { x: star.baseX, y: star.baseY });
+      }
+      
+      const dx = centerX - star.x;
+      const dy = centerY - star.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      const angle = Math.atan2(dy, dx);
+      
+      const angularSpeed = 0.05 * easeIn * (1 + 100 / (distance + 100));
+      const radialPull = distance * 0.025 * easeIn;
+      
+      const newAngle = angle + angularSpeed;
+      const newDistance = Math.max(10, distance - radialPull);
+      
+      star.x = centerX - Math.cos(newAngle) * newDistance;
+      star.y = centerY - Math.sin(newAngle) * newDistance;
+    });
+  }, []);
+
+  // Reset stars to original positions gradually
+  const resetStarPositions = useCallback(() => {
+    milkyWayStarsRef.current.forEach((star, index) => {
+      const original = starOriginalPositionsRef.current.get(index);
+      if (original) {
+        star.baseX = original.x;
+        star.baseY = original.y;
+        star.x = original.x;
+        star.y = original.y;
+      }
+    });
+    
+    backgroundStarsRef.current.forEach((star, index) => {
+      const bgIndex = index + 100000;
+      const original = starOriginalPositionsRef.current.get(bgIndex);
+      if (original) {
+        star.baseX = original.x;
+        star.baseY = original.y;
+        star.x = original.x;
+        star.y = original.y;
+      }
+    });
+    
+    starOriginalPositionsRef.current.clear();
+  }, []);
+
   const draw = useCallback((time: number) => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
     if (!canvas || !ctx) return;
+
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+
+    // Handle spiral animation
+    if (spiralActiveRef.current) {
+      spiralProgressRef.current = Math.min(1, spiralProgressRef.current + 0.018);
+      applySpiralAnimation(centerX, centerY);
+    } else if (spiralProgressRef.current > 0) {
+      // Gradually return to normal
+      spiralProgressRef.current = Math.max(0, spiralProgressRef.current - 0.04);
+      if (spiralProgressRef.current === 0) {
+        resetStarPositions();
+      }
+    }
 
     // Clear with deep space black
     ctx.fillStyle = 'hsl(230, 30%, 3%)';
@@ -617,9 +717,9 @@ export function ParticleBackground({
     const parallaxX = (smoothMouseRef.current.x - canvas.width / 2) / canvas.width;
     const parallaxY = (smoothMouseRef.current.y - canvas.height / 2) / canvas.height;
 
-    // Spawn shooting stars
+    // Spawn shooting stars (only when not spiraling)
     const now = Date.now();
-    if (now - lastShootingStarRef.current > 4000 + Math.random() * 6000) {
+    if (!spiralActiveRef.current && now - lastShootingStarRef.current > 4000 + Math.random() * 6000) {
       shootingStarsRef.current.push(createShootingStar(canvas.width, canvas.height));
       lastShootingStarRef.current = now;
     }
@@ -640,8 +740,21 @@ export function ParticleBackground({
 
     // DRAW ORDER (back to front):
     
-    // 1. Galactic core glow (furthest back)
+    // 1. Galactic core glow (furthest back) - intensify during spiral
     drawGalacticCore(ctx, canvas.width, canvas.height, parallaxX, parallaxY);
+    
+    // Draw center vortex glow during spiral
+    if (spiralProgressRef.current > 0) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const vortexGlow = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, 150 * spiralProgressRef.current);
+      vortexGlow.addColorStop(0, `hsla(260, 80%, 70%, ${0.4 * spiralProgressRef.current})`);
+      vortexGlow.addColorStop(0.3, `hsla(280, 60%, 50%, ${0.2 * spiralProgressRef.current})`);
+      vortexGlow.addColorStop(1, 'transparent');
+      ctx.fillStyle = vortexGlow;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.restore();
+    }
     
     // 2. Scattered background stars (outside main band)
     drawBackgroundStars(ctx, time, parallaxX, parallaxY);
@@ -664,7 +777,15 @@ export function ParticleBackground({
     drawVignette(ctx, canvas.width, canvas.height);
 
     animationRef.current = requestAnimationFrame(draw);
-  }, [drawGalacticCore, drawBackgroundStars, drawDustLanes, drawMilkyWayStars, drawNebulae, drawShootingStar, drawVignette, createShootingStar]);
+  }, [drawGalacticCore, drawBackgroundStars, drawDustLanes, drawMilkyWayStars, drawNebulae, drawShootingStar, drawVignette, createShootingStar, applySpiralAnimation, resetStarPositions]);
+
+  // Update spiral state from prop
+  useEffect(() => {
+    spiralActiveRef.current = spiralActive;
+    if (spiralActive) {
+      spiralProgressRef.current = 0;
+    }
+  }, [spiralActive]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
