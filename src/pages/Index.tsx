@@ -19,6 +19,8 @@ import { InsightButton } from '@/components/InsightButton';
 import { ParticleBackground } from '@/components/ParticleBackground';
 import { FloatingWindow } from '@/components/FloatingWindow';
 import { WindowTabs, TabId } from '@/components/WindowTabs';
+import { ModeSelector, ModeId } from '@/components/ModeSelector';
+import { ManualUpload } from '@/components/ManualUpload';
 import { AnalysisLoadingOverlay } from '@/components/AnalysisLoadingOverlay';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -33,7 +35,9 @@ import { Activity, Zap } from 'lucide-react';
 const Index = () => {
   const navigate = useNavigate();
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [selectedMode, setSelectedMode] = useState<ModeId | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>('scanner');
+  const [isModeTransitioning, setIsModeTransitioning] = useState(false);
   const [nodes, setNodes] = useState<Node[]>([]);
   const [results, setResults] = useState<SentimentResult[]>([]);
   const [nodeAnalysis, setNodeAnalysis] = useState<NodeAnalysis[]>([]);
@@ -435,6 +439,17 @@ const Index = () => {
           </ScrollArea>
         );
 
+      case 'upload':
+        return (
+          <div className="p-6">
+            <ManualUpload 
+              onDataReady={(content, fileType, fileCount) => {
+                handleFilesLoaded(content, fileType, fileCount);
+              }}
+            />
+          </div>
+        );
+
       case 'settings':
         return (
           <div className="p-6">
@@ -445,6 +460,26 @@ const Index = () => {
       default:
         return null;
     }
+  };
+
+  const handleModeSelect = (mode: ModeId) => {
+    setIsModeTransitioning(true);
+    
+    // Small delay for fade out effect
+    setTimeout(() => {
+      setSelectedMode(mode);
+      setActiveTab(mode as TabId);
+      setIsModeTransitioning(false);
+    }, 300);
+  };
+
+  const handleBackToHome = () => {
+    setIsModeTransitioning(true);
+    
+    setTimeout(() => {
+      setSelectedMode(null);
+      setIsModeTransitioning(false);
+    }, 300);
   };
 
   return (
@@ -468,10 +503,22 @@ const Index = () => {
         totalSteps={TOTAL_STEPS}
       />
       
+      {/* Mode Selector - shown when no mode is selected */}
+      <div className={`transition-all duration-300 ${
+        !selectedMode && !isModeTransitioning 
+          ? 'opacity-100 scale-100' 
+          : 'opacity-0 scale-95 pointer-events-none absolute'
+      }`}>
+        <ModeSelector 
+          onSelectMode={handleModeSelect}
+          isVisible={!selectedMode && !isModeTransitioning}
+        />
+      </div>
+      
       {/* Floating Window - with fade animations */}
-      {(showWindow || isWindowHiding) && (
+      {selectedMode && (showWindow || isWindowHiding) && (
         <div className={`relative z-10 w-full transition-all duration-300 ${
-          isWindowHiding 
+          isWindowHiding || isModeTransitioning
             ? 'opacity-0 scale-95' 
             : 'opacity-100 scale-100 animate-fade-in'
         }`}>
@@ -481,6 +528,7 @@ const Index = () => {
                 activeTab={activeTab} 
                 onTabChange={setActiveTab}
                 dataCount={stagedContent.length}
+                onBackToHome={handleBackToHome}
               />
             }
           >
