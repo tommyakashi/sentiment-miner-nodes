@@ -472,13 +472,13 @@ const Index = () => {
       setIsSpiralAnimating(true);
     }, 300);
     
-    // Step 3: After spiral animation, show the window
+    // Step 3: After spiral animation, show the window (extended for slower animation)
     setTimeout(() => {
       setSelectedMode(mode);
       setActiveTab(mode as TabId);
       setIsSpiralAnimating(false);
       setIsModeTransitioning(false);
-    }, 2800); // 300ms fade + 2500ms spiral (inward vortex + outward expansion)
+    }, 5500); // 300ms fade + 5200ms slower spiral animation
   };
 
   const handleBackToHome = () => {
