@@ -64,15 +64,16 @@ interface ParticleBackgroundProps {
   spiralActive?: boolean;
 }
 
-// Realistic stellar classification colors with weights
-// O/B (hot blue) → A (blue-white) → F (white) → G (yellow-white) → K (orange) → M (red)
+// Scientifically accurate stellar classification colors based on blackbody temperature
+// O-type (>30,000K) → B-type (10,000-30,000K) → A-type (7,500-10,000K) → F-type (6,000-7,500K) → G-type (5,200-6,000K) → K-type (3,700-5,200K) → M-type (<3,700K)
 const stellarColors = [
-  { color: 'hsl(210, 100%, 92%)', weight: 0.03, name: 'O/B' },   // Hot blue - rare, very bright
-  { color: 'hsl(200, 80%, 90%)', weight: 0.07, name: 'A' },      // Blue-white
-  { color: 'hsl(45, 15%, 96%)', weight: 0.12, name: 'F' },       // White
-  { color: 'hsl(45, 35%, 88%)', weight: 0.20, name: 'G' },       // Yellow-white (Sun-like)
-  { color: 'hsl(30, 55%, 78%)', weight: 0.30, name: 'K' },       // Orange - most common
-  { color: 'hsl(15, 65%, 68%)', weight: 0.28, name: 'M' },       // Red - numerous but dim
+  { color: 'hsl(220, 70%, 85%)', weight: 0.02, name: 'O' },      // O-type: Very hot blue - extremely rare
+  { color: 'hsl(215, 55%, 88%)', weight: 0.05, name: 'B' },      // B-type: Hot blue-white
+  { color: 'hsl(210, 35%, 92%)', weight: 0.10, name: 'A' },      // A-type: White with blue tinge (Sirius, Vega)
+  { color: 'hsl(45, 8%, 95%)', weight: 0.15, name: 'F' },        // F-type: Pale yellow-white (Procyon)
+  { color: 'hsl(45, 30%, 90%)', weight: 0.18, name: 'G' },       // G-type: Yellow (Sun-like)
+  { color: 'hsl(35, 60%, 80%)', weight: 0.25, name: 'K' },       // K-type: Orange (Arcturus) - very common
+  { color: 'hsl(25, 75%, 65%)', weight: 0.25, name: 'M' },       // M-type: Red-orange (Betelgeuse) - most common but dim
 ];
 
 // Nebula colors for patches
@@ -83,13 +84,13 @@ const nebulaPatchColors = [
   'hsl(200, 50%, 35%)',  // Blue
 ];
 
-// Background star colors (scattered, dimmer)
+// Background star colors (scattered, dimmer) - scientifically accurate
 const bgStarColors = [
-  'hsl(210, 25%, 80%)',
-  'hsl(200, 20%, 75%)',
-  'hsl(45, 10%, 85%)',
-  'hsl(35, 20%, 70%)',
-  'hsl(0, 0%, 80%)',
+  'hsl(210, 35%, 85%)',   // A-type white-blue
+  'hsl(45, 8%, 88%)',     // F-type pale white
+  'hsl(45, 25%, 85%)',    // G-type warm white
+  'hsl(35, 45%, 75%)',    // K-type orange tint
+  'hsl(220, 15%, 82%)',   // Cool white
 ];
 
 // Select star color based on weighted distribution
@@ -664,10 +665,10 @@ export function ParticleBackground({
         const distance = Math.sqrt(dx * dx + dy * dy);
         const angle = Math.atan2(dy, dx);
         
-        // Angular velocity increases as stars get closer and as progress increases
-        const angularSpeed = 0.12 * easeIn * (1 + 300 / (distance + 30));
-        // Radial pull toward center
-        const radialPull = distance * 0.06 * easeIn;
+        // Angular velocity increases as stars get closer and as progress increases (SLOWED)
+        const angularSpeed = 0.04 * easeIn * (1 + 200 / (distance + 40));
+        // Radial pull toward center (SLOWED)
+        const radialPull = distance * 0.02 * easeIn;
         
         const newAngle = angle + angularSpeed;
         const newDistance = Math.max(15, distance - radialPull);
@@ -714,8 +715,8 @@ export function ParticleBackground({
         const distance = Math.sqrt(dx * dx + dy * dy);
         const angle = Math.atan2(dy, dx);
         
-        const angularSpeed = 0.06 * easeIn * (1 + 150 / (distance + 80));
-        const radialPull = distance * 0.03 * easeIn;
+        const angularSpeed = 0.02 * easeIn * (1 + 100 / (distance + 100));
+        const radialPull = distance * 0.01 * easeIn;
         
         const newAngle = angle + angularSpeed;
         const newDistance = Math.max(30, distance - radialPull);
@@ -766,9 +767,9 @@ export function ParticleBackground({
     const centerX = canvas.width / 2;
     const centerY = canvas.height / 2;
 
-    // Handle spiral animation
+    // Handle spiral animation (SLOWED - was 0.008, now 0.003)
     if (spiralActiveRef.current) {
-      spiralProgressRef.current = Math.min(1, spiralProgressRef.current + 0.008);
+      spiralProgressRef.current = Math.min(1, spiralProgressRef.current + 0.003);
       applySpiralAnimation(centerX, centerY, canvas.width, canvas.height);
     } else if (spiralProgressRef.current > 0) {
       // Gradually return to normal
