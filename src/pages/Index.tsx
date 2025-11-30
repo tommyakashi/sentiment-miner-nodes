@@ -472,13 +472,13 @@ const Index = () => {
       setIsSpiralAnimating(true);
     }, 300);
     
-    // Step 3: After spiral animation, show the window (extended for slower animation)
+    // Step 3: After spiral animation, show the window (extended for complex 3-phase animation)
     setTimeout(() => {
       setSelectedMode(mode);
       setActiveTab(mode as TabId);
       setIsSpiralAnimating(false);
       setIsModeTransitioning(false);
-    }, 5500); // 300ms fade + 5200ms slower spiral animation
+    }, 6000); // 300ms fade + ~5700ms for gather → vortex → unfurl
   };
 
   const handleBackToHome = () => {

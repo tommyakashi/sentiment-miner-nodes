@@ -611,43 +611,85 @@ export function ParticleBackground({
     ctx.fillRect(0, 0, width, height);
   }, []);
 
-  // Calculate spiral galaxy target position for a star
+  // Calculate complex barred spiral galaxy position
   const getSpiralGalaxyPosition = useCallback((index: number, total: number, centerX: number, centerY: number, maxRadius: number) => {
-    const numArms = 4;
-    const armIndex = index % numArms;
-    const positionInArm = Math.floor(index / numArms) / Math.floor(total / numArms);
+    // Barred spiral galaxy with 2 major arms + 2 minor arms
+    const random = ((index * 9301 + 49297) % 233280) / 233280; // Seeded random for consistency
+    const random2 = ((index * 7919 + 104729) % 233280) / 233280;
+    const random3 = ((index * 6571 + 86969) % 233280) / 233280;
     
-    // Logarithmic spiral: r = a * e^(b * theta)
-    const spiralTightness = 0.3;
-    const baseAngle = (armIndex / numArms) * Math.PI * 2;
-    const theta = baseAngle + positionInArm * Math.PI * 2.5; // 2.5 rotations per arm
-    const r = maxRadius * 0.08 + positionInArm * maxRadius * 0.85;
+    // Determine star type: core, bar, major arm, minor arm, or halo
+    const starType = random < 0.15 ? 'core' : 
+                     random < 0.25 ? 'bar' : 
+                     random < 0.65 ? 'major' : 
+                     random < 0.85 ? 'minor' : 'halo';
     
-    // Add some spread perpendicular to the arm
-    const spread = (Math.random() - 0.5) * maxRadius * 0.12 * (1 - positionInArm * 0.5);
-    const spreadAngle = theta + Math.PI / 2;
+    let x: number, y: number;
     
-    const x = centerX + r * Math.cos(theta) + spread * Math.cos(spreadAngle);
-    const y = centerY + r * Math.sin(theta) + spread * Math.sin(spreadAngle);
+    if (starType === 'core') {
+      // Dense central bulge - elliptical distribution
+      const r = Math.pow(random2, 0.5) * maxRadius * 0.15;
+      const theta = random3 * Math.PI * 2;
+      const ellipseRatio = 0.7;
+      x = centerX + r * Math.cos(theta);
+      y = centerY + r * Math.sin(theta) * ellipseRatio;
+    } else if (starType === 'bar') {
+      // Central bar structure
+      const barLength = maxRadius * 0.35;
+      const barWidth = maxRadius * 0.08;
+      const barAngle = Math.PI * 0.15; // Tilted bar
+      const alongBar = (random2 - 0.5) * 2 * barLength;
+      const acrossBar = (random3 - 0.5) * 2 * barWidth * (1 - Math.abs(alongBar) / barLength * 0.5);
+      x = centerX + alongBar * Math.cos(barAngle) - acrossBar * Math.sin(barAngle);
+      y = centerY + alongBar * Math.sin(barAngle) + acrossBar * Math.cos(barAngle);
+    } else if (starType === 'major' || starType === 'minor') {
+      // Spiral arms using logarithmic spiral
+      const armIndex = starType === 'major' ? (index % 2) : (index % 2) + 2;
+      const baseAngle = (armIndex / 4) * Math.PI * 2 + Math.PI * 0.15; // Aligned with bar
+      
+      // Distance along arm (0 to 1)
+      const armPosition = Math.pow(random2, 0.7);
+      
+      // Logarithmic spiral: θ = a + b * ln(r)
+      const spiralTightness = starType === 'major' ? 0.4 : 0.35;
+      const armRotations = starType === 'major' ? 1.8 : 1.5;
+      const theta = baseAngle + armPosition * Math.PI * 2 * armRotations;
+      const r = maxRadius * 0.2 + armPosition * maxRadius * 0.75;
+      
+      // Width varies along arm - wider at outer edges
+      const armWidth = maxRadius * (0.04 + armPosition * 0.08) * (starType === 'major' ? 1 : 0.6);
+      const perpOffset = (random3 - 0.5) * 2 * armWidth;
+      const perpAngle = theta + Math.PI / 2;
+      
+      x = centerX + r * Math.cos(theta) + perpOffset * Math.cos(perpAngle);
+      y = centerY + r * Math.sin(theta) + perpOffset * Math.sin(perpAngle);
+    } else {
+      // Halo stars - sparse outer region
+      const r = maxRadius * (0.6 + random2 * 0.4);
+      const theta = random3 * Math.PI * 2;
+      x = centerX + r * Math.cos(theta);
+      y = centerY + r * Math.sin(theta);
+    }
     
-    return { x, y };
+    return { x, y, starType };
   }, []);
 
-  // Apply spiral animation to stars - two phases: inward vortex then expand to spiral
+  // Apply complex three-phase spiral animation
   const applySpiralAnimation = useCallback((centerX: number, centerY: number, canvasWidth: number, canvasHeight: number) => {
     const progress = spiralProgressRef.current;
-    const maxRadius = Math.min(canvasWidth, canvasHeight) * 0.45;
+    const maxRadius = Math.min(canvasWidth, canvasHeight) * 0.42;
     
-    // Phase 1: 0-0.5 = inward vortex
-    // Phase 2: 0.5-1.0 = expand into spiral galaxy
-    const isVortexPhase = progress < 0.5;
+    // Three phases:
+    // Phase 1 (0-0.3): Gathering - stars accelerate toward swirl paths
+    // Phase 2 (0.3-0.6): Vortex - tight inward spiral with increasing speed
+    // Phase 3 (0.6-1.0): Unfurl - expand outward into galaxy formation
     
-    // Apply to Milky Way stars
+    const phase = progress < 0.3 ? 1 : progress < 0.6 ? 2 : 3;
+    
     milkyWayStarsRef.current.forEach((star, index) => {
-      // Store original position and calculate target spiral position
+      // Store original position and calculate target on first frame
       if (!starOriginalPositionsRef.current.has(index)) {
         starOriginalPositionsRef.current.set(index, { x: star.x, y: star.y });
-        // Calculate and store target spiral position
         const target = getSpiralGalaxyPosition(index, milkyWayStarsRef.current.length, centerX, centerY, maxRadius);
         spiralTargetPositionsRef.current.set(index, target);
       }
@@ -655,79 +697,108 @@ export function ParticleBackground({
       const original = starOriginalPositionsRef.current.get(index)!;
       const target = spiralTargetPositionsRef.current.get(index)!;
       
-      if (isVortexPhase) {
-        // Phase 1: Spiral inward toward center
-        const vortexProgress = progress * 2; // 0 to 1 during vortex phase
-        const easeIn = Math.pow(vortexProgress, 1.5);
+      const dx = centerX - star.x;
+      const dy = centerY - star.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      const angle = Math.atan2(dy, dx);
+      
+      // Seeded random for consistent per-star variation
+      const starRandom = ((index * 9301 + 49297) % 233280) / 233280;
+      const speedVariation = 0.7 + starRandom * 0.6;
+      
+      if (phase === 1) {
+        // Phase 1: Gathering - stars begin curved movement toward center
+        const phaseProgress = progress / 0.3;
+        const easeIn = Math.pow(phaseProgress, 2);
         
-        const dx = centerX - star.x;
-        const dy = centerY - star.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        const angle = Math.atan2(dy, dx);
-        
-        // Angular velocity increases as stars get closer and as progress increases (SLOWED)
-        const angularSpeed = 0.04 * easeIn * (1 + 200 / (distance + 40));
-        // Radial pull toward center (SLOWED)
-        const radialPull = distance * 0.02 * easeIn;
+        // Gradual curve toward center with rotation
+        const angularSpeed = 0.015 * easeIn * speedVariation * (1 + 80 / (distance + 60));
+        const radialPull = distance * 0.008 * easeIn * speedVariation;
         
         const newAngle = angle + angularSpeed;
-        const newDistance = Math.max(15, distance - radialPull);
+        const newDistance = Math.max(20, distance - radialPull);
         
         star.x = centerX - Math.cos(newAngle) * newDistance;
         star.y = centerY - Math.sin(newAngle) * newDistance;
+        
+      } else if (phase === 2) {
+        // Phase 2: Vortex - dramatic inward spiral
+        const phaseProgress = (progress - 0.3) / 0.3;
+        const easeInOut = phaseProgress < 0.5 
+          ? 2 * phaseProgress * phaseProgress 
+          : 1 - Math.pow(-2 * phaseProgress + 2, 2) / 2;
+        
+        // Faster rotation, stronger pull - Kepler-like (closer = faster)
+        const keplerFactor = Math.pow(Math.max(distance, 30), -0.5);
+        const angularSpeed = 0.06 * (0.5 + easeInOut) * speedVariation * keplerFactor * 15;
+        const radialPull = distance * 0.025 * easeInOut * speedVariation;
+        
+        // Add wobble for visual interest
+        const wobble = Math.sin(progress * 20 + index * 0.1) * 0.3;
+        
+        const newAngle = angle + angularSpeed + wobble * 0.02;
+        const newDistance = Math.max(8, distance - radialPull);
+        
+        star.x = centerX - Math.cos(newAngle) * newDistance;
+        star.y = centerY - Math.sin(newAngle) * newDistance;
+        
       } else {
-        // Phase 2: Expand outward into spiral galaxy formation
-        const expandProgress = (progress - 0.5) * 2; // 0 to 1 during expand phase
-        const easeOut = 1 - Math.pow(1 - expandProgress, 2);
+        // Phase 3: Unfurl - expand into spiral galaxy
+        const phaseProgress = (progress - 0.6) / 0.4;
+        const easeOut = 1 - Math.pow(1 - phaseProgress, 3);
         
-        // Interpolate from current compressed position to target spiral position
-        // But add spiral rotation during expansion
-        const rotationAngle = (1 - expandProgress) * Math.PI * 0.5; // Rotate while expanding
+        // Stars continue rotating while moving to final positions
+        const remainingRotation = (1 - easeOut) * Math.PI * 1.2;
         
-        // Calculate target with rotation
-        const dx = target.x - centerX;
-        const dy = target.y - centerY;
-        const targetAngle = Math.atan2(dy, dx) + rotationAngle;
-        const targetDist = Math.sqrt(dx * dx + dy * dy);
+        // Calculate rotated target position
+        const tdx = target.x - centerX;
+        const tdy = target.y - centerY;
+        const targetAngle = Math.atan2(tdy, tdx) + remainingRotation;
+        const targetDist = Math.sqrt(tdx * tdx + tdy * tdy);
         
         const rotatedTargetX = centerX + targetDist * Math.cos(targetAngle);
         const rotatedTargetY = centerY + targetDist * Math.sin(targetAngle);
         
-        // Interpolate from current position toward rotated target
-        star.x = star.x + (rotatedTargetX - star.x) * 0.08;
-        star.y = star.y + (rotatedTargetY - star.y) * 0.08;
+        // Smooth interpolation with variable speed based on distance
+        const interpSpeed = 0.04 + easeOut * 0.06;
+        star.x = star.x + (rotatedTargetX - star.x) * interpSpeed;
+        star.y = star.y + (rotatedTargetY - star.y) * interpSpeed;
       }
     });
     
-    // Apply to background stars (slower, less dramatic effect)
+    // Background stars - gentler effect with phase awareness
     backgroundStarsRef.current.forEach((star, index) => {
       const bgIndex = index + 100000;
       if (!starOriginalPositionsRef.current.has(bgIndex)) {
         starOriginalPositionsRef.current.set(bgIndex, { x: star.x, y: star.y });
       }
       
-      if (isVortexPhase) {
-        const vortexProgress = progress * 2;
-        const easeIn = Math.pow(vortexProgress, 1.5);
+      const original = starOriginalPositionsRef.current.get(bgIndex)!;
+      const dx = centerX - star.x;
+      const dy = centerY - star.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      const angle = Math.atan2(dy, dx);
+      
+      const starRandom = ((index * 7919 + 104729) % 233280) / 233280;
+      
+      if (phase === 1 || phase === 2) {
+        // Gentle swirl during vortex phases
+        const phaseProgress = phase === 1 ? progress / 0.3 : 0.5 + (progress - 0.3) / 0.6;
+        const easeIn = Math.pow(phaseProgress, 1.5);
         
-        const dx = centerX - star.x;
-        const dy = centerY - star.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        const angle = Math.atan2(dy, dx);
-        
-        const angularSpeed = 0.02 * easeIn * (1 + 100 / (distance + 100));
-        const radialPull = distance * 0.01 * easeIn;
+        const angularSpeed = 0.008 * easeIn * (0.8 + starRandom * 0.4) * (1 + 50 / (distance + 120));
+        const radialPull = distance * 0.004 * easeIn;
         
         const newAngle = angle + angularSpeed;
-        const newDistance = Math.max(30, distance - radialPull);
+        const newDistance = Math.max(50, distance - radialPull);
         
         star.x = centerX - Math.cos(newAngle) * newDistance;
         star.y = centerY - Math.sin(newAngle) * newDistance;
       } else {
-        // During expansion, background stars slowly drift back outward
-        const original = starOriginalPositionsRef.current.get(bgIndex)!;
-        star.x = star.x + (original.x - star.x) * 0.02;
-        star.y = star.y + (original.y - star.y) * 0.02;
+        // Phase 3: Drift back to original positions
+        const phaseProgress = (progress - 0.6) / 0.4;
+        star.x = star.x + (original.x - star.x) * 0.015 * (1 + phaseProgress);
+        star.y = star.y + (original.y - star.y) * 0.015 * (1 + phaseProgress);
       }
     });
   }, [getSpiralGalaxyPosition]);
@@ -767,9 +838,9 @@ export function ParticleBackground({
     const centerX = canvas.width / 2;
     const centerY = canvas.height / 2;
 
-    // Handle spiral animation (SLOWED - was 0.008, now 0.003)
+    // Handle spiral animation - three phases: gather, vortex, unfurl
     if (spiralActiveRef.current) {
-      spiralProgressRef.current = Math.min(1, spiralProgressRef.current + 0.003);
+      spiralProgressRef.current = Math.min(1, spiralProgressRef.current + 0.0035);
       applySpiralAnimation(centerX, centerY, canvas.width, canvas.height);
     } else if (spiralProgressRef.current > 0) {
       // Gradually return to normal
@@ -817,16 +888,74 @@ export function ParticleBackground({
     // 1. Galactic core glow (furthest back) - intensify during spiral
     drawGalacticCore(ctx, canvas.width, canvas.height, parallaxX, parallaxY);
     
-    // Draw center vortex glow during spiral
+    // Draw dynamic vortex effects during spiral animation
     if (spiralProgressRef.current > 0) {
+      const progress = spiralProgressRef.current;
+      const phase = progress < 0.3 ? 1 : progress < 0.6 ? 2 : 3;
+      
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
-      const vortexGlow = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, 150 * spiralProgressRef.current);
-      vortexGlow.addColorStop(0, `hsla(260, 80%, 70%, ${0.4 * spiralProgressRef.current})`);
-      vortexGlow.addColorStop(0.3, `hsla(280, 60%, 50%, ${0.2 * spiralProgressRef.current})`);
-      vortexGlow.addColorStop(1, 'transparent');
-      ctx.fillStyle = vortexGlow;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      if (phase === 1) {
+        // Phase 1: Subtle gathering glow
+        const phaseIntensity = progress / 0.3;
+        const glow = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, 200 * phaseIntensity);
+        glow.addColorStop(0, `hsla(220, 70%, 60%, ${0.15 * phaseIntensity})`);
+        glow.addColorStop(0.5, `hsla(240, 50%, 40%, ${0.08 * phaseIntensity})`);
+        glow.addColorStop(1, 'transparent');
+        ctx.fillStyle = glow;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      } else if (phase === 2) {
+        // Phase 2: Intense vortex glow with pulsing
+        const phaseProgress = (progress - 0.3) / 0.3;
+        const pulse = 1 + Math.sin(time * 0.008) * 0.15;
+        const intensity = (0.5 + phaseProgress * 0.5) * pulse;
+        
+        // Outer ring
+        const outerGlow = ctx.createRadialGradient(centerX, centerY, 50, centerX, centerY, 180);
+        outerGlow.addColorStop(0, `hsla(280, 80%, 65%, ${0.35 * intensity})`);
+        outerGlow.addColorStop(0.4, `hsla(260, 70%, 50%, ${0.2 * intensity})`);
+        outerGlow.addColorStop(1, 'transparent');
+        ctx.fillStyle = outerGlow;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Inner bright core
+        const coreGlow = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, 60);
+        coreGlow.addColorStop(0, `hsla(200, 90%, 80%, ${0.5 * intensity})`);
+        coreGlow.addColorStop(0.3, `hsla(260, 80%, 70%, ${0.3 * intensity})`);
+        coreGlow.addColorStop(1, 'transparent');
+        ctx.fillStyle = coreGlow;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Swirl lines effect
+        const numSwirls = 4;
+        for (let i = 0; i < numSwirls; i++) {
+          const swirlAngle = (i / numSwirls) * Math.PI * 2 + time * 0.003;
+          const swirlLength = 120 * intensity;
+          ctx.beginPath();
+          ctx.moveTo(centerX, centerY);
+          for (let t = 0; t < 1; t += 0.05) {
+            const r = t * swirlLength;
+            const theta = swirlAngle + t * Math.PI * 0.8;
+            ctx.lineTo(centerX + r * Math.cos(theta), centerY + r * Math.sin(theta));
+          }
+          ctx.strokeStyle = `hsla(260, 70%, 70%, ${0.15 * intensity * (1 - phaseProgress * 0.5)})`;
+          ctx.lineWidth = 3;
+          ctx.stroke();
+        }
+      } else {
+        // Phase 3: Fading glow as galaxy forms
+        const phaseProgress = (progress - 0.6) / 0.4;
+        const fadeOut = 1 - phaseProgress;
+        
+        const glow = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, 250);
+        glow.addColorStop(0, `hsla(45, 80%, 70%, ${0.2 * fadeOut})`);
+        glow.addColorStop(0.3, `hsla(35, 60%, 50%, ${0.1 * fadeOut})`);
+        glow.addColorStop(1, 'transparent');
+        ctx.fillStyle = glow;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+      
       ctx.restore();
     }
     
