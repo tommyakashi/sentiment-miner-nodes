@@ -478,7 +478,7 @@ const Index = () => {
       setActiveTab(mode as TabId);
       setIsSpiralAnimating(false);
       setIsModeTransitioning(false);
-    }, 1800); // 300ms fade + 1500ms spiral
+    }, 2800); // 300ms fade + 2500ms spiral (inward vortex + outward expansion)
   };
 
   const handleBackToHome = () => {
