@@ -27,9 +27,9 @@ interface WindowTabsProps {
 export function WindowTabs({ activeTab, onTabChange, dataCount = 0, onBackToHome }: WindowTabsProps) {
   return (
     <div className="flex items-center bg-[hsl(230,15%,8%)] rounded-t-xl border-b border-border/30">
-      {/* Window Controls / Home Button */}
+      {/* Home Button */}
       <div className="flex items-center gap-2 px-4 py-3">
-        {onBackToHome ? (
+        {onBackToHome && (
           <button
             onClick={onBackToHome}
             className="w-7 h-7 rounded-full bg-muted/50 hover:bg-primary/20 transition-all flex items-center justify-center group"
@@ -37,12 +37,6 @@ export function WindowTabs({ activeTab, onTabChange, dataCount = 0, onBackToHome
           >
             <Home className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary transition-colors" />
           </button>
-        ) : (
-          <>
-            <div className="w-3 h-3 rounded-full bg-red-500/80 hover:bg-red-500 transition-colors cursor-pointer" />
-            <div className="w-3 h-3 rounded-full bg-yellow-500/80 hover:bg-yellow-500 transition-colors cursor-pointer" />
-            <div className="w-3 h-3 rounded-full bg-green-500/80 hover:bg-green-500 transition-colors cursor-pointer" />
-          </>
         )}
       </div>
 

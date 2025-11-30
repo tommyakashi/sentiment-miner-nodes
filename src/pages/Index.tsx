@@ -38,6 +38,7 @@ const Index = () => {
   const [selectedMode, setSelectedMode] = useState<ModeId | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>('scanner');
   const [isModeTransitioning, setIsModeTransitioning] = useState(false);
+  const [isSpiralAnimating, setIsSpiralAnimating] = useState(false);
   const [nodes, setNodes] = useState<Node[]>([]);
   const [results, setResults] = useState<SentimentResult[]>([]);
   const [nodeAnalysis, setNodeAnalysis] = useState<NodeAnalysis[]>([]);
@@ -463,14 +464,21 @@ const Index = () => {
   };
 
   const handleModeSelect = (mode: ModeId) => {
+    // Step 1: Fade out cards
     setIsModeTransitioning(true);
     
-    // Small delay for fade out effect
+    // Step 2: Start spiral animation after cards fade
+    setTimeout(() => {
+      setIsSpiralAnimating(true);
+    }, 300);
+    
+    // Step 3: After spiral animation, show the window
     setTimeout(() => {
       setSelectedMode(mode);
       setActiveTab(mode as TabId);
+      setIsSpiralAnimating(false);
       setIsModeTransitioning(false);
-    }, 300);
+    }, 1800); // 300ms fade + 1500ms spiral
   };
 
   const handleBackToHome = () => {
@@ -488,7 +496,8 @@ const Index = () => {
       <ParticleBackground 
         particleCount={60} 
         interactive={true} 
-        dataCount={stagedContent.length} 
+        dataCount={stagedContent.length}
+        spiralActive={isSpiralAnimating}
       />
       
       {/* Subtle Grid Overlay */}
