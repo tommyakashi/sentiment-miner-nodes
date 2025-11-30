@@ -1,8 +1,11 @@
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Bookmark, ArrowBigUp, MessageSquare, Clock, ExternalLink } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import { useToast } from '@/hooks/use-toast';
+import { useSavedPosts } from '@/hooks/useSavedPosts';
 import type { RedditPost } from '@/types/reddit';
 
 // Generate a brief summary from post title and body
@@ -51,6 +54,9 @@ interface TopPostsProps {
 }
 
 export function TopPosts({ posts, title = "Top Posts" }: TopPostsProps) {
+  const { toast } = useToast();
+  const { isPostSaved, toggleSavePost } = useSavedPosts();
+
   // Calculate engagement score for sorting
   const getEngagementScore = (post: RedditPost): number => {
     const ageInHours = Math.max(1, (Date.now() - new Date(post.createdAt).getTime()) / (1000 * 60 * 60));
@@ -67,15 +73,28 @@ export function TopPosts({ posts, title = "Top Posts" }: TopPostsProps) {
     .sort((a, b) => b.score - a.score)
     .slice(0, 3);
 
+  const handleBookmark = (post: RedditPost) => {
+    const wasSaved = isPostSaved(post.id);
+    toggleSavePost(post);
+    
+    toast({
+      title: wasSaved ? 'Removed from saved' : 'Saved for later',
+      description: wasSaved 
+        ? 'Post removed from your archive' 
+        : 'Post added to Archive → Saved for Later',
+    });
+  };
+
   if (topPosts.length === 0) return null;
 
   return (
     <Card className="p-6">
       <h3 className="text-lg font-semibold mb-4">{title}</h3>
       <div className="space-y-4">
-        {topPosts.map((post, idx) => {
+        {topPosts.map((post) => {
           const engagementScore = getEngagementScore(post);
           const timeAgo = formatDistanceToNow(new Date(post.createdAt), { addSuffix: false });
+          const isSaved = isPostSaved(post.id);
           
           return (
             <div
@@ -85,7 +104,20 @@ export function TopPosts({ posts, title = "Top Posts" }: TopPostsProps) {
               {/* Header Row */}
               <div className="flex items-start justify-between gap-4 mb-3">
                 <div className="flex items-start gap-3 flex-1 min-w-0">
-                  <Bookmark className="w-5 h-5 text-muted-foreground mt-0.5 flex-shrink-0" />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 -ml-1 mt-0.5 flex-shrink-0"
+                    onClick={() => handleBookmark(post)}
+                  >
+                    <Bookmark 
+                      className={`w-5 h-5 transition-colors ${
+                        isSaved 
+                          ? 'fill-foreground text-foreground' 
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`} 
+                    />
+                  </Button>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap mb-1">
                       <h4 className="font-semibold text-foreground truncate max-w-[400px]">
@@ -123,7 +155,7 @@ export function TopPosts({ posts, title = "Top Posts" }: TopPostsProps) {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4 text-sm text-muted-foreground">
                   <span className="flex items-center gap-1">
-                    <ArrowBigUp className="w-4 h-4" />
+                    <ArrowBigUp className="w-4 h-4 text-orange-500" />
                     <span className="font-medium text-foreground">{post.upVotes.toLocaleString()}</span>
                     <span>upvotes</span>
                   </span>

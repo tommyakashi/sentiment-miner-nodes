@@ -4,17 +4,21 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { useToast } from '@/hooks/use-toast';
+import { useSavedPosts } from '@/hooks/useSavedPosts';
 import { supabase } from '@/integrations/supabase/client';
 import { 
   History, 
   Calendar, 
   MessageSquare, 
   TrendingUp,
-  Download,
   Trash2,
   RefreshCw,
-  ChevronRight
+  ChevronRight,
+  Bookmark,
+  ArrowBigUp,
+  ExternalLink
 } from 'lucide-react';
 import type { RedditData } from '@/types/reddit';
 import { formatDistanceToNow } from 'date-fns';
@@ -43,6 +47,7 @@ export function ScrapeHistory({ onLoadScrape }: ScrapeHistoryProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const { toast } = useToast();
+  const { savedPosts, unsavePost } = useSavedPosts();
 
   const fetchScrapes = async () => {
     setIsLoading(true);
@@ -172,10 +177,95 @@ export function ScrapeHistory({ onLoadScrape }: ScrapeHistoryProps) {
 
   return (
     <Card className="p-6 space-y-4 bg-card/80 backdrop-blur-sm border-border/50 data-card">
+      {/* Saved for Later Section */}
+      {savedPosts.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Bookmark className="w-4 h-4 text-foreground" />
+            <h4 className="font-semibold text-sm">Saved for Later</h4>
+            <Badge variant="secondary" className="text-xs">{savedPosts.length}</Badge>
+          </div>
+          <div className="space-y-2">
+            {savedPosts.slice(0, 5).map((post) => (
+              <div
+                key={post.id}
+                className="p-3 rounded-lg border border-border bg-card/50 hover:bg-card/80 transition-colors"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <h5 className="text-sm font-medium truncate">
+                        {post.title.length > 50 ? `${post.title.slice(0, 50)}...` : post.title}
+                      </h5>
+                      <Badge variant="secondary" className="text-xs flex-shrink-0">
+                        {post.parsedCommunityName}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <ArrowBigUp className="w-3 h-3 text-orange-500" />
+                        {post.upVotes}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <MessageSquare className="w-3 h-3" />
+                        {post.numberOfComments}
+                      </span>
+                      <a
+                        href={post.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 hover:text-foreground"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        View
+                      </a>
+                      <a
+                        href={`https://www.reddit.com/user/${post.username}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 hover:text-foreground"
+                      >
+                        <Avatar className="w-3 h-3">
+                          <AvatarFallback className="text-[6px] bg-muted">
+                            {post.username.slice(0, 2).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        {post.username}
+                      </a>
+                    </div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                    onClick={() => {
+                      unsavePost(post.id);
+                      toast({ title: 'Removed', description: 'Post removed from saved' });
+                    }}
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+            {savedPosts.length > 5 && (
+              <p className="text-xs text-muted-foreground text-center">
+                +{savedPosts.length - 5} more saved posts
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {savedPosts.length > 0 && scrapes.length > 0 && (
+        <div className="border-t border-border" />
+      )}
+
+      {/* Signal Archive Section */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-gradient-to-br from-blue-500 to-purple-500 rounded-lg" style={{ boxShadow: '0 0 20px hsl(220 90% 56% / 0.3)' }}>
-            <History className="w-5 h-5 text-white" />
+          <div className="p-2.5 bg-muted rounded-lg">
+            <History className="w-5 h-5" />
           </div>
           <div>
             <h3 className="text-lg font-semibold tracking-tight">Signal Archive</h3>
