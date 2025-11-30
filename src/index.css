@@ -2,125 +2,116 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Observatory/Research Lab Design System
-   Pure dark theme with gradient accents and data visualization feel
+/* Uber-Inspired Design System
+   Clean, minimal, high-contrast monochromatic palette
    All colors MUST be HSL.
 */
 
 @layer base {
   :root {
-    /* Core - Near black with subtle blue undertone */
-    --background: 230 15% 6%;
-    --foreground: 210 20% 95%;
+    /* Core - Pure black foundation */
+    --background: 0 0% 4%;
+    --foreground: 0 0% 98%;
 
-    /* Cards - Slightly elevated dark surfaces */
-    --card: 230 15% 9%;
-    --card-foreground: 210 20% 95%;
+    /* Cards - Dark gray surfaces */
+    --card: 0 0% 8%;
+    --card-foreground: 0 0% 98%;
 
-    --popover: 230 15% 11%;
-    --popover-foreground: 210 20% 95%;
+    --popover: 0 0% 10%;
+    --popover-foreground: 0 0% 98%;
 
-    /* Primary - Cyan/Teal gradient accent */
-    --primary: 185 70% 50%;
-    --primary-foreground: 230 15% 6%;
+    /* Primary - Uber Green accent */
+    --primary: 155 60% 45%;
+    --primary-foreground: 0 0% 4%;
 
-    /* Secondary - Muted surface */
-    --secondary: 230 12% 14%;
-    --secondary-foreground: 210 15% 80%;
+    /* Secondary - Neutral gray */
+    --secondary: 0 0% 12%;
+    --secondary-foreground: 0 0% 85%;
 
     /* Muted - Subtle backgrounds */
-    --muted: 230 12% 12%;
-    --muted-foreground: 215 15% 55%;
+    --muted: 0 0% 12%;
+    --muted-foreground: 0 0% 55%;
 
-    /* Accent - Magenta/Purple for highlights */
-    --accent: 280 70% 60%;
-    --accent-foreground: 0 0% 100%;
+    /* Accent - Same as primary for minimal palette */
+    --accent: 155 60% 45%;
+    --accent-foreground: 0 0% 4%;
 
-    --destructive: 0 70% 50%;
+    --destructive: 0 65% 50%;
     --destructive-foreground: 0 0% 100%;
 
     /* Borders and inputs */
-    --border: 230 15% 18%;
-    --input: 230 15% 15%;
-    --ring: 185 70% 50%;
+    --border: 0 0% 18%;
+    --input: 0 0% 14%;
+    --ring: 155 60% 45%;
 
     --radius: 0.75rem;
 
-    /* Sentiment colors - Vivid for data viz */
-    --sentiment-positive: 160 70% 45%;
-    --sentiment-neutral: 45 80% 55%;
-    --sentiment-negative: 0 70% 55%;
+    /* Sentiment colors - Clean, distinct */
+    --sentiment-positive: 155 60% 45%;
+    --sentiment-neutral: 45 10% 55%;
+    --sentiment-negative: 0 65% 50%;
 
-    /* Chart colors - Observatory palette */
-    --chart-1: 185 70% 55%;
-    --chart-2: 280 60% 60%;
-    --chart-3: 160 65% 50%;
-    --chart-4: 45 80% 55%;
-    --chart-5: 340 70% 55%;
+    /* Chart colors - Monochromatic with one accent */
+    --chart-1: 155 60% 45%;
+    --chart-2: 0 0% 70%;
+    --chart-3: 0 0% 50%;
+    --chart-4: 0 0% 35%;
+    --chart-5: 0 0% 25%;
 
-    /* Gradient accents */
-    --gradient-primary: linear-gradient(135deg, hsl(185 70% 50%), hsl(280 70% 60%));
-    --gradient-secondary: linear-gradient(135deg, hsl(280 60% 50%), hsl(340 70% 55%));
-    --gradient-data: linear-gradient(180deg, hsl(230 15% 6%), hsl(230 15% 10%));
-    --gradient-glow: radial-gradient(ellipse at center, hsl(185 70% 50% / 0.15), transparent 70%);
-
-    /* Shadows - Glow effects */
-    --shadow-card: 0 4px 20px -4px hsl(0 0% 0% / 0.5);
-    --shadow-elevated: 0 8px 32px -8px hsl(0 0% 0% / 0.6);
-    --shadow-glow: 0 0 30px hsl(185 70% 50% / 0.2);
-    --shadow-glow-accent: 0 0 30px hsl(280 70% 60% / 0.2);
+    /* Shadows - Subtle, no glows */
+    --shadow-card: 0 4px 12px -4px hsl(0 0% 0% / 0.4);
+    --shadow-elevated: 0 8px 24px -8px hsl(0 0% 0% / 0.5);
 
     /* Transitions */
-    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    --transition-bounce: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+    --transition-smooth: all 0.2s ease;
 
-    /* Grid overlay */
-    --grid-color: hsl(185 50% 50% / 0.03);
+    /* Grid overlay - Very subtle */
+    --grid-color: hsl(0 0% 50% / 0.02);
   }
 
-  /* Dark mode is the default, but keep .dark for compatibility */
+  /* Dark mode is the default */
   .dark {
-    --background: 230 15% 6%;
-    --foreground: 210 20% 95%;
-    --card: 230 15% 9%;
-    --card-foreground: 210 20% 95%;
-    --popover: 230 15% 11%;
-    --popover-foreground: 210 20% 95%;
-    --primary: 185 70% 50%;
-    --primary-foreground: 230 15% 6%;
-    --secondary: 230 12% 14%;
-    --secondary-foreground: 210 15% 80%;
-    --muted: 230 12% 12%;
-    --muted-foreground: 215 15% 55%;
-    --accent: 280 70% 60%;
-    --accent-foreground: 0 0% 100%;
-    --destructive: 0 70% 50%;
+    --background: 0 0% 4%;
+    --foreground: 0 0% 98%;
+    --card: 0 0% 8%;
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 10%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 155 60% 45%;
+    --primary-foreground: 0 0% 4%;
+    --secondary: 0 0% 12%;
+    --secondary-foreground: 0 0% 85%;
+    --muted: 0 0% 12%;
+    --muted-foreground: 0 0% 55%;
+    --accent: 155 60% 45%;
+    --accent-foreground: 0 0% 4%;
+    --destructive: 0 65% 50%;
     --destructive-foreground: 0 0% 100%;
-    --border: 230 15% 18%;
-    --input: 230 15% 15%;
-    --ring: 185 70% 50%;
+    --border: 0 0% 18%;
+    --input: 0 0% 14%;
+    --ring: 155 60% 45%;
   }
 
-  /* Light mode fallback (optional) */
+  /* Light mode */
   .light {
-    --background: 220 15% 97%;
-    --foreground: 230 15% 10%;
-    --card: 0 0% 100%;
-    --card-foreground: 230 15% 10%;
+    --background: 0 0% 100%;
+    --foreground: 0 0% 8%;
+    --card: 0 0% 98%;
+    --card-foreground: 0 0% 8%;
     --popover: 0 0% 100%;
-    --popover-foreground: 230 15% 10%;
-    --primary: 185 70% 40%;
+    --popover-foreground: 0 0% 8%;
+    --primary: 155 60% 40%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 220 15% 92%;
-    --secondary-foreground: 230 15% 20%;
-    --muted: 220 12% 94%;
-    --muted-foreground: 215 15% 45%;
-    --accent: 280 60% 50%;
+    --secondary: 0 0% 94%;
+    --secondary-foreground: 0 0% 20%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 45%;
+    --accent: 155 60% 40%;
     --accent-foreground: 0 0% 100%;
-    --border: 220 15% 88%;
-    --input: 220 15% 90%;
-    --ring: 185 70% 40%;
-    --grid-color: hsl(185 50% 50% / 0.05);
+    --border: 0 0% 88%;
+    --input: 0 0% 92%;
+    --ring: 155 60% 40%;
+    --grid-color: hsl(0 0% 50% / 0.03);
   }
 }
 
@@ -134,51 +125,12 @@
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 
-  /* Grid overlay pattern */
+  /* Grid overlay pattern - subtle */
   .observatory-grid {
     background-image: 
       linear-gradient(var(--grid-color) 1px, transparent 1px),
       linear-gradient(90deg, var(--grid-color) 1px, transparent 1px);
     background-size: 40px 40px;
-  }
-
-  /* Glow effects */
-  .glow-primary {
-    box-shadow: var(--shadow-glow);
-  }
-
-  .glow-accent {
-    box-shadow: var(--shadow-glow-accent);
-  }
-
-  /* Gradient text */
-  .gradient-text {
-    background: var(--gradient-primary);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
-
-  /* Gradient border */
-  .gradient-border {
-    position: relative;
-    background: hsl(var(--card));
-    border-radius: var(--radius);
-  }
-
-  .gradient-border::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    padding: 1px;
-    background: var(--gradient-primary);
-    -webkit-mask: 
-      linear-gradient(#fff 0 0) content-box, 
-      linear-gradient(#fff 0 0);
-    -webkit-mask-composite: xor;
-    mask-composite: exclude;
-    pointer-events: none;
   }
 
   /* Data visualization card */
@@ -190,98 +142,27 @@
 
   .data-card:hover {
     border-color: hsl(var(--primary) / 0.3);
-    box-shadow: var(--shadow-card), var(--shadow-glow);
   }
 
   /* Status indicators */
   .status-dot {
     @apply w-2 h-2 rounded-full;
-    animation: pulse-glow 2s ease-in-out infinite;
   }
 
   .status-dot-positive {
     @apply bg-sentiment-positive;
-    box-shadow: 0 0 8px hsl(var(--sentiment-positive) / 0.6);
   }
 
   .status-dot-negative {
     @apply bg-sentiment-negative;
-    box-shadow: 0 0 8px hsl(var(--sentiment-negative) / 0.6);
   }
 
   .status-dot-neutral {
     @apply bg-sentiment-neutral;
-    box-shadow: 0 0 8px hsl(var(--sentiment-neutral) / 0.6);
   }
 }
 
 @layer utilities {
-  /* Gradient shift animation */
-  @keyframes gradient-shift {
-    0% {
-      background-position: 0% 50%;
-    }
-    50% {
-      background-position: 100% 50%;
-    }
-    100% {
-      background-position: 0% 50%;
-    }
-  }
-
-  @keyframes gradient-rotate {
-    0% {
-      filter: hue-rotate(0deg);
-    }
-    100% {
-      filter: hue-rotate(360deg);
-    }
-  }
-
-  .gradient-shift {
-    background-size: 200% 200%;
-    animation: gradient-shift 18s ease infinite;
-  }
-
-  .gradient-rotate {
-    animation: gradient-rotate 8s linear infinite;
-  }
-
-  /* Pulse glow animation */
-  @keyframes pulse-glow {
-    0%, 100% {
-      opacity: 1;
-    }
-    50% {
-      opacity: 0.6;
-    }
-  }
-
-  /* Scan line effect */
-  @keyframes scan-line {
-    0% {
-      transform: translateY(-100%);
-    }
-    100% {
-      transform: translateY(100vh);
-    }
-  }
-
-  .scan-line::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(
-      180deg,
-      transparent 0%,
-      hsl(185 70% 50% / 0.03) 50%,
-      transparent 100%
-    );
-    height: 100px;
-    animation: scan-line 8s linear infinite;
-    pointer-events: none;
-  }
-
   /* Fade in animation */
   @keyframes fade-in-up {
     from {
@@ -295,13 +176,17 @@
   }
 
   .animate-fade-in-up {
-    animation: fade-in-up 0.5s ease-out forwards;
+    animation: fade-in-up 0.4s ease-out forwards;
+  }
+
+  .animate-fade-in {
+    animation: fade-in-up 0.3s ease-out forwards;
   }
 
   /* Staggered children animation */
   .stagger-children > * {
     opacity: 0;
-    animation: fade-in-up 0.4s ease-out forwards;
+    animation: fade-in-up 0.3s ease-out forwards;
   }
 
   .stagger-children > *:nth-child(1) { animation-delay: 0.05s; }
