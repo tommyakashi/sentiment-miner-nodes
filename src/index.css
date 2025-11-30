@@ -20,8 +20,8 @@
     --popover: 0 0% 10%;
     --popover-foreground: 0 0% 98%;
 
-    /* Primary - Uber Green accent */
-    --primary: 155 60% 45%;
+    /* Primary - Pure white */
+    --primary: 0 0% 100%;
     --primary-foreground: 0 0% 4%;
 
     /* Secondary - Neutral gray */
@@ -32,8 +32,8 @@
     --muted: 0 0% 12%;
     --muted-foreground: 0 0% 55%;
 
-    /* Accent - Same as primary for minimal palette */
-    --accent: 155 60% 45%;
+    /* Accent - Same as primary */
+    --accent: 0 0% 100%;
     --accent-foreground: 0 0% 4%;
 
     --destructive: 0 65% 50%;
@@ -42,17 +42,17 @@
     /* Borders and inputs */
     --border: 0 0% 18%;
     --input: 0 0% 14%;
-    --ring: 155 60% 45%;
+    --ring: 0 0% 100%;
 
     --radius: 0.75rem;
 
     /* Sentiment colors - Clean, distinct */
-    --sentiment-positive: 155 60% 45%;
+    --sentiment-positive: 145 60% 45%;
     --sentiment-neutral: 45 10% 55%;
     --sentiment-negative: 0 65% 50%;
 
-    /* Chart colors - Monochromatic with one accent */
-    --chart-1: 155 60% 45%;
+    /* Chart colors - Monochromatic grayscale */
+    --chart-1: 0 0% 100%;
     --chart-2: 0 0% 70%;
     --chart-3: 0 0% 50%;
     --chart-4: 0 0% 35%;
@@ -77,19 +77,19 @@
     --card-foreground: 0 0% 98%;
     --popover: 0 0% 10%;
     --popover-foreground: 0 0% 98%;
-    --primary: 155 60% 45%;
+    --primary: 0 0% 100%;
     --primary-foreground: 0 0% 4%;
     --secondary: 0 0% 12%;
     --secondary-foreground: 0 0% 85%;
     --muted: 0 0% 12%;
     --muted-foreground: 0 0% 55%;
-    --accent: 155 60% 45%;
+    --accent: 0 0% 100%;
     --accent-foreground: 0 0% 4%;
     --destructive: 0 65% 50%;
     --destructive-foreground: 0 0% 100%;
     --border: 0 0% 18%;
     --input: 0 0% 14%;
-    --ring: 155 60% 45%;
+    --ring: 0 0% 100%;
   }
 
   /* Light mode */
@@ -100,17 +100,17 @@
     --card-foreground: 0 0% 8%;
     --popover: 0 0% 100%;
     --popover-foreground: 0 0% 8%;
-    --primary: 155 60% 40%;
+    --primary: 0 0% 8%;
     --primary-foreground: 0 0% 100%;
     --secondary: 0 0% 94%;
     --secondary-foreground: 0 0% 20%;
     --muted: 0 0% 96%;
     --muted-foreground: 0 0% 45%;
-    --accent: 155 60% 40%;
+    --accent: 0 0% 8%;
     --accent-foreground: 0 0% 100%;
     --border: 0 0% 88%;
     --input: 0 0% 92%;
-    --ring: 155 60% 40%;
+    --ring: 0 0% 8%;
     --grid-color: hsl(0 0% 50% / 0.03);
   }
 }
