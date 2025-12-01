@@ -794,12 +794,10 @@ const Index = () => {
       
       {/* Mode Selector - shown when no mode is selected */}
       {!selectedMode && !isModeTransitioning && (
-        <div className="animate-fade-in-slow">
-          <ModeSelector 
-            onSelectMode={handleModeSelect}
-            isVisible={true}
-          />
-        </div>
+        <ModeSelector 
+          onSelectMode={handleModeSelect}
+          isVisible={true}
+        />
       )}
       
       {/* Floating Window - with fade animations */}
