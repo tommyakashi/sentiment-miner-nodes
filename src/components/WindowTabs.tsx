@@ -1,7 +1,13 @@
-import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { Radio, History, Settings, BarChart3, Upload, Home, BookOpen, ChevronDown } from 'lucide-react';
 import AnimatedLogo from './AnimatedLogo';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 export type TabId = 'scanner' | 'papers' | 'papers-archive' | 'papers-analysis' | 'archive' | 'analysis' | 'upload' | 'settings';
 
@@ -43,8 +49,6 @@ interface WindowTabsProps {
 }
 
 export function WindowTabs({ activeTab, onTabChange, dataCount = 0, onBackToHome }: WindowTabsProps) {
-  const [hoveredTab, setHoveredTab] = useState<TabId | null>(null);
-
   // Check if a tab or any of its subtabs is active
   const isTabActive = (tab: Tab) => {
     if (activeTab === tab.id) return true;
@@ -85,92 +89,119 @@ export function WindowTabs({ activeTab, onTabChange, dataCount = 0, onBackToHome
           const isActive = isTabActive(tab);
           const activeSubLabel = getActiveSubLabel(tab);
           const hasSubTabs = tab.subTabs && tab.subTabs.length > 0;
-          const isHovered = hoveredTab === tab.id;
 
+          // Tab with dropdown
+          if (hasSubTabs) {
+            return (
+              <DropdownMenu key={tab.id}>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    className={cn(
+                      "group relative flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-all",
+                      "rounded-t-lg min-w-[120px] max-w-[220px] outline-none",
+                      isActive
+                        ? "bg-card text-foreground"
+                        : "bg-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30"
+                    )}
+                  >
+                    {/* Active tab glow */}
+                    {isActive && (
+                      <div className="absolute inset-x-0 -top-px h-0.5 bg-gradient-to-r from-primary to-accent rounded-full" />
+                    )}
+                    
+                    <span className={cn(
+                      "transition-colors select-none",
+                      isActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
+                    )}>
+                      {tab.icon}
+                    </span>
+                    
+                    <span className="truncate select-none">
+                      {tab.label}
+                      {activeSubLabel && (
+                        <span className="text-muted-foreground ml-1 text-xs">/ {activeSubLabel}</span>
+                      )}
+                    </span>
+                    
+                    {/* Data indicator for scanner tab */}
+                    {tab.id === 'scanner' && dataCount > 0 && !activeSubLabel && (
+                      <span className="ml-auto px-1.5 py-0.5 text-[10px] font-mono bg-primary/20 text-primary rounded">
+                        {dataCount}
+                      </span>
+                    )}
+
+                    <ChevronDown className="w-3 h-3 ml-auto transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent 
+                  align="start" 
+                  sideOffset={4}
+                  className="min-w-[160px] bg-[hsl(230,15%,10%)] backdrop-blur-xl border-border/50"
+                >
+                  {/* Main tab option */}
+                  <DropdownMenuItem 
+                    onClick={() => onTabChange(tab.id)}
+                    className={cn(
+                      "flex items-center gap-2.5 font-mono cursor-pointer",
+                      activeTab === tab.id && "bg-primary/10 text-primary"
+                    )}
+                  >
+                    <span className={activeTab === tab.id ? "text-primary" : "text-muted-foreground"}>
+                      {tab.icon}
+                    </span>
+                    <span className="tracking-wide">{tab.label}</span>
+                  </DropdownMenuItem>
+                  
+                  <DropdownMenuSeparator className="bg-border/30" />
+                  
+                  {/* Sub-tabs */}
+                  {tab.subTabs?.map((subTab) => (
+                    <DropdownMenuItem 
+                      key={subTab.id}
+                      onClick={() => onTabChange(subTab.id)}
+                      className={cn(
+                        "flex items-center gap-2.5 font-mono cursor-pointer",
+                        activeTab === subTab.id && "bg-primary/10 text-primary"
+                      )}
+                    >
+                      <span className={activeTab === subTab.id ? "text-primary" : "text-muted-foreground"}>
+                        {subTab.icon}
+                      </span>
+                      <span className="tracking-wide">{subTab.label}</span>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            );
+          }
+
+          // Regular tab without dropdown
           return (
-            <div
+            <button
               key={tab.id}
-              className="relative"
-              onMouseEnter={() => setHoveredTab(tab.id)}
-              onMouseLeave={() => setHoveredTab(null)}
-            >
-              <button
-                onClick={() => onTabChange(tab.id)}
-                className={cn(
-                  "group relative flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-all",
-                  "rounded-t-lg min-w-[120px] max-w-[220px]",
-                  isActive
-                    ? "bg-card text-foreground"
-                    : "bg-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30"
-                )}
-              >
-                {/* Active tab glow */}
-                {isActive && (
-                  <div className="absolute inset-x-0 -top-px h-0.5 bg-gradient-to-r from-primary to-accent rounded-full" />
-                )}
-                
-                <span className={cn(
-                  "transition-colors select-none",
-                  isActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
-                )}>
-                  {tab.icon}
-                </span>
-                
-                <span className="truncate select-none">
-                  {tab.label}
-                  {activeSubLabel && (
-                    <span className="text-muted-foreground ml-1 text-xs">/ {activeSubLabel}</span>
-                  )}
-                </span>
-                
-                {/* Data indicator for scanner tab */}
-                {tab.id === 'scanner' && dataCount > 0 && !activeSubLabel && (
-                  <span className="ml-auto px-1.5 py-0.5 text-[10px] font-mono bg-primary/20 text-primary rounded">
-                    {dataCount}
-                  </span>
-                )}
-
-                {/* Dropdown indicator */}
-                {hasSubTabs && (
-                  <ChevronDown className={cn(
-                    "w-3 h-3 ml-auto transition-transform duration-200",
-                    isHovered && "rotate-180"
-                  )} />
-                )}
-              </button>
-
-              {/* Dropdown Menu */}
-              {hasSubTabs && isHovered && (
-                <div className="absolute top-full left-0 pt-1 z-50 min-w-[160px]">
-                  <div className="bg-[hsl(230,15%,10%)] backdrop-blur-xl border border-border/50 rounded-lg shadow-xl overflow-hidden animate-fade-in">
-                    {tab.subTabs.map((subTab) => (
-                      <button
-                        key={subTab.id}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onTabChange(subTab.id);
-                          setHoveredTab(null);
-                        }}
-                        className={cn(
-                          "w-full flex items-center gap-2.5 px-3 py-2.5 text-sm font-mono transition-all",
-                          activeTab === subTab.id
-                            ? "bg-primary/10 text-primary"
-                            : "text-muted-foreground hover:bg-muted/30 hover:text-foreground"
-                        )}
-                      >
-                        <span className={cn(
-                          "transition-colors",
-                          activeTab === subTab.id ? "text-primary" : "text-muted-foreground"
-                        )}>
-                          {subTab.icon}
-                        </span>
-                        <span className="tracking-wide">{subTab.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
+              onClick={() => onTabChange(tab.id)}
+              className={cn(
+                "group relative flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-all",
+                "rounded-t-lg min-w-[120px] max-w-[220px]",
+                isActive
+                  ? "bg-card text-foreground"
+                  : "bg-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30"
               )}
-            </div>
+            >
+              {/* Active tab glow */}
+              {isActive && (
+                <div className="absolute inset-x-0 -top-px h-0.5 bg-gradient-to-r from-primary to-accent rounded-full" />
+              )}
+              
+              <span className={cn(
+                "transition-colors select-none",
+                isActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
+              )}>
+                {tab.icon}
+              </span>
+              
+              <span className="truncate select-none">{tab.label}</span>
+            </button>
           );
         })}
       </div>
