@@ -544,6 +544,7 @@ const Index = () => {
         status={analysisStatus}
         currentStep={currentStep}
         totalSteps={TOTAL_STEPS}
+        totalTexts={stagedContent.length}
       />
       
       {/* Mode Selector - shown when no mode is selected */}

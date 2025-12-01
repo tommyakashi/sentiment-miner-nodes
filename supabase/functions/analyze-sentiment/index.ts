@@ -28,7 +28,7 @@ interface SentimentResult {
   confidence: number;
 }
 
-const BATCH_SIZE = 25; // Process 25 texts per AI call
+const BATCH_SIZE = 50; // Process 50 texts per AI call for faster execution
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {

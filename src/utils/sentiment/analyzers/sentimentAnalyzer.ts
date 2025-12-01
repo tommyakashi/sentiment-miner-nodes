@@ -462,43 +462,70 @@ export async function performSentimentAnalysisServer(
     if (onStatus) onStatus(`Analyzing ${texts.length} texts...`);
     if (onProgress) onProgress(15);
 
-    const response = await fetch(`${SUPABASE_URL}/functions/v1/analyze-sentiment`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${SUPABASE_KEY}`,
-      },
-      body: JSON.stringify({ texts, nodes }),
-    });
+    // Create abort controller with 90 second timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 90000);
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-      
-      if (response.status === 429) {
-        throw new Error('Rate limit exceeded. Please wait a moment and try again.');
+    // Start a simulated progress ticker while waiting
+    let progressValue = 15;
+    const progressInterval = setInterval(() => {
+      if (progressValue < 80) {
+        progressValue += Math.random() * 3;
+        if (onProgress) onProgress(Math.min(progressValue, 80));
       }
-      if (response.status === 402) {
-        throw new Error('AI credits exhausted. Please add credits to continue.');
+    }, 1000);
+
+    try {
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/analyze-sentiment`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${SUPABASE_KEY}`,
+        },
+        body: JSON.stringify({ texts, nodes }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+      clearInterval(progressInterval);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        
+        if (response.status === 429) {
+          throw new Error('Rate limit exceeded. Please wait a moment and try again.');
+        }
+        if (response.status === 402) {
+          throw new Error('AI credits exhausted. Please add credits to continue.');
+        }
+        
+        throw new Error(errorData.error || `Analysis failed: ${response.status}`);
       }
+
+      if (onStatus) onStatus('Processing results...');
+      if (onProgress) onProgress(85);
+
+      const data = await response.json();
       
-      throw new Error(errorData.error || `Analysis failed: ${response.status}`);
+      if (!data.results || !Array.isArray(data.results)) {
+        throw new Error('Invalid response from analysis service');
+      }
+
+      if (onStatus) onStatus('Finalizing...');
+      if (onProgress) onProgress(95);
+
+      console.log(`[Server] Analysis complete: ${data.results.length} results`);
+      
+      return data.results as SentimentResult[];
+    } catch (fetchError) {
+      clearTimeout(timeoutId);
+      clearInterval(progressInterval);
+      
+      if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+        throw new Error('Analysis timed out. Try reducing the dataset size.');
+      }
+      throw fetchError;
     }
-
-    if (onStatus) onStatus('Processing results...');
-    if (onProgress) onProgress(85);
-
-    const data = await response.json();
-    
-    if (!data.results || !Array.isArray(data.results)) {
-      throw new Error('Invalid response from analysis service');
-    }
-
-    if (onStatus) onStatus('Finalizing...');
-    if (onProgress) onProgress(95);
-
-    console.log(`[Server] Analysis complete: ${data.results.length} results`);
-    
-    return data.results as SentimentResult[];
   } catch (error) {
     console.error('[Server] Sentiment analysis error:', error);
     throw error;
