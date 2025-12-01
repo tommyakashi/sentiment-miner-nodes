@@ -69,19 +69,27 @@ const Index = () => {
   const [isPaperDataReady, setIsPaperDataReady] = useState(false);
   const { toast } = useToast();
 
-  // Intro splash screen timer
+  // Intro splash screen timer - starts pitch black, logo fades in
+  const [logoVisible, setLogoVisible] = useState(false);
+  
   useEffect(() => {
     if (!isCheckingAuth && showIntro) {
+      // Logo fades in after brief black screen
+      const showLogoTimer = setTimeout(() => {
+        setLogoVisible(true);
+      }, 300); // Brief black pause
+      
       const fadeTimer = setTimeout(() => {
         setIntroFading(true);
-      }, 2500); // Start fading at 2.5s
+      }, 3200); // Start fading at 3.2s (giving logo 2.9s visible)
       
       const hideTimer = setTimeout(() => {
         setShowIntro(false);
         setIntroFading(false);
-      }, 3000); // Hide at 3s
+      }, 3700); // Hide at 3.7s
       
       return () => {
+        clearTimeout(showLogoTimer);
         clearTimeout(fadeTimer);
         clearTimeout(hideTimer);
       };
@@ -473,13 +481,12 @@ const Index = () => {
     );
   }
 
-  // Intro splash screen with animated logo
+  // Intro splash screen with animated logo - starts pitch black
   if (showIntro) {
     return (
-      <div className={`min-h-screen bg-background flex items-center justify-center relative overflow-hidden transition-opacity duration-500 ${introFading ? 'opacity-0' : 'opacity-100'}`}>
-        <ParticleBackground particleCount={80} interactive={false} />
-        <div className="text-center z-10">
-          <div className="scale-[3] mb-8">
+      <div className={`min-h-screen bg-black flex items-center justify-center relative overflow-hidden transition-opacity duration-500 ${introFading ? 'opacity-0' : 'opacity-100'}`}>
+        <div className={`text-center z-10 transition-opacity duration-1000 ${logoVisible ? 'opacity-100' : 'opacity-0'}`}>
+          <div className="scale-[3]">
             <AnimatedLogo />
           </div>
         </div>
