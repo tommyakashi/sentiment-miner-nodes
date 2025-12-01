@@ -72,14 +72,22 @@ export function ModeSelector({ onSelectMode, isVisible }: ModeSelectorProps) {
     )}>
       {/* Title */}
       <div className="text-center mb-12">
-        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-border/50 bg-background/30 backdrop-blur-sm mb-4">
+        <div 
+          className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-border/50 bg-background/30 backdrop-blur-sm mb-4 opacity-0 animate-fade-in-slow"
+        >
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
           <span className="text-xs font-mono text-muted-foreground uppercase tracking-wider">System Online</span>
         </div>
-        <h1 className="text-4xl font-bold text-foreground mb-3 tracking-tight">
+        <h1 
+          className="text-4xl font-bold text-foreground mb-3 tracking-tight opacity-0 animate-fade-in-slow"
+          style={{ animationDelay: '100ms' }}
+        >
           Sentiment Observatory
         </h1>
-        <p className="text-muted-foreground text-sm font-mono">
+        <p 
+          className="text-muted-foreground text-sm font-mono opacity-0 animate-fade-in-slow"
+          style={{ animationDelay: '200ms' }}
+        >
           Select a module to begin
         </p>
       </div>
@@ -87,13 +95,13 @@ export function ModeSelector({ onSelectMode, isVisible }: ModeSelectorProps) {
       {/* Mode Cards Grid */}
       <div className="flex flex-col gap-4">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {modes.slice(0, 3).map((mode) => (
-            <ModeCard key={mode.id} mode={mode} onSelect={onSelectMode} />
+          {modes.slice(0, 3).map((mode, index) => (
+            <ModeCard key={mode.id} mode={mode} onSelect={onSelectMode} index={index} />
           ))}
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {modes.slice(3).map((mode) => (
-            <ModeCard key={mode.id} mode={mode} onSelect={onSelectMode} />
+          {modes.slice(3).map((mode, index) => (
+            <ModeCard key={mode.id} mode={mode} onSelect={onSelectMode} index={index + 3} />
           ))}
         </div>
       </div>
@@ -104,9 +112,10 @@ export function ModeSelector({ onSelectMode, isVisible }: ModeSelectorProps) {
 interface ModeCardProps {
   mode: Mode;
   onSelect: (mode: ModeId) => void;
+  index: number;
 }
 
-function ModeCard({ mode, onSelect }: ModeCardProps) {
+function ModeCard({ mode, onSelect, index }: ModeCardProps) {
   const accentClasses: Record<string, string> = {
     orange: 'group-hover:border-orange-500/50 group-hover:shadow-[0_0_30px_rgba(249,115,22,0.15)]',
     blue: 'group-hover:border-blue-500/50 group-hover:shadow-[0_0_30px_rgba(59,130,246,0.15)]',
@@ -134,6 +143,9 @@ function ModeCard({ mode, onSelect }: ModeCardProps) {
     slate: 'text-slate-400',
   };
 
+  // Stagger delay: 150ms between each card, offset by 400ms to let header animate first
+  const animationDelay = `${400 + index * 150}ms`;
+
   return (
     <button
       onClick={() => onSelect(mode.id)}
@@ -142,8 +154,10 @@ function ModeCard({ mode, onSelect }: ModeCardProps) {
         "p-6 cursor-pointer group w-full text-left",
         "hover:bg-card/80 transition-all duration-300",
         "focus:outline-none focus:ring-2 focus:ring-primary/50",
+        "opacity-0 animate-fade-in-slow",
         accentClasses[mode.accent]
       )}
+      style={{ animationDelay }}
     >
       <div className="space-y-4">
         {/* Icon */}
