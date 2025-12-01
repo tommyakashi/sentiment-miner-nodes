@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Input } from '@/components/ui/input';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useToast } from '@/hooks/use-toast';
@@ -344,66 +343,51 @@ export function PaperScraper({ onDataScraped, nodes }: PaperScraperProps) {
               <label className="text-xs font-mono uppercase tracking-wider text-muted-foreground">
                 Research Topics
               </label>
-              <span className="text-xs font-mono text-emerald-400">
-                {selectedNodes.length}/{nodes.length} selected
-              </span>
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-mono text-emerald-400">
+                  {selectedNodes.length}/{nodes.length}
+                </span>
+                <button
+                  onClick={() => setSelectedNodes(nodes.map(n => n.id))}
+                  disabled={isLoading}
+                  className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  All
+                </button>
+                <button
+                  onClick={() => setSelectedNodes([])}
+                  disabled={isLoading}
+                  className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  None
+                </button>
+              </div>
             </div>
             
-            <ScrollArea className="h-[140px]">
-              <div className="space-y-2">
-                {nodes.map((node) => {
-                  const isSelected = selectedNodes.includes(node.id);
-                  return (
-                    <button
-                      key={node.id}
-                      onClick={() => !isLoading && toggleNode(node.id)}
-                      className={cn(
-                        "w-full flex items-center gap-3 p-3 rounded-lg text-left transition-all",
-                        "border",
-                        isSelected
-                          ? "bg-emerald-500/10 border-emerald-500/30 text-foreground"
-                          : "bg-transparent border-border/30 text-muted-foreground hover:border-border/50 hover:text-foreground"
-                      )}
-                    >
-                      <div className={cn(
-                        "w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all",
-                        isSelected
-                          ? "bg-emerald-500 border-emerald-500"
-                          : "border-muted-foreground/30"
-                      )}>
-                        {isSelected && <CheckCircle2 className="w-3 h-3 text-white" />}
-                      </div>
-                      <span className="text-sm font-medium">{node.name}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </ScrollArea>
-
-            {/* Quick Actions */}
-            <div className="flex gap-2">
-              <Button 
-                variant="ghost" 
-                size="sm"
-                onClick={() => setSelectedNodes(nodes.map(n => n.id))}
-                disabled={isLoading}
-                className="text-xs"
-              >
-                Select All
-              </Button>
-              <Button 
-                variant="ghost" 
-                size="sm"
-                onClick={() => setSelectedNodes([])}
-                disabled={isLoading}
-                className="text-xs"
-              >
-                Clear
-              </Button>
+            {/* Wrapped Chips */}
+            <div className="flex flex-wrap gap-2">
+              {nodes.map((node) => {
+                const isSelected = selectedNodes.includes(node.id);
+                return (
+                  <button
+                    key={node.id}
+                    onClick={() => !isLoading && toggleNode(node.id)}
+                    className={cn(
+                      "px-3 py-1.5 rounded-full text-xs font-medium transition-all",
+                      "border",
+                      isSelected
+                        ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-400"
+                        : "bg-transparent border-border/50 text-muted-foreground hover:border-border hover:text-foreground"
+                    )}
+                  >
+                    {node.name}
+                  </button>
+                );
+              })}
             </div>
 
             {/* Custom Keywords */}
-            <div className="space-y-2 pt-2 border-t border-border/30">
+            <div className="space-y-2 pt-3 border-t border-border/30">
               <label className="text-xs font-mono uppercase tracking-wider text-muted-foreground">
                 Additional Terms
               </label>
