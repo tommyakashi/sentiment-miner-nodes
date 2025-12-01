@@ -374,7 +374,7 @@ export function NodeManager({ nodes, onNodesChange }: NodeManagerProps) {
         {nodes.map((node, index) => (
           <div 
             key={node.id} 
-            className="group bg-background/30 backdrop-blur-sm rounded-lg border border-border/30 p-4 hover:border-border/50 transition-all duration-200"
+            className="group bg-background/30 backdrop-blur-sm rounded-lg border border-border/30 p-4 hover:border-border/50 hover:shadow-[0_0_20px_rgba(255,255,255,0.03)] transition-all duration-300"
             style={{ animationDelay: `${index * 50}ms` }}
           >
             <div className="flex items-start justify-between mb-3">
