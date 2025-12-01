@@ -28,12 +28,15 @@ interface SentimentResult {
   confidence: number;
 }
 
-const BATCH_SIZE = 50; // Process 50 texts per AI call for faster execution
+const BATCH_SIZE = 100; // Process 100 texts per AI call for faster execution
+const MAX_EXECUTION_TIME = 50000; // 50 seconds max before returning partial results
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
+
+  const startTime = Date.now();
 
   try {
     const { texts, nodes } = await req.json() as { texts: string[]; nodes: Node[] };
@@ -90,7 +93,21 @@ Respond ONLY with a JSON array of results matching the input texts order.`;
       
       console.log(`[analyze-sentiment] Processing batch ${batchIndex + 1}/${totalBatches} (${batchTexts.length} texts)`);
 
-      const textsForPrompt = batchTexts.map((t, i) => `[${i}] "${t.slice(0, 500)}${t.length > 500 ? '...' : ''}"`).join('\n\n');
+      // Check if we're approaching timeout - return partial results if so
+      const elapsed = Date.now() - startTime;
+      if (elapsed > MAX_EXECUTION_TIME && allResults.length > 0) {
+        console.log(`[analyze-sentiment] Approaching timeout at ${elapsed}ms, returning ${allResults.length} partial results`);
+        return new Response(JSON.stringify({ 
+          results: allResults,
+          isPartial: true,
+          processedCount: allResults.length,
+          totalCount: texts.length
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      const textsForPrompt = batchTexts.map((t, i) => `[${i}] "${t.slice(0, 300)}${t.length > 300 ? '...' : ''}"`).join('\n\n');
 
       const userPrompt = `Analyze these ${batchTexts.length} texts:
 
@@ -191,9 +208,15 @@ Return a JSON array with ${batchTexts.length} objects in order, each having: pol
       }
     }
 
-    console.log(`[analyze-sentiment] Complete: ${allResults.length} results`);
+    const totalTime = Date.now() - startTime;
+    console.log(`[analyze-sentiment] Complete: ${allResults.length} results in ${totalTime}ms`);
 
-    return new Response(JSON.stringify({ results: allResults }), {
+    return new Response(JSON.stringify({ 
+      results: allResults,
+      isPartial: false,
+      processedCount: allResults.length,
+      totalCount: texts.length
+    }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 

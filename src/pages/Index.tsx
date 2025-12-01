@@ -309,6 +309,9 @@ const Index = () => {
         description: `Analyzed ${textsToAnalyze.length} texts across ${nodeAnalysisData.length} topics.`,
       });
 
+      // Only switch to analysis tab if we got results
+      setActiveTab('analysis');
+
     } catch (error) {
       console.error('Analysis error:', error);
       const errorMessage = error instanceof Error ? error.message : 'An error occurred during sentiment analysis.';
@@ -317,10 +320,10 @@ const Index = () => {
         description: errorMessage,
         variant: 'destructive',
       });
+      // Stay on current tab if analysis failed - don't switch to empty analysis
     } finally {
       setIsAnalyzing(false);
       setShowWindow(true);
-      setActiveTab('analysis');
       setProgress(0);
       setCurrentStep(1);
       setAnalysisStatus('');
