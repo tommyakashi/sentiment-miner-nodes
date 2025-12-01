@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -269,158 +268,197 @@ export function NodeManager({ nodes, onNodesChange }: NodeManagerProps) {
   };
 
   return (
-    <Card className="p-6">
-      <div className="space-y-6">
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold">Define Analysis Nodes</h2>
-            <div className="flex gap-2">
-              <Button
+    <div className="space-y-6">
+      {/* Header Section */}
+      <div className="bg-background/40 backdrop-blur-xl rounded-xl border border-border/30 p-6">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h2 className="text-lg font-mono font-medium tracking-wide text-foreground">
+              ANALYSIS NODES
+            </h2>
+            <p className="text-xs font-mono text-muted-foreground mt-1 tracking-wider">
+              {nodes.length}/10 NODES CONFIGURED
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={saveNodes}
+              disabled={nodes.length === 0}
+              className="font-mono text-xs bg-background/50 border-border/50 hover:bg-background/80 hover:border-foreground/30"
+            >
+              <Save className="w-3.5 h-3.5 mr-1.5" />
+              SAVE
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={loadNodes}
+              className="font-mono text-xs bg-background/50 border-border/50 hover:bg-background/80 hover:border-foreground/30"
+            >
+              <FolderOpen className="w-3.5 h-3.5 mr-1.5" />
+              LOAD
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={clearSavedNodes}
+              className="font-mono text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+            >
+              <X className="w-3.5 h-3.5 mr-1.5" />
+              CLEAR
+            </Button>
+          </div>
+        </div>
+
+        {/* Single Node Input */}
+        <div className="flex gap-2 mb-4">
+          <Input
+            placeholder="Node name..."
+            value={newNodeName}
+            onChange={(e) => setNewNodeName(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && addNode()}
+            disabled={nodes.length >= 10}
+            className="font-mono text-sm bg-background/30 border-border/40 placeholder:text-muted-foreground/50 focus:border-foreground/50"
+          />
+          <Button 
+            onClick={addNode}
+            disabled={!newNodeName.trim() || nodes.length >= 10}
+            className="font-mono text-xs"
+          >
+            <Plus className="w-3.5 h-3.5 mr-1.5" />
+            ADD
+          </Button>
+        </div>
+
+        {/* Bulk Input */}
+        <div className="space-y-3">
+          <label className="text-xs font-mono text-muted-foreground tracking-wider">BULK IMPORT</label>
+          <Textarea
+            placeholder="Paste node names (one per line)..."
+            value={bulkNodeText}
+            onChange={(e) => setBulkNodeText(e.target.value)}
+            disabled={nodes.length >= 10}
+            className="min-h-[100px] font-mono text-sm bg-background/30 border-border/40 placeholder:text-muted-foreground/50 focus:border-foreground/50 resize-none"
+          />
+          <div className="flex gap-2">
+            <Button 
+              onClick={addBulkNodes}
+              disabled={!bulkNodeText.trim() || nodes.length >= 10}
+              variant="secondary"
+              className="font-mono text-xs bg-background/50 hover:bg-background/80"
+            >
+              <Upload className="w-3.5 h-3.5 mr-1.5" />
+              IMPORT ALL
+            </Button>
+            {nodes.length > 0 && (
+              <Button 
+                onClick={generateAllKeywords}
+                disabled={isGenerating}
                 variant="outline"
-                size="sm"
-                onClick={saveNodes}
-                disabled={nodes.length === 0}
+                className="font-mono text-xs bg-background/50 border-border/50 hover:bg-background/80 hover:border-foreground/30"
               >
-                <Save className="w-4 h-4 mr-2" />
-                Save
+                <Sparkles className="w-3.5 h-3.5 mr-1.5" />
+                {isGenerating 
+                  ? `GENERATING ${generatingProgress.current}/${generatingProgress.total}...` 
+                  : 'GENERATE ALL KEYWORDS'}
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={loadNodes}
-              >
-                <FolderOpen className="w-4 h-4 mr-2" />
-                Load
-              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Nodes Grid */}
+      <div className="grid gap-3">
+        {nodes.map((node, index) => (
+          <div 
+            key={node.id} 
+            className="group bg-background/30 backdrop-blur-sm rounded-lg border border-border/30 p-4 hover:border-border/50 transition-all duration-200"
+            style={{ animationDelay: `${index * 50}ms` }}
+          >
+            <div className="flex items-start justify-between mb-3">
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-mono text-muted-foreground/60 w-6">
+                  {String(index + 1).padStart(2, '0')}
+                </span>
+                <h3 className="font-mono text-sm font-medium text-foreground">{node.name}</h3>
+              </div>
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={clearSavedNodes}
-                className="text-destructive"
+                onClick={() => removeNode(node.id)}
+                className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive hover:bg-destructive/10"
               >
-                <X className="w-4 h-4 mr-2" />
-                Clear All
+                <X className="w-3.5 h-3.5" />
               </Button>
             </div>
-          </div>
-          <p className="text-sm text-muted-foreground mb-4">
-            Create up to 10 topic nodes with keywords for classification
-          </p>
 
-          <div className="flex gap-2 mb-4">
-            <Input
-              placeholder="Enter node name (e.g., Funding Access)"
-              value={newNodeName}
-              onChange={(e) => setNewNodeName(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && addNode()}
-              disabled={nodes.length >= 10}
-            />
-            <Button 
-              onClick={addNode}
-              disabled={!newNodeName.trim() || nodes.length >= 10}
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Add Node
-            </Button>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Or paste multiple nodes:</label>
-            <Textarea
-              placeholder="Paste node names here (one per line)&#10;&#10;Example:&#10;Funding Outlook & Sustainability&#10;Open Science & Transparency&#10;Collaboration & Community"
-              value={bulkNodeText}
-              onChange={(e) => setBulkNodeText(e.target.value)}
-              disabled={nodes.length >= 10}
-              className="min-h-[120px]"
-            />
-            <div className="flex gap-2">
-              <Button 
-                onClick={addBulkNodes}
-                disabled={!bulkNodeText.trim() || nodes.length >= 10}
-                variant="secondary"
-              >
-                <Upload className="w-4 h-4 mr-2" />
-                Add All Nodes
-              </Button>
-              {nodes.length > 0 && (
-                <Button 
-                  onClick={generateAllKeywords}
-                  disabled={isGenerating}
-                  variant="outline"
-                >
-                  <Sparkles className="w-4 h-4 mr-2" />
-                  {isGenerating 
-                    ? `Generating ${generatingProgress.current}/${generatingProgress.total}...` 
-                    : 'Generate Keywords for All'}
-                </Button>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-4">
-          {nodes.map((node) => (
-            <Card key={node.id} className="p-4 bg-muted/30">
-              <div className="flex items-start justify-between mb-3">
-                <h3 className="font-medium">{node.name}</h3>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => removeNode(node.id)}
-                  className="h-6 w-6 p-0"
-                >
-                  <X className="w-4 h-4" />
-                </Button>
-              </div>
-
-              <div className="flex flex-wrap gap-2 mb-3">
-                {node.keywords.map((keyword) => (
-                  <Badge key={keyword} variant="secondary" className="gap-1">
+            {/* Keywords */}
+            <div className="flex flex-wrap gap-1.5 mb-3 ml-9">
+              {node.keywords.length === 0 ? (
+                <span className="text-xs font-mono text-muted-foreground/50 italic">No keywords</span>
+              ) : (
+                node.keywords.map((keyword) => (
+                  <Badge 
+                    key={keyword} 
+                    variant="secondary" 
+                    className="font-mono text-[10px] bg-background/50 border border-border/30 text-muted-foreground hover:bg-background/80 gap-1 px-2 py-0.5"
+                  >
                     {keyword}
                     <button
                       onClick={() => removeKeyword(node.id, keyword)}
-                      className="ml-1 hover:text-destructive"
+                      className="ml-0.5 hover:text-destructive transition-colors"
                     >
-                      <X className="w-3 h-3" />
+                      <X className="w-2.5 h-2.5" />
                     </button>
                   </Badge>
-                ))}
-              </div>
+                ))
+              )}
+            </div>
 
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Add keyword"
-                  value={newKeyword[node.id] || ''}
-                  onChange={(e) => setNewKeyword({ ...newKeyword, [node.id]: e.target.value })}
-                  onKeyPress={(e) => e.key === 'Enter' && addKeyword(node.id)}
-                  className="text-sm"
-                />
-                <Button
-                  size="sm"
-                  onClick={() => addKeyword(node.id)}
-                  disabled={!newKeyword[node.id]?.trim()}
-                >
-                  Add
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => generateKeywords(node.id)}
-                  disabled={isGenerating}
-                >
-                  <Sparkles className="w-4 h-4" />
-                </Button>
-              </div>
-            </Card>
-          ))}
-        </div>
-
-        {nodes.length === 0 && (
-          <div className="text-center py-8 text-muted-foreground">
-            No nodes defined yet. Add your first analysis node above.
+            {/* Add Keyword */}
+            <div className="flex gap-2 ml-9">
+              <Input
+                placeholder="Add keyword..."
+                value={newKeyword[node.id] || ''}
+                onChange={(e) => setNewKeyword({ ...newKeyword, [node.id]: e.target.value })}
+                onKeyPress={(e) => e.key === 'Enter' && addKeyword(node.id)}
+                className="text-xs font-mono h-8 bg-background/20 border-border/30 placeholder:text-muted-foreground/40 focus:border-foreground/40"
+              />
+              <Button
+                size="sm"
+                onClick={() => addKeyword(node.id)}
+                disabled={!newKeyword[node.id]?.trim()}
+                className="h-8 px-3 font-mono text-xs"
+              >
+                ADD
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => generateKeywords(node.id)}
+                disabled={isGenerating}
+                className="h-8 w-8 p-0 bg-background/30 border-border/30 hover:bg-background/50 hover:border-foreground/30"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+              </Button>
+            </div>
           </div>
-        )}
+        ))}
       </div>
-    </Card>
+
+      {/* Empty State */}
+      {nodes.length === 0 && (
+        <div className="text-center py-12 bg-background/20 backdrop-blur-sm rounded-xl border border-dashed border-border/30">
+          <div className="font-mono text-xs text-muted-foreground/60 tracking-wider">
+            NO NODES CONFIGURED
+          </div>
+          <p className="text-xs text-muted-foreground/40 mt-2">
+            Add your first analysis node above
+          </p>
+        </div>
+      )}
+    </div>
   );
 }
