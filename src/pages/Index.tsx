@@ -408,8 +408,8 @@ const Index = () => {
 
       case 'analysis':
         return (
-          <ScrollArea className="h-[600px]">
-            <div className="p-6 space-y-6">
+          <ScrollArea className="h-[450px]">
+            <div className="p-4 space-y-3">
               {results.length > 0 ? (
                 <>
                   <SentimentScore 
@@ -425,45 +425,30 @@ const Index = () => {
                   )}
 
                   {nodeAnalysis.length > 0 && (
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-lg font-semibold">Node-Level KPI Analysis</h3>
-                        <InsightButton
-                          title="Interpretation Guide"
-                          insights={[
-                            'Each row represents one analysis topic',
-                            'Polarity: -1.0 (negative) to +1.0 (positive)',
-                            'Click headers to sort'
-                          ]}
-                        />
-                      </div>
-                      <KPISortableTable data={nodeAnalysis} />
-                    </div>
+                    <KPISortableTable data={nodeAnalysis} />
                   )}
 
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <div className="grid grid-cols-2 gap-3">
                     {nodeAnalysis.length > 0 && <KPIRadarChart data={nodeAnalysis} />}
                     {sources.length > 0 && <SourceDistribution sources={sources} />}
-                    {nodeAnalysis.length > 0 && (
-                      <div className="lg:col-span-2">
-                        <KPIHeatmap data={nodeAnalysis} />
-                      </div>
-                    )}
                     {results.length > 0 && <ConfidenceDistribution results={results} />}
-                    {participants.length > 0 && (
-                      <ParticipantsList participants={participants} title="Top Contributors" />
-                    )}
                     {nodeAnalysis.length > 0 && <TopicsList topics={nodeAnalysis} />}
+                    {participants.length > 0 && (
+                      <ParticipantsList participants={participants} title="Contributors" />
+                    )}
+                    {nodeAnalysis.length > 0 && <KPIHeatmap data={nodeAnalysis} />}
                   </div>
 
-                  {nodeAnalysis.slice(0, 3).map((node) => (
-                    <ExemplarQuotes
-                      key={node.nodeId}
-                      results={results}
-                      nodeId={node.nodeId}
-                      nodeName={node.nodeName}
-                    />
-                  ))}
+                  <div className="grid grid-cols-3 gap-3">
+                    {nodeAnalysis.slice(0, 3).map((node) => (
+                      <ExemplarQuotes
+                        key={node.nodeId}
+                        results={results}
+                        nodeId={node.nodeId}
+                        nodeName={node.nodeName}
+                      />
+                    ))}
+                  </div>
                 </>
               ) : (
                 <div className="text-center py-16">

@@ -1,4 +1,3 @@
-import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Quote } from 'lucide-react';
 import type { SentimentResult } from '@/types/sentiment';
@@ -16,67 +15,53 @@ export function ExemplarQuotes({ results, nodeId, nodeName }: ExemplarQuotesProp
     .filter(r => r.polarity === 'positive')
     .sort((a, b) => b.polarityScore - a.polarityScore)[0];
   
-  const neutral = nodeResults
-    .filter(r => r.polarity === 'neutral')
-    .sort((a, b) => Math.abs(b.polarityScore) - Math.abs(a.polarityScore))[0];
-  
   const negative = nodeResults
     .filter(r => r.polarity === 'negative')
     .sort((a, b) => a.polarityScore - b.polarityScore)[0];
 
   const quotes = [
-    { quote: positive, sentiment: 'positive', label: 'Most Positive' },
-    { quote: neutral, sentiment: 'neutral', label: 'Most Neutral' },
-    { quote: negative, sentiment: 'negative', label: 'Most Negative' },
+    { quote: positive, sentiment: 'positive', label: '+' },
+    { quote: negative, sentiment: 'negative', label: '−' },
   ].filter(q => q.quote);
 
   if (quotes.length === 0) return null;
 
-  const getSentimentColor = (sentiment: string) => {
+  const getBorderColor = (sentiment: string) => {
     switch (sentiment) {
-      case 'positive': return 'border-sentiment-positive bg-sentiment-positive/5';
-      case 'negative': return 'border-sentiment-negative bg-sentiment-negative/5';
-      default: return 'border-muted bg-muted/20';
+      case 'positive': return 'border-l-sentiment-positive';
+      case 'negative': return 'border-l-sentiment-negative';
+      default: return 'border-l-white/20';
     }
   };
 
   return (
-    <Card className="p-6">
-      <div className="flex items-center gap-2 mb-4">
-        <Quote className="w-5 h-5 text-primary" />
-        <h3 className="text-lg font-semibold">{nodeName} - Exemplar Quotes</h3>
+    <div className="relative bg-black/80 backdrop-blur-xl rounded-lg border border-white/10 p-4 font-mono">
+      {/* Header */}
+      <div className="flex items-center gap-2 mb-3">
+        <Quote className="w-4 h-4 text-muted-foreground" />
+        <span className="text-xs text-muted-foreground uppercase tracking-wider truncate">{nodeName}</span>
       </div>
-      <div className="space-y-4">
+
+      <div className="space-y-3">
         {quotes.map(({ quote, sentiment, label }, idx) => (
           <div
             key={idx}
-            className={`border-l-4 p-4 rounded-r-lg ${getSentimentColor(sentiment)}`}
+            className={`border-l-2 pl-3 py-1 ${getBorderColor(sentiment)}`}
           >
-            <div className="flex items-start justify-between gap-2 mb-2">
-              <Badge variant="outline" className="text-xs">
+            <div className="flex items-center gap-2 mb-1">
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 border-white/20">
                 {label}
               </Badge>
-              <Badge variant="secondary" className="text-xs">
+              <span className="text-[10px] text-muted-foreground tabular-nums">
                 {quote!.polarityScore > 0 ? '+' : ''}{quote!.polarityScore.toFixed(2)}
-              </Badge>
+              </span>
             </div>
-            <p className="text-sm text-foreground/80 italic mb-3">
-              "{quote!.text.slice(0, 200)}{quote!.text.length > 200 ? '...' : ''}"
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              "{quote!.text.slice(0, 120)}{quote!.text.length > 120 ? '...' : ''}"
             </p>
-            <div className="flex flex-wrap gap-2">
-              <Badge variant="outline" className="text-xs">
-                Trust: {quote!.kpiScores.trust > 0 ? '+' : ''}{quote!.kpiScores.trust.toFixed(2)}
-              </Badge>
-              <Badge variant="outline" className="text-xs">
-                Optimism: {quote!.kpiScores.optimism > 0 ? '+' : ''}{quote!.kpiScores.optimism.toFixed(2)}
-              </Badge>
-              <Badge variant="outline" className="text-xs">
-                Clarity: {quote!.kpiScores.clarity > 0 ? '+' : ''}{quote!.kpiScores.clarity.toFixed(2)}
-              </Badge>
-            </div>
           </div>
         ))}
       </div>
-    </Card>
+    </div>
   );
 }

@@ -1,4 +1,4 @@
-import { Card } from '@/components/ui/card';
+import { Grid3X3 } from 'lucide-react';
 import type { NodeAnalysis } from '@/types/sentiment';
 
 interface KPIHeatmapProps {
@@ -7,94 +7,52 @@ interface KPIHeatmapProps {
 
 export function KPIHeatmap({ data }: KPIHeatmapProps) {
   const kpis = [
-    { key: 'trust', label: 'Trust' },
-    { key: 'optimism', label: 'Optimism' },
-    { key: 'frustration', label: 'Frustration' },
-    { key: 'clarity', label: 'Clarity' },
-    { key: 'access', label: 'Access' },
-    { key: 'fairness', label: 'Fairness' },
+    { key: 'trust', label: 'Tru' },
+    { key: 'optimism', label: 'Opt' },
+    { key: 'frustration', label: 'Fru' },
+    { key: 'clarity', label: 'Cla' },
+    { key: 'access', label: 'Acc' },
+    { key: 'fairness', label: 'Fai' },
   ];
 
-  const getGradientColor = (value: number) => {
-    // Normalize from -1,1 to 0-1 range
-    const normalized = (value + 1) / 2;
-    
-    // Create smooth gradient from red (0) -> yellow (0.5) -> green (1)
-    let r: number, g: number, b: number;
-    
-    if (normalized < 0.5) {
-      // Red to Yellow: red stays high, green increases
-      const t = normalized * 2; // 0 to 1
-      r = 220; // Deep red
-      g = Math.round(50 + (200 * t)); // 50 to 250
-      b = 50;
-    } else {
-      // Yellow to Green: red decreases, green stays high
-      const t = (normalized - 0.5) * 2; // 0 to 1
-      r = Math.round(220 - (180 * t)); // 220 to 40
-      g = 200 + Math.round(20 * t); // 200 to 220
-      b = 50 + Math.round(30 * t); // 50 to 80
-    }
-    
-    // Determine text color based on brightness
-    const brightness = (r * 299 + g * 587 + b * 114) / 1000;
-    const textColor = brightness > 140 ? 'rgb(30, 30, 30)' : 'rgb(255, 255, 255)';
-    
-    return {
-      backgroundColor: `rgb(${r}, ${g}, ${b})`,
-      color: textColor,
-    };
-  };
-
-  const getIntensityLabel = (value: number) => {
-    if (value >= 0.5) return 'Very Positive';
-    if (value >= 0.2) return 'Positive';
-    if (value >= -0.2) return 'Neutral';
-    if (value >= -0.5) return 'Negative';
-    return 'Very Negative';
+  const getCellColor = (value: number) => {
+    if (value > 0.3) return 'bg-sentiment-positive/60 text-white';
+    if (value > 0.1) return 'bg-sentiment-positive/30 text-foreground';
+    if (value < -0.3) return 'bg-sentiment-negative/60 text-white';
+    if (value < -0.1) return 'bg-sentiment-negative/30 text-foreground';
+    return 'bg-white/10 text-muted-foreground';
   };
 
   return (
-    <Card className="p-6">
-      <div className="mb-4 p-3 bg-muted/30 rounded-lg">
-        <div className="flex items-center justify-between text-xs">
-          <span className="font-medium">KPI Score Range: -1.0 (negative) to +1.0 (positive)</span>
-          <div className="flex items-center gap-2">
-            <span className="text-sentiment-negative font-medium">Negative</span>
-            <div className="w-32 h-3 rounded-full" style={{
-              background: 'linear-gradient(to right, rgb(220, 50, 50), rgb(220, 200, 50), rgb(40, 220, 80))'
-            }}></div>
-            <span className="text-sentiment-positive font-medium">Positive</span>
-          </div>
-        </div>
+    <div className="relative bg-black/80 backdrop-blur-xl rounded-lg border border-white/10 p-4 font-mono">
+      {/* Header */}
+      <div className="flex items-center gap-2 mb-3">
+        <Grid3X3 className="w-4 h-4 text-muted-foreground" />
+        <span className="text-xs text-muted-foreground uppercase tracking-wider">KPI Heatmap</span>
       </div>
+
       <div className="overflow-x-auto">
-        <table className="w-full border-collapse">
+        <table className="w-full border-collapse text-xs">
           <thead>
             <tr>
-              <th className="text-left p-2 text-sm font-medium border-b">Node</th>
+              <th className="text-left p-1.5 text-muted-foreground font-normal border-b border-white/10">Node</th>
               {kpis.map((kpi) => (
-                <th key={kpi.key} className="text-center p-2 text-sm font-medium border-b">
+                <th key={kpi.key} className="text-center p-1.5 text-muted-foreground font-normal border-b border-white/10 w-10">
                   {kpi.label}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {data.map((node) => (
-              <tr key={node.nodeId}>
-                <td className="p-2 text-sm font-medium border-r">{node.nodeName}</td>
+            {data.slice(0, 6).map((node) => (
+              <tr key={node.nodeId} className="border-b border-white/5 last:border-0">
+                <td className="p-1.5 max-w-[120px] truncate">{node.nodeName}</td>
                 {kpis.map((kpi) => {
                   const value = node.avgKpiScores[kpi.key as keyof typeof node.avgKpiScores];
-                  const colorStyle = getGradientColor(value);
                   return (
-                    <td key={kpi.key} className="p-0">
-                      <div
-                        className="p-3 text-center text-sm font-semibold transition-all hover:scale-105"
-                        style={colorStyle}
-                        title={`${kpi.label}: ${value > 0 ? '+' : ''}${value.toFixed(3)} (${getIntensityLabel(value)})`}
-                      >
-                        {value > 0 ? '+' : ''}{value.toFixed(2)}
+                    <td key={kpi.key} className="p-0.5">
+                      <div className={`p-1.5 text-center tabular-nums rounded ${getCellColor(value)}`}>
+                        {value > 0 ? '+' : ''}{value.toFixed(1)}
                       </div>
                     </td>
                   );
@@ -104,6 +62,6 @@ export function KPIHeatmap({ data }: KPIHeatmapProps) {
           </tbody>
         </table>
       </div>
-    </Card>
+    </div>
   );
 }

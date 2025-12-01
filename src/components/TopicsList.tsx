@@ -1,4 +1,3 @@
-import { Card } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Hash } from 'lucide-react';
 import type { NodeAnalysis } from '@/types/sentiment';
@@ -8,43 +7,43 @@ interface TopicsListProps {
 }
 
 export function TopicsList({ topics }: TopicsListProps) {
-  const maxTexts = Math.max(...topics.map(t => t.totalTexts), 1);
-
-  const getBarWidth = (count: number) => `${(count / maxTexts) * 100}%`;
-
-  const getBarColor = (avgPolarity: number) => {
-    if (avgPolarity > 0.3) return 'bg-sentiment-positive';
-    if (avgPolarity < -0.3) return 'bg-sentiment-negative';
-    return 'bg-sentiment-neutral';
+  const getScoreColor = (score: number) => {
+    if (score > 0.2) return 'text-sentiment-positive';
+    if (score < -0.2) return 'text-sentiment-negative';
+    return 'text-muted-foreground';
   };
 
+  const sortedTopics = [...topics].sort((a, b) => b.totalTexts - a.totalTexts);
+
   return (
-    <Card className="p-6">
-      <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-        <Hash className="w-5 h-5" />
-        Topics
-      </h3>
-      <ScrollArea className="h-[300px]">
-        <div className="space-y-3">
-          {topics.map((topic) => (
-            <div key={topic.nodeId} className="space-y-1">
-              <div className="flex items-center justify-between text-sm">
-                <span className="font-medium text-primary">{topic.nodeName}</span>
-                <span className="text-xs text-muted-foreground">{topic.totalTexts}</span>
+    <div className="relative bg-black/80 backdrop-blur-xl rounded-lg border border-white/10 p-4 font-mono">
+      {/* Header */}
+      <div className="flex items-center gap-2 mb-3">
+        <Hash className="w-4 h-4 text-muted-foreground" />
+        <span className="text-xs text-muted-foreground uppercase tracking-wider">Topics</span>
+      </div>
+
+      <ScrollArea className="h-[180px]">
+        <div className="space-y-2">
+          {sortedTopics.map((topic, idx) => (
+            <div 
+              key={topic.nodeId} 
+              className="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0"
+            >
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                <span className="text-xs text-muted-foreground tabular-nums w-4">{idx + 1}</span>
+                <span className="text-xs truncate">{topic.nodeName}</span>
               </div>
-              <div className="relative h-2 bg-muted rounded-full overflow-hidden">
-                <div
-                  className={`h-full transition-all ${getBarColor(topic.avgPolarity)}`}
-                  style={{ width: getBarWidth(topic.totalTexts) }}
-                />
-              </div>
-              <div className="text-xs text-muted-foreground">
-                Sentiment: {topic.avgPolarity.toFixed(2)}
+              <div className="flex items-center gap-3 text-xs">
+                <span className="text-muted-foreground tabular-nums">{topic.totalTexts}</span>
+                <span className={`tabular-nums w-12 text-right ${getScoreColor(topic.avgPolarity)}`}>
+                  {topic.avgPolarity > 0 ? '+' : ''}{topic.avgPolarity.toFixed(2)}
+                </span>
               </div>
             </div>
           ))}
         </div>
       </ScrollArea>
-    </Card>
+    </div>
   );
 }
