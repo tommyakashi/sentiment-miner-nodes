@@ -13,12 +13,14 @@ export interface AcademicPaper {
   year: number;
   venue?: string;
   citationCount: number;
+  influentialCitationCount?: number;
   fieldsOfStudy?: string[];
   publicationDate?: string;
   url: string;
   combinedText: string;
   createdAt: Date;
   dataType: 'paper';
+  importanceScore?: number;
 }
 
 export interface PaperScrapeRecord {
