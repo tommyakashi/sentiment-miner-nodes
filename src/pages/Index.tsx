@@ -71,7 +71,6 @@ const Index = () => {
 
   // Intro splash screen timer - starts pitch black, logo fades in
   const [logoVisible, setLogoVisible] = useState(false);
-  const [modeSelectorVisible, setModeSelectorVisible] = useState(false);
   
   useEffect(() => {
     if (!isCheckingAuth && showIntro) {
@@ -96,16 +95,6 @@ const Index = () => {
       };
     }
   }, [isCheckingAuth, showIntro]);
-
-  // Fade in mode selector after intro ends
-  useEffect(() => {
-    if (!showIntro && !modeSelectorVisible) {
-      const fadeInTimer = setTimeout(() => {
-        setModeSelectorVisible(true);
-      }, 100); // Small delay before starting fade-in
-      return () => clearTimeout(fadeInTimer);
-    }
-  }, [showIntro, modeSelectorVisible]);
   
   const TOTAL_STEPS = 5;
 
@@ -804,16 +793,14 @@ const Index = () => {
       />
       
       {/* Mode Selector - shown when no mode is selected */}
-      <div className={`transition-all duration-[2000ms] ease-out ${
-        !selectedMode && !isModeTransitioning && modeSelectorVisible
-          ? 'opacity-100 scale-100' 
-          : 'opacity-0 scale-[0.98] pointer-events-none absolute'
-      }`}>
-        <ModeSelector 
-          onSelectMode={handleModeSelect}
-          isVisible={!selectedMode && !isModeTransitioning && modeSelectorVisible}
-        />
-      </div>
+      {!selectedMode && !isModeTransitioning && (
+        <div className="animate-fade-in-slow">
+          <ModeSelector 
+            onSelectMode={handleModeSelect}
+            isVisible={true}
+          />
+        </div>
+      )}
       
       {/* Floating Window - with fade animations */}
       {selectedMode && (showWindow || isWindowHiding) && (
