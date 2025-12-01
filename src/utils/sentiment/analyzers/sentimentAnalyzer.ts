@@ -462,10 +462,6 @@ export async function performSentimentAnalysisServer(
     if (onStatus) onStatus(`Analyzing ${texts.length} texts...`);
     if (onProgress) onProgress(15);
 
-    // Create abort controller with 90 second timeout
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 90000);
-
     // Start a simulated progress ticker while waiting
     let progressValue = 15;
     const progressInterval = setInterval(() => {
@@ -483,10 +479,8 @@ export async function performSentimentAnalysisServer(
           'Authorization': `Bearer ${SUPABASE_KEY}`,
         },
         body: JSON.stringify({ texts, nodes }),
-        signal: controller.signal,
       });
 
-      clearTimeout(timeoutId);
       clearInterval(progressInterval);
 
       if (!response.ok) {
@@ -518,12 +512,7 @@ export async function performSentimentAnalysisServer(
       
       return data.results as SentimentResult[];
     } catch (fetchError) {
-      clearTimeout(timeoutId);
       clearInterval(progressInterval);
-      
-      if (fetchError instanceof Error && fetchError.name === 'AbortError') {
-        throw new Error('Analysis timed out. Try reducing the dataset size.');
-      }
       throw fetchError;
     }
   } catch (error) {
