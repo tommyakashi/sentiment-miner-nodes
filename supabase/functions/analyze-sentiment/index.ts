@@ -30,7 +30,6 @@ interface SentimentResult {
 
 // Reduced batch size to prevent output token truncation
 const BATCH_SIZE = 25;
-const MAX_EXECUTION_TIME = 100000; // 100 seconds max before returning partial results
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -97,20 +96,6 @@ serve(async (req) => {
       const batchTexts = texts.slice(startIdx, startIdx + BATCH_SIZE);
       
       console.log(`[analyze-sentiment] Batch ${batchIndex + 1}/${totalBatches} (${batchTexts.length} texts)`);
-
-      // Check if we're approaching timeout - return partial results if so
-      const elapsed = Date.now() - startTime;
-      if (elapsed > MAX_EXECUTION_TIME && allResults.length > 0) {
-        console.log(`[analyze-sentiment] Timeout at ${elapsed}ms, returning ${allResults.length} partial results`);
-        return new Response(JSON.stringify({ 
-          results: allResults,
-          isPartial: true,
-          processedCount: allResults.length,
-          totalCount: texts.length
-        }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
 
       // Compact text format
       const textsForPrompt = batchTexts.map((t, i) => `${i}:"${t.slice(0, 200)}"`).join('\n');
