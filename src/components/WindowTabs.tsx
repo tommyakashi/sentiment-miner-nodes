@@ -1,5 +1,6 @@
 import { cn } from '@/lib/utils';
-import { X, Plus, Radio, History, Activity, Settings, BarChart3, Upload, Home, BookOpen } from 'lucide-react';
+import { X, Plus, Radio, History, Settings, BarChart3, Upload, Home, BookOpen } from 'lucide-react';
+import AnimatedLogo from './AnimatedLogo';
 
 export type TabId = 'scanner' | 'papers' | 'papers-archive' | 'papers-analysis' | 'archive' | 'analysis' | 'upload' | 'settings';
 
@@ -90,10 +91,9 @@ export function WindowTabs({ activeTab, onTabChange, dataCount = 0, onBackToHome
         })}
       </div>
 
-      {/* Window title */}
-      <div className="flex items-center gap-2 px-4 text-xs text-muted-foreground font-mono">
-        <Activity className="w-3 h-3 text-primary" />
-        <span>Observatory</span>
+      {/* Animated Logo */}
+      <div className="flex items-center px-4">
+        <AnimatedLogo />
       </div>
     </div>
   );
