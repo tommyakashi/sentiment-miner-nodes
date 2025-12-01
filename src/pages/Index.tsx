@@ -59,6 +59,43 @@ const Index = () => {
   
   const TOTAL_STEPS = 5;
 
+  // Default nodes configuration
+  const DEFAULT_NODES: Node[] = [
+    { id: '1', name: 'Funding Outlook & Sustainability', keywords: [] },
+    { id: '2', name: 'Open Science & Transparency', keywords: [] },
+    { id: '3', name: 'Collaboration & Community', keywords: [] },
+    { id: '4', name: 'Institutional Trust', keywords: [] },
+    { id: '5', name: 'Administrative Load', keywords: [] },
+    { id: '6', name: 'Technological Enablement', keywords: [] },
+    { id: '7', name: 'Future of AI & U.S. vs China Race', keywords: [] },
+    { id: '8', name: 'Ethical Responsibility', keywords: [] },
+    { id: '9', name: 'Career Outlook & Researcher Well-being', keywords: [] },
+    { id: '10', name: 'Impact & Recognition', keywords: [] },
+  ];
+
+  // Load nodes from localStorage on mount
+  useEffect(() => {
+    const savedNodes = localStorage.getItem('sentiment-nodes');
+    if (savedNodes) {
+      try {
+        const parsed = JSON.parse(savedNodes);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setNodes(parsed);
+        } else {
+          setNodes(DEFAULT_NODES);
+          localStorage.setItem('sentiment-nodes', JSON.stringify(DEFAULT_NODES));
+        }
+      } catch (error) {
+        console.error('Error loading saved nodes:', error);
+        setNodes(DEFAULT_NODES);
+        localStorage.setItem('sentiment-nodes', JSON.stringify(DEFAULT_NODES));
+      }
+    } else {
+      setNodes(DEFAULT_NODES);
+      localStorage.setItem('sentiment-nodes', JSON.stringify(DEFAULT_NODES));
+    }
+  }, []);
+
   // Check auth status
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {

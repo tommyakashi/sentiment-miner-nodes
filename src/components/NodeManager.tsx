@@ -35,8 +35,11 @@ export function NodeManager({ nodes, onNodesChange }: NodeManagerProps) {
     { id: '10', name: 'Impact & Recognition', keywords: [] },
   ];
 
-  // Load nodes from localStorage on mount - run immediately
+  // Load nodes from localStorage on mount - only if nodes array is empty
   useEffect(() => {
+    // Skip if nodes are already loaded (from Index.tsx)
+    if (nodes.length > 0) return;
+    
     const savedNodes = localStorage.getItem('sentiment-nodes');
     if (savedNodes) {
       try {
@@ -56,7 +59,7 @@ export function NodeManager({ nodes, onNodesChange }: NodeManagerProps) {
       onNodesChange(DEFAULT_NODES);
       localStorage.setItem('sentiment-nodes', JSON.stringify(DEFAULT_NODES));
     }
-  }, [onNodesChange]);
+  }, []); // Empty dependency array - only run on mount
 
   // Save nodes to localStorage whenever they change
   useEffect(() => {
