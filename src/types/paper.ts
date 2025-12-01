@@ -21,6 +21,7 @@ export interface AcademicPaper {
   createdAt: Date;
   dataType: 'paper';
   importanceScore?: number;
+  source?: 'semantic_scholar' | 'arxiv';
 }
 
 export interface PaperScrapeRecord {

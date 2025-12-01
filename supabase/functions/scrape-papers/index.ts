@@ -7,13 +7,14 @@ const corsHeaders = {
 };
 
 const SEMANTIC_SCHOLAR_API = 'https://api.semanticscholar.org/graph/v1';
+const ARXIV_API = 'https://export.arxiv.org/api/query';
 const FIELDS = 'paperId,title,abstract,authors,year,citationCount,venue,publicationDate,tldr,fieldsOfStudy,url,influentialCitationCount';
 const RATE_LIMIT_DELAY = 1000;
 
 // HARDCODED: All searches must be AI-focused
 const AI_SEARCH_PREFIX = 'artificial intelligence';
 const AI_FIELDS_OF_STUDY = ['Computer Science', 'Artificial Intelligence', 'Machine Learning'];
-const MIN_CITATION_THRESHOLD = 5; // Minimum citations for relevance
+const MIN_CITATION_THRESHOLD = 5;
 
 interface SearchParams {
   keywords?: string[];
@@ -30,8 +31,8 @@ async function delay(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function searchPapers(query: string, yearRange?: string, limit: number = 50) {
-  // Prepend AI focus to all queries
+// Semantic Scholar search
+async function searchSemanticScholar(query: string, yearRange?: string, limit: number = 50) {
   const aiQuery = `${AI_SEARCH_PREFIX} ${query}`;
   
   const params = new URLSearchParams({
@@ -45,30 +46,129 @@ async function searchPapers(query: string, yearRange?: string, limit: number = 5
   }
 
   const url = `${SEMANTIC_SCHOLAR_API}/paper/search?${params}`;
-  console.log(`Searching AI papers: ${url}`);
+  console.log(`[Semantic Scholar] Searching: ${url}`);
   
   const response = await fetch(url, {
-    headers: {
-      'Accept': 'application/json',
-    },
+    headers: { 'Accept': 'application/json' },
   });
 
   if (!response.ok) {
     if (response.status === 429) {
-      console.log('Rate limited, waiting...');
+      console.log('[Semantic Scholar] Rate limited, waiting...');
       await delay(5000);
-      return searchPapers(query, yearRange, limit);
+      return searchSemanticScholar(query, yearRange, limit);
     }
     throw new Error(`Semantic Scholar API error: ${response.status}`);
   }
 
   const data = await response.json();
-  return data.data || [];
+  return (data.data || []).map((p: any) => ({ ...p, source: 'semantic_scholar' }));
+}
+
+// arXiv search
+async function searchArxiv(query: string, startDate?: string, endDate?: string, limit: number = 50) {
+  const aiQuery = `all:("artificial intelligence" OR "machine learning" OR "deep learning" OR "neural network") AND all:${query}`;
+  
+  const params = new URLSearchParams({
+    search_query: aiQuery,
+    start: '0',
+    max_results: limit.toString(),
+    sortBy: 'relevance',
+    sortOrder: 'descending',
+  });
+
+  const url = `${ARXIV_API}?${params}`;
+  console.log(`[arXiv] Searching: ${url}`);
+  
+  const response = await fetch(url);
+  if (!response.ok) {
+    console.error(`[arXiv] API error: ${response.status}`);
+    return [];
+  }
+
+  const xmlText = await response.text();
+  return parseArxivResponse(xmlText, startDate, endDate);
+}
+
+function parseArxivResponse(xml: string, startDate?: string, endDate?: string): any[] {
+  const papers: any[] = [];
+  
+  // Parse entries from XML
+  const entryRegex = /<entry>([\s\S]*?)<\/entry>/g;
+  let match;
+  
+  while ((match = entryRegex.exec(xml)) !== null) {
+    const entry = match[1];
+    
+    const getId = (text: string) => {
+      const m = text.match(/<id>([^<]+)<\/id>/);
+      return m ? m[1].replace('http://arxiv.org/abs/', '') : '';
+    };
+    
+    const getTitle = (text: string) => {
+      const m = text.match(/<title>([^<]+)<\/title>/);
+      return m ? m[1].replace(/\s+/g, ' ').trim() : '';
+    };
+    
+    const getAbstract = (text: string) => {
+      const m = text.match(/<summary>([^]*?)<\/summary>/);
+      return m ? m[1].replace(/\s+/g, ' ').trim() : '';
+    };
+    
+    const getAuthors = (text: string) => {
+      const authors: { authorId: string; name: string }[] = [];
+      const authorRegex = /<author>[\s\S]*?<name>([^<]+)<\/name>[\s\S]*?<\/author>/g;
+      let authorMatch;
+      while ((authorMatch = authorRegex.exec(text)) !== null) {
+        authors.push({ authorId: '', name: authorMatch[1].trim() });
+      }
+      return authors;
+    };
+    
+    const getPublished = (text: string) => {
+      const m = text.match(/<published>([^<]+)<\/published>/);
+      return m ? m[1].split('T')[0] : '';
+    };
+    
+    const getCategories = (text: string) => {
+      const cats: string[] = [];
+      const catRegex = /<category[^>]*term="([^"]+)"/g;
+      let catMatch;
+      while ((catMatch = catRegex.exec(text)) !== null) {
+        cats.push(catMatch[1]);
+      }
+      return cats;
+    };
+
+    const id = getId(entry);
+    const published = getPublished(entry);
+    
+    // Filter by date if specified
+    if (startDate && published < startDate) continue;
+    if (endDate && published > endDate) continue;
+    
+    papers.push({
+      paperId: `arxiv:${id}`,
+      title: getTitle(entry),
+      abstract: getAbstract(entry),
+      authors: getAuthors(entry),
+      year: published ? parseInt(published.split('-')[0]) : new Date().getFullYear(),
+      publicationDate: published,
+      url: `https://arxiv.org/abs/${id}`,
+      venue: 'arXiv',
+      citationCount: 0, // arXiv doesn't provide citation counts
+      influentialCitationCount: 0,
+      fieldsOfStudy: getCategories(entry),
+      source: 'arxiv',
+    });
+  }
+  
+  return papers;
 }
 
 async function searchByAuthor(authorName: string, limit: number = 50) {
   const authorSearchUrl = `${SEMANTIC_SCHOLAR_API}/author/search?query=${encodeURIComponent(authorName)}&limit=1`;
-  console.log(`Searching author: ${authorSearchUrl}`);
+  console.log(`[Semantic Scholar] Searching author: ${authorSearchUrl}`);
   
   const authorResponse = await fetch(authorSearchUrl, {
     headers: { 'Accept': 'application/json' },
@@ -101,7 +201,7 @@ async function searchByAuthor(authorName: string, limit: number = 50) {
   }
 
   const papersData = await papersResponse.json();
-  return papersData.data || [];
+  return (papersData.data || []).map((p: any) => ({ ...(p.paper || p), source: 'semantic_scholar' }));
 }
 
 function isAIRelatedPaper(paper: any): boolean {
@@ -109,21 +209,20 @@ function isAIRelatedPaper(paper: any): boolean {
   const title = (paper.title || '').toLowerCase();
   const abstract = (paper.abstract || '').toLowerCase();
   
-  // Check fields of study
-  const hasAIField = fieldsOfStudy.some((field: string) => 
-    AI_FIELDS_OF_STUDY.some(aiField => 
-      field.toLowerCase().includes(aiField.toLowerCase())
-    )
-  );
+  const hasAIField = fieldsOfStudy.some((field: string) => {
+    const f = field.toLowerCase();
+    return AI_FIELDS_OF_STUDY.some(aiField => f.includes(aiField.toLowerCase())) ||
+      f.includes('cs.ai') || f.includes('cs.lg') || f.includes('cs.cl') || f.includes('cs.cv');
+  });
   
-  // Check for AI keywords in title/abstract
   const aiKeywords = [
     'artificial intelligence', 'machine learning', 'deep learning', 
     'neural network', 'nlp', 'natural language', 'computer vision',
     'reinforcement learning', 'transformer', 'large language model',
     'llm', 'gpt', 'ai model', 'ai system', 'ai research',
     'generative ai', 'foundation model', 'ai ethics', 'ai safety',
-    'ai alignment', 'language model', 'diffusion model'
+    'ai alignment', 'language model', 'diffusion model', 'chatgpt',
+    'attention mechanism', 'bert', 'training data'
   ];
   
   const hasAIKeyword = aiKeywords.some(keyword => 
@@ -140,17 +239,14 @@ function calculateImportanceScore(paper: any): number {
   const currentYear = new Date().getFullYear();
   const age = currentYear - year;
   
-  // Normalize citations by age (citations per year)
   const citationsPerYear = age > 0 ? citations / age : citations;
-  
-  // Weight influential citations more heavily
   const influentialWeight = influentialCitations * 3;
+  const recencyBoost = age <= 1 ? 100 : age <= 2 ? 50 : 0;
   
-  // Recent papers get a boost (published in last 2 years)
-  const recencyBoost = age <= 2 ? 50 : 0;
+  // arXiv papers without citations get a boost for being recent preprints
+  const arxivBoost = paper.source === 'arxiv' && citations === 0 ? 30 : 0;
   
-  // Calculate composite score
-  return citationsPerYear + influentialWeight + recencyBoost + Math.log1p(citations) * 10;
+  return citationsPerYear + influentialWeight + recencyBoost + arxivBoost + Math.log1p(citations) * 10;
 }
 
 function transformPaper(paper: any) {
@@ -178,6 +274,7 @@ function transformPaper(paper: any) {
     createdAt: new Date().toISOString(),
     dataType: 'paper',
     importanceScore: calculateImportanceScore(paper),
+    source: paper.source || 'semantic_scholar',
   };
 }
 
@@ -264,17 +361,18 @@ serve(async (req) => {
       yearRange = `${yearMin}-${yearMax}`;
     }
 
-    // Search by keywords with AI prefix
+    // Search by keywords with both Semantic Scholar and arXiv
     if (keywords.length > 0) {
-      const limitPerKeyword = Math.ceil((limit * 2) / Math.min(keywords.length, 10)); // Fetch more to filter
+      const limitPerKeyword = Math.ceil((limit * 2) / Math.min(keywords.length, 10));
       
       for (const keyword of keywords.slice(0, 10)) {
         console.log(`Searching AI + topic: "${keyword}"`);
+        
+        // Semantic Scholar search
         try {
-          const papers = await searchPapers(keyword, yearRange, limitPerKeyword);
-          for (const paper of papers) {
+          const ssPapers = await searchSemanticScholar(keyword, yearRange, limitPerKeyword);
+          for (const paper of ssPapers) {
             if (paper.paperId && !seenIds.has(paper.paperId) && paper.abstract) {
-              // Filter for AI-related papers and minimum citations
               if (isAIRelatedPaper(paper) && (paper.citationCount || 0) >= MIN_CITATION_THRESHOLD) {
                 seenIds.add(paper.paperId);
                 allPapers.push(transformPaper(paper));
@@ -283,22 +381,37 @@ serve(async (req) => {
           }
           await delay(RATE_LIMIT_DELAY);
         } catch (err) {
-          console.error(`Error searching topic "${keyword}":`, err);
+          console.error(`[Semantic Scholar] Error searching "${keyword}":`, err);
+        }
+        
+        // arXiv search (no citation threshold for recent preprints)
+        try {
+          const arxivPapers = await searchArxiv(keyword, startDate, endDate, Math.floor(limitPerKeyword / 2));
+          for (const paper of arxivPapers) {
+            if (paper.paperId && !seenIds.has(paper.paperId) && paper.abstract) {
+              if (isAIRelatedPaper(paper)) {
+                seenIds.add(paper.paperId);
+                allPapers.push(transformPaper(paper));
+              }
+            }
+          }
+          await delay(500); // Smaller delay for arXiv
+        } catch (err) {
+          console.error(`[arXiv] Error searching "${keyword}":`, err);
         }
       }
     }
 
-    // Search by author (filter AI papers from their work)
+    // Search by author
     if (authorQuery) {
       console.log(`Searching author: ${authorQuery}`);
       try {
         const papers = await searchByAuthor(authorQuery, limit);
         for (const paper of papers) {
-          const actualPaper = paper.paper || paper;
-          if (actualPaper.paperId && !seenIds.has(actualPaper.paperId) && actualPaper.abstract) {
-            if (isAIRelatedPaper(actualPaper)) {
-              seenIds.add(actualPaper.paperId);
-              allPapers.push(transformPaper(actualPaper));
+          if (paper.paperId && !seenIds.has(paper.paperId) && paper.abstract) {
+            if (isAIRelatedPaper(paper)) {
+              seenIds.add(paper.paperId);
+              allPapers.push(transformPaper(paper));
             }
           }
         }
@@ -310,13 +423,17 @@ serve(async (req) => {
     // Filter by date range
     let filteredPapers = filterByDateRange(allPapers, startDate, endDate);
 
-    // Sort by importance score (citations, influential citations, recency)
+    // Sort by importance score
     filteredPapers.sort((a, b) => b.importanceScore - a.importanceScore);
 
     // Limit results
     const finalPapers = filteredPapers.slice(0, limit);
 
-    console.log(`Found ${finalPapers.length} high-impact AI papers (${allPapers.length} before filtering)`);
+    // Count sources
+    const semanticScholarCount = finalPapers.filter(p => p.source === 'semantic_scholar').length;
+    const arxivCount = finalPapers.filter(p => p.source === 'arxiv').length;
+
+    console.log(`Found ${finalPapers.length} high-impact AI papers (SS: ${semanticScholarCount}, arXiv: ${arxivCount})`);
 
     // Save to database
     if (saveToDb && finalPapers.length > 0) {
@@ -343,6 +460,8 @@ serve(async (req) => {
         data: finalPapers,
         summary: {
           totalPapers: finalPapers.length,
+          semanticScholarCount,
+          arxivCount,
           keywords,
           authorQuery,
           dateRange: startDate && endDate ? `${startDate} to ${endDate}` : yearRange || 'All time',
