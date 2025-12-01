@@ -27,8 +27,9 @@ import type { RedditData } from '@/types/reddit';
 // Core high-activity subreddits for fast mode
 const FAST_MODE_SUBREDDITS = [
   'AskAcademia', 'GradSchool', 'PhD', 'science', 'MachineLearning',
-  'datascience', 'LocalLLaMA', 'cscareerquestions', 'labrats', 'Professors',
-  'singularity', 'AGI', 'artificial', 'deeplearning', 'compsci'
+  'datascience', 'LocalLLaMA', 'LocalLLM', 'cscareerquestions', 'labrats', 'Professors',
+  'singularity', 'AGI', 'artificial', 'deeplearning', 'compsci', 'StableDiffusion',
+  'AI_Agents', 'aiengineering'
 ];
 
 // Full list for comprehensive analysis
@@ -38,9 +39,10 @@ const ALL_SUBREDDITS = [
   'OpenScience', 'MachineLearning', 'datascience', 'SciencePolicy', 'engineering',
   'AskScienceDiscussion', 'academia', 'ScientificComputing', 'artificial', 'deeplearning',
   'LanguageTechnology', 'computervision', 'reinforcementlearning', 'learnmachinelearning',
-  'MLQuestions', 'LocalLLaMA', 'cscareerquestions', 'compsci', 'algorithms',
+  'MLQuestions', 'LocalLLaMA', 'LocalLLM', 'cscareerquestions', 'compsci', 'algorithms',
   'MachineLearningResearch', 'robotics', 'QuantumComputing', 'computerscience',
-  'MLPapers', 'ControlProblem', 'AIethics', 'singularity', 'AGI', 'HCI'
+  'MLPapers', 'ControlProblem', 'AIethics', 'singularity', 'AGI', 'HCI',
+  'StableDiffusion', 'AI_Agents', 'aiengineering'
 ];
 
 type TimeRange = 'day' | '3days' | 'week' | 'month';
