@@ -5,9 +5,13 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { cn } from '@/lib/utils';
+import { format } from 'date-fns';
 import { 
   BookOpen, 
   Loader2, 
@@ -15,10 +19,10 @@ import {
   ChevronUp,
   Search,
   User,
-  Calendar,
+  CalendarIcon,
   CheckCircle2,
   Tag,
-  Quote
+  Target
 } from 'lucide-react';
 import type { AcademicPaper } from '@/types/paper';
 import type { Node } from '@/types/sentiment';
@@ -28,7 +32,7 @@ interface PaperScraperProps {
   nodes: Node[];
 }
 
-type SearchMode = 'keywords' | 'author' | 'combined';
+type SearchMode = 'nodes' | 'author' | 'combined';
 
 const DOMAIN_OPTIONS = [
   'Computer Science',
@@ -43,26 +47,54 @@ const DOMAIN_OPTIONS = [
 
 export function PaperScraper({ onDataScraped, nodes }: PaperScraperProps) {
   const [isLoading, setIsLoading] = useState(false);
-  const [searchMode, setSearchMode] = useState<SearchMode>('keywords');
+  const [searchMode, setSearchMode] = useState<SearchMode>('nodes');
   const [authorQuery, setAuthorQuery] = useState('');
+  const [selectedNodes, setSelectedNodes] = useState<string[]>([]);
   const [customKeywords, setCustomKeywords] = useState<string[]>([]);
-  const [yearMin, setYearMin] = useState(2020);
-  const [yearMax, setYearMax] = useState(new Date().getFullYear());
+  const [startDate, setStartDate] = useState<Date>(() => {
+    const date = new Date();
+    date.setFullYear(date.getFullYear() - 2);
+    return date;
+  });
+  const [endDate, setEndDate] = useState<Date>(new Date());
   const [selectedDomains, setSelectedDomains] = useState<string[]>([]);
   const [progress, setProgress] = useState(0);
-  const [showKeywords, setShowKeywords] = useState(false);
-  const [lastScrape, setLastScrape] = useState<{ totalPapers: number; keywords: string[] } | null>(null);
+  const [showTopics, setShowTopics] = useState(true);
+  const [lastScrape, setLastScrape] = useState<{ totalPapers: number; topics: string[] } | null>(null);
   const [elapsedTime, setElapsedTime] = useState(0);
   const startTimeRef = useRef<number>(0);
   const { toast } = useToast();
 
-  // Generate keywords from nodes
-  const nodeKeywords = nodes.flatMap(node => {
-    const words = node.name.split(/[\s&]+/).filter(w => w.length > 2);
-    return [...words, ...node.keywords];
-  }).filter((v, i, a) => a.indexOf(v) === i).slice(0, 10);
+  // Initialize selected nodes to all nodes
+  useEffect(() => {
+    if (nodes.length > 0 && selectedNodes.length === 0) {
+      setSelectedNodes(nodes.map(n => n.id));
+    }
+  }, [nodes]);
 
-  const activeKeywords = customKeywords.length > 0 ? customKeywords : nodeKeywords;
+  // Get search topics based on selected nodes
+  const getSearchTopics = () => {
+    const topics: string[] = [];
+    
+    nodes
+      .filter(n => selectedNodes.includes(n.id))
+      .forEach(node => {
+        // Add full node name as a topic (more academically relevant)
+        topics.push(node.name);
+        
+        // Add any configured keywords
+        if (node.keywords.length > 0) {
+          topics.push(...node.keywords.slice(0, 3));
+        }
+      });
+    
+    // Add custom keywords
+    topics.push(...customKeywords);
+    
+    return [...new Set(topics)]; // Deduplicate
+  };
+
+  const activeTopics = getSearchTopics();
 
   useEffect(() => {
     if (!isLoading) return;
@@ -71,22 +103,21 @@ export function PaperScraper({ onDataScraped, nodes }: PaperScraperProps) {
       const elapsed = Date.now() - startTimeRef.current;
       setElapsedTime(Math.floor(elapsed / 1000));
       
-      // Simulate progress based on time (API calls take ~2-3s each)
-      const estimatedKeywords = searchMode === 'author' ? 1 : activeKeywords.length;
-      const timePerKeyword = 2000;
-      const expectedTime = estimatedKeywords * timePerKeyword;
+      const estimatedTopics = searchMode === 'author' ? 1 : Math.min(activeTopics.length, 10);
+      const timePerTopic = 2000;
+      const expectedTime = estimatedTopics * timePerTopic;
       const progressPercent = Math.min((elapsed / expectedTime) * 90, 90);
       setProgress(progressPercent);
     }, 200);
 
     return () => clearInterval(interval);
-  }, [isLoading, activeKeywords.length, searchMode]);
+  }, [isLoading, activeTopics.length, searchMode]);
 
   const handleScrape = async () => {
-    if (searchMode !== 'author' && activeKeywords.length === 0) {
+    if (searchMode !== 'author' && activeTopics.length === 0) {
       toast({
-        title: 'No keywords',
-        description: 'Add keywords or configure nodes in Settings.',
+        title: 'No topics selected',
+        description: 'Select at least one node topic or add custom keywords.',
         variant: 'destructive',
       });
       return;
@@ -112,15 +143,15 @@ export function PaperScraper({ onDataScraped, nodes }: PaperScraperProps) {
         throw new Error('Not authenticated');
       }
 
-      const searchKeywords = searchMode === 'author' ? [] : activeKeywords;
-      const searchAuthor = searchMode === 'keywords' ? undefined : authorQuery.trim();
+      const searchTopics = searchMode === 'author' ? [] : activeTopics.slice(0, 10); // Limit to 10 topics
+      const searchAuthor = searchMode === 'nodes' ? undefined : authorQuery.trim();
 
       const { data, error } = await supabase.functions.invoke('scrape-papers', {
         body: {
-          keywords: searchKeywords,
+          keywords: searchTopics,
           authorQuery: searchAuthor,
-          yearMin,
-          yearMax,
+          startDate: format(startDate, 'yyyy-MM-dd'),
+          endDate: format(endDate, 'yyyy-MM-dd'),
           domains: selectedDomains.length > 0 ? selectedDomains : undefined,
           limit: 100,
           saveToDb: true,
@@ -133,7 +164,7 @@ export function PaperScraper({ onDataScraped, nodes }: PaperScraperProps) {
       setProgress(100);
       setLastScrape({
         totalPapers: data.summary.totalPapers,
-        keywords: searchKeywords,
+        topics: searchTopics,
       });
 
       if (data.data && data.data.length > 0) {
@@ -145,7 +176,7 @@ export function PaperScraper({ onDataScraped, nodes }: PaperScraperProps) {
       } else {
         toast({
           title: 'No Papers Found',
-          description: 'Try different keywords or expand the year range.',
+          description: 'Try different topics or expand the date range.',
           variant: 'destructive',
         });
       }
@@ -163,11 +194,11 @@ export function PaperScraper({ onDataScraped, nodes }: PaperScraperProps) {
     }
   };
 
-  const toggleKeyword = (keyword: string) => {
-    setCustomKeywords(prev => 
-      prev.includes(keyword) 
-        ? prev.filter(k => k !== keyword)
-        : [...prev, keyword]
+  const toggleNode = (nodeId: string) => {
+    setSelectedNodes(prev => 
+      prev.includes(nodeId) 
+        ? prev.filter(id => id !== nodeId)
+        : [...prev, nodeId]
     );
   };
 
@@ -189,6 +220,10 @@ export function PaperScraper({ onDataScraped, nodes }: PaperScraperProps) {
     }
   };
 
+  const removeCustomKeyword = (keyword: string) => {
+    setCustomKeywords(prev => prev.filter(k => k !== keyword));
+  };
+
   return (
     <Card className="p-6 space-y-6 bg-card/80 backdrop-blur-sm border-border/50 data-card">
       <div className="flex items-center justify-between">
@@ -199,7 +234,7 @@ export function PaperScraper({ onDataScraped, nodes }: PaperScraperProps) {
           <div>
             <h3 className="text-lg font-semibold tracking-tight">Academic Paper Scanner</h3>
             <p className="text-sm text-muted-foreground font-mono">
-              Semantic Scholar API
+              Semantic Scholar API • Node-based search
             </p>
           </div>
         </div>
@@ -210,14 +245,14 @@ export function PaperScraper({ onDataScraped, nodes }: PaperScraperProps) {
         <label className="text-sm font-medium">Search Mode</label>
         <div className="flex gap-2">
           <Button
-            variant={searchMode === 'keywords' ? 'default' : 'outline'}
+            variant={searchMode === 'nodes' ? 'default' : 'outline'}
             size="sm"
             className="flex items-center gap-1.5"
-            onClick={() => setSearchMode('keywords')}
+            onClick={() => setSearchMode('nodes')}
             disabled={isLoading}
           >
-            <Tag className="w-3.5 h-3.5" />
-            Keywords
+            <Target className="w-3.5 h-3.5" />
+            By Nodes
           </Button>
           <Button
             variant={searchMode === 'author' ? 'default' : 'outline'}
@@ -227,7 +262,7 @@ export function PaperScraper({ onDataScraped, nodes }: PaperScraperProps) {
             disabled={isLoading}
           >
             <User className="w-3.5 h-3.5" />
-            Author
+            By Author
           </Button>
           <Button
             variant={searchMode === 'combined' ? 'default' : 'outline'}
@@ -255,34 +290,169 @@ export function PaperScraper({ onDataScraped, nodes }: PaperScraperProps) {
         </div>
       )}
 
-      {/* Year Range */}
+      {/* Date Range with Month Picker */}
       <div className="space-y-3">
         <label className="text-sm font-medium flex items-center gap-2">
-          <Calendar className="w-4 h-4" />
-          Year Range
+          <CalendarIcon className="w-4 h-4" />
+          Publication Date Range
         </label>
-        <div className="flex items-center gap-3">
-          <Input
-            type="number"
-            min={1990}
-            max={new Date().getFullYear()}
-            value={yearMin}
-            onChange={(e) => setYearMin(parseInt(e.target.value) || 2020)}
-            className="w-24"
-            disabled={isLoading}
-          />
+        <div className="flex items-center gap-3 flex-wrap">
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                className={cn(
+                  "w-[180px] justify-start text-left font-normal",
+                  !startDate && "text-muted-foreground"
+                )}
+                disabled={isLoading}
+              >
+                <CalendarIcon className="mr-2 h-4 w-4" />
+                {startDate ? format(startDate, "MMM yyyy") : "Start date"}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar
+                mode="single"
+                selected={startDate}
+                onSelect={(date) => date && setStartDate(date)}
+                disabled={(date) => date > endDate || date > new Date()}
+                initialFocus
+                className="p-3 pointer-events-auto"
+              />
+            </PopoverContent>
+          </Popover>
+          
           <span className="text-muted-foreground">to</span>
-          <Input
-            type="number"
-            min={1990}
-            max={new Date().getFullYear()}
-            value={yearMax}
-            onChange={(e) => setYearMax(parseInt(e.target.value) || new Date().getFullYear())}
-            className="w-24"
-            disabled={isLoading}
-          />
+          
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                className={cn(
+                  "w-[180px] justify-start text-left font-normal",
+                  !endDate && "text-muted-foreground"
+                )}
+                disabled={isLoading}
+              >
+                <CalendarIcon className="mr-2 h-4 w-4" />
+                {endDate ? format(endDate, "MMM yyyy") : "End date"}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar
+                mode="single"
+                selected={endDate}
+                onSelect={(date) => date && setEndDate(date)}
+                disabled={(date) => date < startDate || date > new Date()}
+                initialFocus
+                className="p-3 pointer-events-auto"
+              />
+            </PopoverContent>
+          </Popover>
         </div>
+        <p className="text-xs text-muted-foreground">
+          Searching papers published between {format(startDate, "MMMM yyyy")} and {format(endDate, "MMMM yyyy")}
+        </p>
       </div>
+
+      {/* Node Topics Selection */}
+      {(searchMode === 'nodes' || searchMode === 'combined') && (
+        <Collapsible open={showTopics} onOpenChange={setShowTopics}>
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" className="w-full justify-between">
+              <span className="flex items-center gap-2">
+                <Target className="w-4 h-4" />
+                Research Topics ({selectedNodes.length}/{nodes.length} nodes selected)
+              </span>
+              {showTopics ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="pt-4 space-y-4">
+            {/* Node Selection */}
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-muted-foreground">Select nodes to search</label>
+              <div className="flex flex-wrap gap-2">
+                {nodes.map((node) => {
+                  const isSelected = selectedNodes.includes(node.id);
+                  return (
+                    <Badge
+                      key={node.id}
+                      variant={isSelected ? 'default' : 'outline'}
+                      className={cn(
+                        "cursor-pointer transition-all hover:scale-105",
+                        isSelected && "bg-emerald-500/20 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/30"
+                      )}
+                      onClick={() => !isLoading && toggleNode(node.id)}
+                    >
+                      {node.name}
+                    </Badge>
+                  );
+                })}
+              </div>
+              <div className="flex gap-2 mt-2">
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => setSelectedNodes(nodes.map(n => n.id))}
+                  disabled={isLoading}
+                >
+                  Select All
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => setSelectedNodes([])}
+                  disabled={isLoading}
+                >
+                  Clear
+                </Button>
+              </div>
+            </div>
+
+            {/* Custom Keywords */}
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-muted-foreground">Additional search terms</label>
+              <Input
+                placeholder="Add custom keyword and press Enter"
+                onKeyDown={addCustomKeyword}
+                disabled={isLoading}
+              />
+              {customKeywords.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {customKeywords.map((keyword) => (
+                    <Badge
+                      key={keyword}
+                      variant="secondary"
+                      className="cursor-pointer bg-primary/20 text-primary border-primary/30"
+                      onClick={() => !isLoading && removeCustomKeyword(keyword)}
+                    >
+                      {keyword} ×
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Active Search Terms Preview */}
+            {activeTopics.length > 0 && (
+              <div className="p-3 rounded-lg bg-muted/30 border border-border/50">
+                <p className="text-xs font-medium text-muted-foreground mb-2">
+                  Will search for ({Math.min(activeTopics.length, 10)} topics):
+                </p>
+                <p className="text-xs text-foreground/80 line-clamp-3">
+                  {activeTopics.slice(0, 10).map((t, i) => (
+                    <span key={t}>
+                      "{t}"{i < Math.min(activeTopics.length, 10) - 1 ? ', ' : ''}
+                    </span>
+                  ))}
+                  {activeTopics.length > 10 && <span className="text-muted-foreground"> +{activeTopics.length - 10} more</span>}
+                </p>
+              </div>
+            )}
+          </CollapsibleContent>
+        </Collapsible>
+      )}
 
       {/* Domain Filters */}
       <div className="space-y-3">
@@ -301,64 +471,6 @@ export function PaperScraper({ onDataScraped, nodes }: PaperScraperProps) {
         </div>
       </div>
 
-      {/* Keywords (for keyword and combined modes) */}
-      {(searchMode === 'keywords' || searchMode === 'combined') && (
-        <Collapsible open={showKeywords} onOpenChange={setShowKeywords}>
-          <CollapsibleTrigger asChild>
-            <Button variant="ghost" className="w-full justify-between">
-              <span className="flex items-center gap-2">
-                <Tag className="w-4 h-4" />
-                Search Keywords ({activeKeywords.length} active)
-              </span>
-              {showKeywords ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-            </Button>
-          </CollapsibleTrigger>
-          <CollapsibleContent className="pt-4 space-y-3">
-            <Input
-              placeholder="Add custom keyword and press Enter"
-              onKeyDown={addCustomKeyword}
-              disabled={isLoading}
-            />
-            <ScrollArea className="h-[150px] border rounded-lg p-3">
-              <div className="flex flex-wrap gap-2">
-                {nodeKeywords.map((keyword) => {
-                  const isActive = customKeywords.length === 0 || customKeywords.includes(keyword);
-                  return (
-                    <Badge
-                      key={keyword}
-                      variant={isActive ? 'default' : 'outline'}
-                      className="cursor-pointer transition-all hover:scale-105"
-                      onClick={() => toggleKeyword(keyword)}
-                    >
-                      {keyword}
-                    </Badge>
-                  );
-                })}
-                {customKeywords.filter(k => !nodeKeywords.includes(k)).map((keyword) => (
-                  <Badge
-                    key={keyword}
-                    variant="default"
-                    className="cursor-pointer transition-all hover:scale-105 bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
-                    onClick={() => toggleKeyword(keyword)}
-                  >
-                    {keyword} ×
-                  </Badge>
-                ))}
-              </div>
-            </ScrollArea>
-            {customKeywords.length > 0 && (
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={() => setCustomKeywords([])}
-              >
-                Reset to Node Keywords
-              </Button>
-            )}
-          </CollapsibleContent>
-        </Collapsible>
-      )}
-
       {/* Progress */}
       {isLoading && (
         <div className="space-y-3 p-4 border rounded-lg bg-muted/20">
@@ -371,7 +483,7 @@ export function PaperScraper({ onDataScraped, nodes }: PaperScraperProps) {
             <Loader2 className="w-3 h-3 animate-spin text-emerald-500" />
             {searchMode === 'author' 
               ? `Fetching papers by ${authorQuery}...`
-              : `Processing ${activeKeywords.length} keywords...`}
+              : `Processing ${Math.min(activeTopics.length, 10)} topics...`}
           </div>
         </div>
       )}
@@ -390,7 +502,7 @@ export function PaperScraper({ onDataScraped, nodes }: PaperScraperProps) {
         ) : (
           <>
             <Search className="w-5 h-5 mr-2" />
-            Search Papers ({yearMin}-{yearMax})
+            Search Papers ({format(startDate, "MMM yy")} - {format(endDate, "MMM yy")})
           </>
         )}
       </Button>
@@ -407,10 +519,10 @@ export function PaperScraper({ onDataScraped, nodes }: PaperScraperProps) {
               <span className="text-muted-foreground">Papers found:</span>
               <span className="ml-2 font-mono text-emerald-400">{lastScrape.totalPapers}</span>
             </div>
-            {lastScrape.keywords.length > 0 && (
+            {lastScrape.topics.length > 0 && (
               <div>
-                <span className="text-muted-foreground">Keywords:</span>
-                <span className="ml-2 font-mono">{lastScrape.keywords.length}</span>
+                <span className="text-muted-foreground">Topics:</span>
+                <span className="ml-2 font-mono">{lastScrape.topics.length}</span>
               </div>
             )}
           </div>

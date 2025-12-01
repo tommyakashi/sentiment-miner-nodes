@@ -13,7 +13,9 @@ const RATE_LIMIT_DELAY = 1000; // 1 second between requests to respect rate limi
 interface SearchParams {
   keywords?: string[];
   authorQuery?: string;
-  yearMin?: number;
+  startDate?: string; // YYYY-MM-DD format
+  endDate?: string;   // YYYY-MM-DD format
+  yearMin?: number;   // Fallback for year-only filtering
   yearMax?: number;
   domains?: string[];
   limit?: number;
@@ -123,6 +125,38 @@ function transformPaper(paper: any) {
   };
 }
 
+// Filter papers by date range (month-specific)
+function filterByDateRange(papers: any[], startDate?: string, endDate?: string) {
+  if (!startDate && !endDate) return papers;
+  
+  const start = startDate ? new Date(startDate) : null;
+  const end = endDate ? new Date(endDate) : null;
+  
+  return papers.filter(paper => {
+    const pubDate = paper.publicationDate;
+    
+    // If paper has a specific publication date, use it
+    if (pubDate) {
+      const paperDate = new Date(pubDate);
+      if (start && paperDate < start) return false;
+      if (end && paperDate > end) return false;
+      return true;
+    }
+    
+    // Fallback to year-based filtering
+    const year = paper.year;
+    if (!year) return true; // Include papers without date info
+    
+    const startYear = start ? start.getFullYear() : null;
+    const endYear = end ? end.getFullYear() : null;
+    
+    if (startYear && year < startYear) return false;
+    if (endYear && year > endYear) return false;
+    
+    return true;
+  });
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -152,22 +186,41 @@ serve(async (req) => {
     }
 
     const body: SearchParams = await req.json();
-    const { keywords = [], authorQuery, yearMin, yearMax, domains, limit = 100, saveToDb = true } = body;
+    const { 
+      keywords = [], 
+      authorQuery, 
+      startDate,
+      endDate,
+      yearMin, 
+      yearMax, 
+      domains, 
+      limit = 100, 
+      saveToDb = true 
+    } = body;
 
-    console.log(`Scraping papers - Keywords: ${keywords.join(', ')}, Author: ${authorQuery}, Years: ${yearMin}-${yearMax}`);
+    console.log(`Scraping papers - Keywords: ${keywords.join(', ')}, Author: ${authorQuery}, Date: ${startDate} to ${endDate}`);
 
     const allPapers: any[] = [];
     const seenIds = new Set<string>();
 
-    // Build year range string
-    const yearRange = yearMin && yearMax ? `${yearMin}-${yearMax}` : undefined;
+    // Build year range string for API (Semantic Scholar only supports year filtering at API level)
+    let yearRange: string | undefined;
+    if (startDate && endDate) {
+      const startYear = new Date(startDate).getFullYear();
+      const endYear = new Date(endDate).getFullYear();
+      yearRange = `${startYear}-${endYear}`;
+    } else if (yearMin && yearMax) {
+      yearRange = `${yearMin}-${yearMax}`;
+    }
 
-    // Search by keywords
+    // Search by keywords (node topics)
     if (keywords.length > 0) {
-      for (const keyword of keywords) {
-        console.log(`Searching keyword: ${keyword}`);
+      const limitPerKeyword = Math.ceil(limit / Math.min(keywords.length, 10));
+      
+      for (const keyword of keywords.slice(0, 10)) { // Max 10 topics
+        console.log(`Searching topic: "${keyword}"`);
         try {
-          const papers = await searchPapers(keyword, yearRange, Math.ceil(limit / keywords.length));
+          const papers = await searchPapers(keyword, yearRange, limitPerKeyword);
           for (const paper of papers) {
             if (paper.paperId && !seenIds.has(paper.paperId) && paper.abstract) {
               seenIds.add(paper.paperId);
@@ -176,7 +229,7 @@ serve(async (req) => {
           }
           await delay(RATE_LIMIT_DELAY);
         } catch (err) {
-          console.error(`Error searching keyword "${keyword}":`, err);
+          console.error(`Error searching topic "${keyword}":`, err);
         }
       }
     }
@@ -198,26 +251,18 @@ serve(async (req) => {
       }
     }
 
+    // Filter by month-specific date range
+    let filteredPapers = filterByDateRange(allPapers, startDate, endDate);
+
     // Filter by domains if specified
-    let filteredPapers = allPapers;
     if (domains && domains.length > 0) {
-      filteredPapers = allPapers.filter(paper => {
+      filteredPapers = filteredPapers.filter(paper => {
         const paperFields = paper.fieldsOfStudy || [];
         return domains.some(domain => 
           paperFields.some((field: string) => 
             field.toLowerCase().includes(domain.toLowerCase())
           )
         );
-      });
-    }
-
-    // Filter by year range (additional filter for author search results)
-    if (yearMin || yearMax) {
-      filteredPapers = filteredPapers.filter(paper => {
-        const year = paper.year;
-        if (yearMin && year < yearMin) return false;
-        if (yearMax && year > yearMax) return false;
-        return true;
       });
     }
 
@@ -234,8 +279,8 @@ serve(async (req) => {
           user_id: user.id,
           keywords,
           author_query: authorQuery,
-          year_min: yearMin,
-          year_max: yearMax,
+          year_min: startDate ? new Date(startDate).getFullYear() : yearMin,
+          year_max: endDate ? new Date(endDate).getFullYear() : yearMax,
           domains,
           total_papers: finalPapers.length,
           papers: finalPapers,
@@ -254,7 +299,7 @@ serve(async (req) => {
           totalPapers: finalPapers.length,
           keywords,
           authorQuery,
-          yearRange: yearRange || 'All years',
+          dateRange: startDate && endDate ? `${startDate} to ${endDate}` : yearRange || 'All time',
           domains: domains || [],
         },
       }),
