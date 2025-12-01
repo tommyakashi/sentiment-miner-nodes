@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -7,14 +7,13 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { useToast } from '@/hooks/use-toast';
 import { useSavedPosts } from '@/hooks/useSavedPosts';
-import { supabase } from '@/integrations/supabase/client';
+import { useScrapeHistory, type ScrapeRecord } from '@/hooks/useScrapeHistory';
 import { 
   History, 
   Calendar, 
   MessageSquare, 
   TrendingUp,
   Trash2,
-  RefreshCw,
   ChevronRight,
   Bookmark,
   ArrowBigUp,
@@ -23,71 +22,15 @@ import {
 import type { RedditData } from '@/types/reddit';
 import { formatDistanceToNow } from 'date-fns';
 
-interface ScrapeRecord {
-  id: string;
-  name: string;
-  created_at: string;
-  item_count: number;
-  content: {
-    posts?: any[];
-    comments?: any[];
-    subredditStats?: Record<string, { posts: number; comments: number }>;
-    timeRange?: string;
-    scrapedAt?: string;
-    totalSubreddits?: number;
-  };
-}
-
 interface ScrapeHistoryProps {
   onLoadScrape: (data: RedditData[]) => void;
 }
 
 export function ScrapeHistory({ onLoadScrape }: ScrapeHistoryProps) {
-  const [scrapes, setScrapes] = useState<ScrapeRecord[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const { toast } = useToast();
   const { savedPosts, unsavePost } = useSavedPosts();
-
-  const fetchScrapes = async () => {
-    setIsLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('data_sources')
-        .select('*')
-        .in('source_type', ['reddit_bulk', 'reddit_scheduled'])
-        .order('created_at', { ascending: false })
-        .limit(20);
-
-      if (error) throw error;
-
-      // Type-safe parsing of JSON content
-      const parsedScrapes: ScrapeRecord[] = (data || []).map(item => ({
-        id: item.id,
-        name: item.name,
-        created_at: item.created_at,
-        item_count: item.item_count || 0,
-        content: typeof item.content === 'object' && item.content !== null 
-          ? item.content as ScrapeRecord['content']
-          : {}
-      }));
-
-      setScrapes(parsedScrapes);
-    } catch (error) {
-      console.error('Error fetching scrapes:', error);
-      toast({
-        title: 'Error loading history',
-        description: 'Could not fetch scrape history',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchScrapes();
-  }, []);
+  const { scrapes, isLoading, deleteScrape, getScrapeData } = useScrapeHistory();
 
   const handleLoadScrape = (scrape: ScrapeRecord) => {
     setSelectedId(scrape.id);
@@ -112,32 +55,14 @@ export function ScrapeHistory({ onLoadScrape }: ScrapeHistoryProps) {
     });
   };
 
-  const handleDeleteScrape = async (id: string, e: React.MouseEvent) => {
+  const handleDeleteScrape = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    
-    try {
-      const { error } = await supabase
-        .from('data_sources')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
-
-      setScrapes(prev => prev.filter(s => s.id !== id));
-      if (selectedId === id) setSelectedId(null);
-      
-      toast({
-        title: 'Deleted',
-        description: 'Scrape record removed',
-      });
-    } catch (error) {
-      console.error('Error deleting scrape:', error);
-      toast({
-        title: 'Error',
-        description: 'Could not delete scrape',
-        variant: 'destructive',
-      });
-    }
+    deleteScrape(id);
+    if (selectedId === id) setSelectedId(null);
+    toast({
+      title: 'Deleted',
+      description: 'Scrape record removed',
+    });
   };
 
   const getTimeRangeLabel = (timeRange?: string) => {
@@ -262,21 +187,16 @@ export function ScrapeHistory({ onLoadScrape }: ScrapeHistoryProps) {
       )}
 
       {/* Signal Archive Section */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-muted rounded-lg">
-            <History className="w-5 h-5" />
-          </div>
-          <div>
-            <h3 className="text-lg font-semibold tracking-tight">Signal Archive</h3>
-            <p className="text-sm text-muted-foreground font-mono">
-              {scrapes.length} stored datasets
-            </p>
-          </div>
+      <div className="flex items-center gap-3">
+        <div className="p-2.5 bg-muted rounded-lg">
+          <History className="w-5 h-5" />
         </div>
-        <Button variant="ghost" size="icon" onClick={fetchScrapes}>
-          <RefreshCw className="w-4 h-4" />
-        </Button>
+        <div>
+          <h3 className="text-lg font-semibold tracking-tight">Signal Archive</h3>
+          <p className="text-sm text-muted-foreground font-mono">
+            {scrapes.length} stored datasets
+          </p>
+        </div>
       </div>
 
       {scrapes.length === 0 ? (

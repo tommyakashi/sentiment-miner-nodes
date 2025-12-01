@@ -6,6 +6,7 @@ import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useToast } from '@/hooks/use-toast';
+import { useScrapeHistory } from '@/hooks/useScrapeHistory';
 import { supabase } from '@/integrations/supabase/client';
 import { 
   Radio, 
@@ -81,6 +82,7 @@ export function RedditScraper({ onDataScraped }: RedditScraperProps) {
   const [elapsedTime, setElapsedTime] = useState(0);
   const startTimeRef = useRef<number>(0);
   const { toast } = useToast();
+  const { addScrape } = useScrapeHistory();
 
   const activeSubreddits = customSubreddits.length > 0 
     ? customSubreddits 
@@ -147,18 +149,13 @@ export function RedditScraper({ onDataScraped }: RedditScraperProps) {
     startTimeRef.current = Date.now();
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        throw new Error('Not authenticated');
-      }
-
       const { data, error } = await supabase.functions.invoke('scrape-reddit-bulk', {
         body: {
           subreddits: customSubreddits.length > 0 ? customSubreddits : undefined,
           timeRange: selectedTimeRange,
           sortMode: selectedSortMode,
           postsPerSubreddit: 25,
-          saveToDb: true,
+          saveToDb: false,
           fastMode: customSubreddits.length === 0 ? fastMode : false
         }
       });
@@ -173,6 +170,24 @@ export function RedditScraper({ onDataScraped }: RedditScraperProps) {
 
       if (data.data && data.data.length > 0) {
         onDataScraped(data.data);
+        
+        // Save to localStorage
+        const posts = data.data.filter((d: any) => d.dataType === 'post');
+        const comments = data.data.filter((d: any) => d.dataType === 'comment');
+        addScrape({
+          name: `Reddit Scrape - ${selectedTimeRange}`,
+          item_count: data.data.length,
+          content: {
+            posts,
+            comments,
+            subredditStats: data.summary.subredditStats,
+            timeRange: selectedTimeRange,
+            sortMode: selectedSortMode,
+            scrapedAt: new Date().toISOString(),
+            totalSubreddits: data.summary.subredditsScraped,
+            fastMode: customSubreddits.length === 0 ? fastMode : false,
+          }
+        });
         
         const hasPartialData = data.summary.failedSubreddits > 0;
         const avgUpvotes = data.summary.avgUpvotes || 0;
