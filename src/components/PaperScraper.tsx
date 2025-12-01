@@ -7,7 +7,6 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
@@ -15,14 +14,16 @@ import { format } from 'date-fns';
 import { 
   BookOpen, 
   Loader2, 
-  ChevronDown, 
-  ChevronUp,
   Search,
   User,
   CalendarIcon,
   CheckCircle2,
-  Tag,
-  Target
+  Target,
+  Sparkles,
+  Zap,
+  Database,
+  Plus,
+  X
 } from 'lucide-react';
 import type { AcademicPaper } from '@/types/paper';
 import type { Node } from '@/types/sentiment';
@@ -33,17 +34,6 @@ interface PaperScraperProps {
 }
 
 type SearchMode = 'nodes' | 'author' | 'combined';
-
-const DOMAIN_OPTIONS = [
-  'Computer Science',
-  'Psychology',
-  'Medicine',
-  'Biology',
-  'Economics',
-  'Physics',
-  'Mathematics',
-  'Engineering',
-];
 
 export function PaperScraper({ onDataScraped, nodes }: PaperScraperProps) {
   const [isLoading, setIsLoading] = useState(false);
@@ -57,11 +47,10 @@ export function PaperScraper({ onDataScraped, nodes }: PaperScraperProps) {
     return date;
   });
   const [endDate, setEndDate] = useState<Date>(new Date());
-  const [selectedDomains, setSelectedDomains] = useState<string[]>([]);
   const [progress, setProgress] = useState(0);
-  const [showTopics, setShowTopics] = useState(true);
   const [lastScrape, setLastScrape] = useState<{ totalPapers: number; topics: string[] } | null>(null);
   const [elapsedTime, setElapsedTime] = useState(0);
+  const [newKeyword, setNewKeyword] = useState('');
   const startTimeRef = useRef<number>(0);
   const { toast } = useToast();
 
@@ -79,19 +68,14 @@ export function PaperScraper({ onDataScraped, nodes }: PaperScraperProps) {
     nodes
       .filter(n => selectedNodes.includes(n.id))
       .forEach(node => {
-        // Add full node name as a topic (more academically relevant)
         topics.push(node.name);
-        
-        // Add any configured keywords
         if (node.keywords.length > 0) {
           topics.push(...node.keywords.slice(0, 3));
         }
       });
     
-    // Add custom keywords
     topics.push(...customKeywords);
-    
-    return [...new Set(topics)]; // Deduplicate
+    return [...new Set(topics)];
   };
 
   const activeTopics = getSearchTopics();
@@ -143,7 +127,7 @@ export function PaperScraper({ onDataScraped, nodes }: PaperScraperProps) {
         throw new Error('Not authenticated');
       }
 
-      const searchTopics = searchMode === 'author' ? [] : activeTopics.slice(0, 10); // Limit to 10 topics
+      const searchTopics = searchMode === 'author' ? [] : activeTopics.slice(0, 10);
       const searchAuthor = searchMode === 'nodes' ? undefined : authorQuery.trim();
 
       const { data, error } = await supabase.functions.invoke('scrape-papers', {
@@ -152,7 +136,6 @@ export function PaperScraper({ onDataScraped, nodes }: PaperScraperProps) {
           authorQuery: searchAuthor,
           startDate: format(startDate, 'yyyy-MM-dd'),
           endDate: format(endDate, 'yyyy-MM-dd'),
-          domains: selectedDomains.length > 0 ? selectedDomains : undefined,
           limit: 100,
           saveToDb: true,
         }
@@ -202,21 +185,10 @@ export function PaperScraper({ onDataScraped, nodes }: PaperScraperProps) {
     );
   };
 
-  const toggleDomain = (domain: string) => {
-    setSelectedDomains(prev =>
-      prev.includes(domain)
-        ? prev.filter(d => d !== domain)
-        : [...prev, domain]
-    );
-  };
-
-  const addCustomKeyword = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      const value = (e.target as HTMLInputElement).value.trim();
-      if (value && !customKeywords.includes(value)) {
-        setCustomKeywords(prev => [...prev, value]);
-        (e.target as HTMLInputElement).value = '';
-      }
+  const addCustomKeyword = () => {
+    if (newKeyword.trim() && !customKeywords.includes(newKeyword.trim())) {
+      setCustomKeywords(prev => [...prev, newKeyword.trim()]);
+      setNewKeyword('');
     }
   };
 
@@ -225,309 +197,318 @@ export function PaperScraper({ onDataScraped, nodes }: PaperScraperProps) {
   };
 
   return (
-    <Card className="p-6 space-y-6 bg-card/80 backdrop-blur-sm border-border/50 data-card">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-lg" style={{ boxShadow: '0 0 20px hsl(160 84% 39% / 0.3)' }}>
-            <BookOpen className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <h3 className="text-lg font-semibold tracking-tight">Academic Paper Scanner</h3>
-            <p className="text-sm text-muted-foreground font-mono">
-              Semantic Scholar API • Node-based search
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Search Mode Selection */}
-      <div className="space-y-3">
-        <label className="text-sm font-medium">Search Mode</label>
-        <div className="flex gap-2">
-          <Button
-            variant={searchMode === 'nodes' ? 'default' : 'outline'}
-            size="sm"
-            className="flex items-center gap-1.5"
-            onClick={() => setSearchMode('nodes')}
-            disabled={isLoading}
-          >
-            <Target className="w-3.5 h-3.5" />
-            By Nodes
-          </Button>
-          <Button
-            variant={searchMode === 'author' ? 'default' : 'outline'}
-            size="sm"
-            className="flex items-center gap-1.5"
-            onClick={() => setSearchMode('author')}
-            disabled={isLoading}
-          >
-            <User className="w-3.5 h-3.5" />
-            By Author
-          </Button>
-          <Button
-            variant={searchMode === 'combined' ? 'default' : 'outline'}
-            size="sm"
-            className="flex items-center gap-1.5"
-            onClick={() => setSearchMode('combined')}
-            disabled={isLoading}
-          >
-            <Search className="w-3.5 h-3.5" />
-            Combined
-          </Button>
-        </div>
-      </div>
-
-      {/* Author Search Input */}
-      {(searchMode === 'author' || searchMode === 'combined') && (
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Author Name</label>
-          <Input
-            placeholder="e.g., Yoshua Bengio"
-            value={authorQuery}
-            onChange={(e) => setAuthorQuery(e.target.value)}
-            disabled={isLoading}
-          />
-        </div>
-      )}
-
-      {/* Date Range with Month Picker */}
-      <div className="space-y-3">
-        <label className="text-sm font-medium flex items-center gap-2">
-          <CalendarIcon className="w-4 h-4" />
-          Publication Date Range
-        </label>
-        <div className="flex items-center gap-3 flex-wrap">
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                className={cn(
-                  "w-[180px] justify-start text-left font-normal",
-                  !startDate && "text-muted-foreground"
-                )}
-                disabled={isLoading}
-              >
-                <CalendarIcon className="mr-2 h-4 w-4" />
-                {startDate ? format(startDate, "MMM yyyy") : "Start date"}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="start">
-              <Calendar
-                mode="single"
-                selected={startDate}
-                onSelect={(date) => date && setStartDate(date)}
-                disabled={(date) => date > endDate || date > new Date()}
-                initialFocus
-                className="p-3 pointer-events-auto"
-              />
-            </PopoverContent>
-          </Popover>
-          
-          <span className="text-muted-foreground">to</span>
-          
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                className={cn(
-                  "w-[180px] justify-start text-left font-normal",
-                  !endDate && "text-muted-foreground"
-                )}
-                disabled={isLoading}
-              >
-                <CalendarIcon className="mr-2 h-4 w-4" />
-                {endDate ? format(endDate, "MMM yyyy") : "End date"}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="start">
-              <Calendar
-                mode="single"
-                selected={endDate}
-                onSelect={(date) => date && setEndDate(date)}
-                disabled={(date) => date < startDate || date > new Date()}
-                initialFocus
-                className="p-3 pointer-events-auto"
-              />
-            </PopoverContent>
-          </Popover>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Searching papers published between {format(startDate, "MMMM yyyy")} and {format(endDate, "MMMM yyyy")}
-        </p>
-      </div>
-
-      {/* Node Topics Selection */}
-      {(searchMode === 'nodes' || searchMode === 'combined') && (
-        <Collapsible open={showTopics} onOpenChange={setShowTopics}>
-          <CollapsibleTrigger asChild>
-            <Button variant="ghost" className="w-full justify-between">
-              <span className="flex items-center gap-2">
-                <Target className="w-4 h-4" />
-                Research Topics ({selectedNodes.length}/{nodes.length} nodes selected)
+    <div className="space-y-4">
+      {/* Header Card */}
+      <Card className="relative overflow-hidden border-emerald-500/20 bg-gradient-to-br from-card/90 to-emerald-950/20 backdrop-blur-xl">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-emerald-500/10 via-transparent to-transparent" />
+        <div className="relative p-5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="relative">
+                <div className="absolute inset-0 bg-emerald-500/30 blur-xl rounded-full" />
+                <div className="relative p-3 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl">
+                  <BookOpen className="w-6 h-6 text-white" />
+                </div>
+              </div>
+              <div>
+                <h3 className="text-xl font-bold tracking-tight">Academic Scanner</h3>
+                <div className="flex items-center gap-2 mt-1">
+                  <Database className="w-3 h-3 text-emerald-400" />
+                  <span className="text-xs font-mono text-emerald-400/80">SEMANTIC SCHOLAR API</span>
+                </div>
+              </div>
+            </div>
+            
+            {/* Status Indicator */}
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+              <span className={cn(
+                "w-2 h-2 rounded-full",
+                isLoading ? "bg-amber-400 animate-pulse" : "bg-emerald-400"
+              )} />
+              <span className="text-xs font-mono text-emerald-400">
+                {isLoading ? 'SCANNING' : 'READY'}
               </span>
-              {showTopics ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-            </Button>
-          </CollapsibleTrigger>
-          <CollapsibleContent className="pt-4 space-y-4">
-            {/* Node Selection */}
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-muted-foreground">Select nodes to search</label>
-              <div className="flex flex-wrap gap-2">
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      {/* Search Configuration */}
+      <Card className="p-5 space-y-5 bg-card/60 backdrop-blur-sm border-border/50">
+        {/* Search Mode */}
+        <div className="space-y-3">
+          <label className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Search Mode</label>
+          <div className="flex gap-2">
+            {[
+              { id: 'nodes', label: 'By Topics', icon: Target },
+              { id: 'author', label: 'By Author', icon: User },
+              { id: 'combined', label: 'Combined', icon: Sparkles },
+            ].map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                onClick={() => setSearchMode(id as SearchMode)}
+                disabled={isLoading}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all",
+                  "border",
+                  searchMode === id
+                    ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-400"
+                    : "bg-transparent border-border/50 text-muted-foreground hover:border-border hover:text-foreground"
+                )}
+              >
+                <Icon className="w-4 h-4" />
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Author Input */}
+        {(searchMode === 'author' || searchMode === 'combined') && (
+          <div className="space-y-2">
+            <label className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Author Name</label>
+            <Input
+              placeholder="e.g., Yoshua Bengio, Geoffrey Hinton"
+              value={authorQuery}
+              onChange={(e) => setAuthorQuery(e.target.value)}
+              disabled={isLoading}
+              className="bg-background/50 border-border/50 focus:border-emerald-500/50"
+            />
+          </div>
+        )}
+
+        {/* Date Range */}
+        <div className="space-y-2">
+          <label className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Publication Window</label>
+          <div className="flex items-center gap-3">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn(
+                    "flex-1 justify-start text-left font-mono bg-background/50 border-border/50",
+                    !startDate && "text-muted-foreground"
+                  )}
+                  disabled={isLoading}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4 text-emerald-400" />
+                  {startDate ? format(startDate, "MMM yyyy") : "From"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={startDate}
+                  onSelect={(date) => date && setStartDate(date)}
+                  disabled={(date) => date > endDate || date > new Date()}
+                  initialFocus
+                  className="p-3 pointer-events-auto"
+                />
+              </PopoverContent>
+            </Popover>
+            
+            <div className="w-8 h-px bg-gradient-to-r from-transparent via-emerald-500/50 to-transparent" />
+            
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn(
+                    "flex-1 justify-start text-left font-mono bg-background/50 border-border/50",
+                    !endDate && "text-muted-foreground"
+                  )}
+                  disabled={isLoading}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4 text-emerald-400" />
+                  {endDate ? format(endDate, "MMM yyyy") : "To"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={endDate}
+                  onSelect={(date) => date && setEndDate(date)}
+                  disabled={(date) => date < startDate || date > new Date()}
+                  initialFocus
+                  className="p-3 pointer-events-auto"
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
+        </div>
+
+        {/* Node Topics Selection */}
+        {(searchMode === 'nodes' || searchMode === 'combined') && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-mono uppercase tracking-wider text-muted-foreground">
+                Research Topics
+              </label>
+              <span className="text-xs font-mono text-emerald-400">
+                {selectedNodes.length}/{nodes.length} selected
+              </span>
+            </div>
+            
+            <ScrollArea className="h-[140px]">
+              <div className="space-y-2">
                 {nodes.map((node) => {
                   const isSelected = selectedNodes.includes(node.id);
                   return (
-                    <Badge
+                    <button
                       key={node.id}
-                      variant={isSelected ? 'default' : 'outline'}
-                      className={cn(
-                        "cursor-pointer transition-all hover:scale-105",
-                        isSelected && "bg-emerald-500/20 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/30"
-                      )}
                       onClick={() => !isLoading && toggleNode(node.id)}
+                      className={cn(
+                        "w-full flex items-center gap-3 p-3 rounded-lg text-left transition-all",
+                        "border",
+                        isSelected
+                          ? "bg-emerald-500/10 border-emerald-500/30 text-foreground"
+                          : "bg-transparent border-border/30 text-muted-foreground hover:border-border/50 hover:text-foreground"
+                      )}
                     >
-                      {node.name}
-                    </Badge>
+                      <div className={cn(
+                        "w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all",
+                        isSelected
+                          ? "bg-emerald-500 border-emerald-500"
+                          : "border-muted-foreground/30"
+                      )}>
+                        {isSelected && <CheckCircle2 className="w-3 h-3 text-white" />}
+                      </div>
+                      <span className="text-sm font-medium">{node.name}</span>
+                    </button>
                   );
                 })}
               </div>
-              <div className="flex gap-2 mt-2">
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={() => setSelectedNodes(nodes.map(n => n.id))}
-                  disabled={isLoading}
-                >
-                  Select All
-                </Button>
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={() => setSelectedNodes([])}
-                  disabled={isLoading}
-                >
-                  Clear
-                </Button>
-              </div>
+            </ScrollArea>
+
+            {/* Quick Actions */}
+            <div className="flex gap-2">
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={() => setSelectedNodes(nodes.map(n => n.id))}
+                disabled={isLoading}
+                className="text-xs"
+              >
+                Select All
+              </Button>
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={() => setSelectedNodes([])}
+                disabled={isLoading}
+                className="text-xs"
+              >
+                Clear
+              </Button>
             </div>
 
             {/* Custom Keywords */}
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-muted-foreground">Additional search terms</label>
-              <Input
-                placeholder="Add custom keyword and press Enter"
-                onKeyDown={addCustomKeyword}
-                disabled={isLoading}
-              />
+            <div className="space-y-2 pt-2 border-t border-border/30">
+              <label className="text-xs font-mono uppercase tracking-wider text-muted-foreground">
+                Additional Terms
+              </label>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Add custom search term"
+                  value={newKeyword}
+                  onChange={(e) => setNewKeyword(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && addCustomKeyword()}
+                  disabled={isLoading}
+                  className="bg-background/50 border-border/50"
+                />
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={addCustomKeyword}
+                  disabled={isLoading || !newKeyword.trim()}
+                  className="shrink-0"
+                >
+                  <Plus className="w-4 h-4" />
+                </Button>
+              </div>
               {customKeywords.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                   {customKeywords.map((keyword) => (
                     <Badge
                       key={keyword}
                       variant="secondary"
-                      className="cursor-pointer bg-primary/20 text-primary border-primary/30"
-                      onClick={() => !isLoading && removeCustomKeyword(keyword)}
+                      className="bg-primary/10 text-primary border border-primary/20 pr-1"
                     >
-                      {keyword} ×
+                      {keyword}
+                      <button
+                        onClick={() => !isLoading && removeCustomKeyword(keyword)}
+                        className="ml-1 p-0.5 rounded hover:bg-primary/20"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
                     </Badge>
                   ))}
                 </div>
               )}
             </div>
-
-            {/* Active Search Terms Preview */}
-            {activeTopics.length > 0 && (
-              <div className="p-3 rounded-lg bg-muted/30 border border-border/50">
-                <p className="text-xs font-medium text-muted-foreground mb-2">
-                  Will search for ({Math.min(activeTopics.length, 10)} topics):
-                </p>
-                <p className="text-xs text-foreground/80 line-clamp-3">
-                  {activeTopics.slice(0, 10).map((t, i) => (
-                    <span key={t}>
-                      "{t}"{i < Math.min(activeTopics.length, 10) - 1 ? ', ' : ''}
-                    </span>
-                  ))}
-                  {activeTopics.length > 10 && <span className="text-muted-foreground"> +{activeTopics.length - 10} more</span>}
-                </p>
-              </div>
-            )}
-          </CollapsibleContent>
-        </Collapsible>
-      )}
-
-      {/* Domain Filters */}
-      <div className="space-y-3">
-        <label className="text-sm font-medium">Domains (optional)</label>
-        <div className="flex flex-wrap gap-2">
-          {DOMAIN_OPTIONS.map((domain) => (
-            <Badge
-              key={domain}
-              variant={selectedDomains.includes(domain) ? 'default' : 'outline'}
-              className="cursor-pointer transition-all hover:scale-105"
-              onClick={() => !isLoading && toggleDomain(domain)}
-            >
-              {domain}
-            </Badge>
-          ))}
-        </div>
-      </div>
-
-      {/* Progress */}
-      {isLoading && (
-        <div className="space-y-3 p-4 border rounded-lg bg-muted/20">
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Searching Semantic Scholar...</span>
-            <span className="font-mono text-muted-foreground">{elapsedTime}s</span>
           </div>
-          <Progress value={progress} className="h-2" />
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Loader2 className="w-3 h-3 animate-spin text-emerald-500" />
-            {searchMode === 'author' 
-              ? `Fetching papers by ${authorQuery}...`
-              : `Processing ${Math.min(activeTopics.length, 10)} topics...`}
-          </div>
-        </div>
-      )}
-
-      {/* Scrape Button */}
-      <Button
-        className="w-full h-12 text-lg"
-        onClick={handleScrape}
-        disabled={isLoading}
-      >
-        {isLoading ? (
-          <>
-            <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-            Searching...
-          </>
-        ) : (
-          <>
-            <Search className="w-5 h-5 mr-2" />
-            Search Papers ({format(startDate, "MMM yy")} - {format(endDate, "MMM yy")})
-          </>
         )}
-      </Button>
 
-      {/* Last Scrape Summary */}
-      {lastScrape && !isLoading && (
-        <div className="p-4 rounded-lg border border-emerald-500/30 bg-emerald-500/5">
-          <div className="flex items-center gap-2 mb-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-            <span className="font-medium">Last Search</span>
-          </div>
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <span className="text-muted-foreground">Papers found:</span>
-              <span className="ml-2 font-mono text-emerald-400">{lastScrape.totalPapers}</span>
-            </div>
-            {lastScrape.topics.length > 0 && (
-              <div>
-                <span className="text-muted-foreground">Topics:</span>
-                <span className="ml-2 font-mono">{lastScrape.topics.length}</span>
+        {/* Progress */}
+        {isLoading && (
+          <div className="space-y-3 p-4 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
+            <div className="flex items-center justify-between text-sm">
+              <div className="flex items-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
+                <span className="font-mono text-emerald-400">SCANNING</span>
               </div>
-            )}
+              <span className="font-mono text-muted-foreground">{elapsedTime}s</span>
+            </div>
+            <Progress value={progress} className="h-1.5" />
+            <p className="text-xs text-muted-foreground">
+              {searchMode === 'author' 
+                ? `Fetching papers by ${authorQuery}...`
+                : `Processing ${Math.min(activeTopics.length, 10)} research topics...`}
+            </p>
           </div>
-        </div>
+        )}
+
+        {/* Scan Button */}
+        <Button
+          className={cn(
+            "w-full h-14 text-lg font-semibold transition-all",
+            "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500",
+            "shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/30"
+          )}
+          onClick={handleScrape}
+          disabled={isLoading}
+        >
+          {isLoading ? (
+            <>
+              <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+              Scanning Academic Database...
+            </>
+          ) : (
+            <>
+              <Zap className="w-5 h-5 mr-2" />
+              Scan Papers • {format(startDate, "MMM yy")} – {format(endDate, "MMM yy")}
+            </>
+          )}
+        </Button>
+      </Card>
+
+      {/* Results Summary */}
+      {lastScrape && !isLoading && (
+        <Card className="p-4 border-emerald-500/30 bg-emerald-500/5">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-emerald-500/20">
+              <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+            </div>
+            <div className="flex-1">
+              <p className="font-medium">Last Scan Complete</p>
+              <p className="text-sm text-muted-foreground">
+                Found <span className="font-mono text-emerald-400">{lastScrape.totalPapers}</span> papers
+                {lastScrape.topics.length > 0 && ` across ${lastScrape.topics.length} topics`}
+              </p>
+            </div>
+          </div>
+        </Card>
       )}
-    </Card>
+    </div>
   );
 }
