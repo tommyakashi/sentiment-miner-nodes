@@ -439,6 +439,72 @@ export async function performSentimentAnalysis(
   }
 }
 
+// Server-side sentiment analysis using Lovable AI
+export async function performSentimentAnalysisServer(
+  texts: string[],
+  nodes: Node[],
+  onProgress?: (progress: number) => void,
+  onStatus?: (status: string) => void
+): Promise<SentimentResult[]> {
+  console.log(`[Server] Starting sentiment analysis: ${texts.length} texts, ${nodes.length} nodes`);
+  
+  if (onStatus) onStatus('Connecting to AI service...');
+  if (onProgress) onProgress(5);
+
+  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+  const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+  if (!SUPABASE_URL || !SUPABASE_KEY) {
+    throw new Error('Supabase configuration missing');
+  }
+
+  try {
+    if (onStatus) onStatus(`Analyzing ${texts.length} texts...`);
+    if (onProgress) onProgress(15);
+
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/analyze-sentiment`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+      },
+      body: JSON.stringify({ texts, nodes }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+      
+      if (response.status === 429) {
+        throw new Error('Rate limit exceeded. Please wait a moment and try again.');
+      }
+      if (response.status === 402) {
+        throw new Error('AI credits exhausted. Please add credits to continue.');
+      }
+      
+      throw new Error(errorData.error || `Analysis failed: ${response.status}`);
+    }
+
+    if (onStatus) onStatus('Processing results...');
+    if (onProgress) onProgress(85);
+
+    const data = await response.json();
+    
+    if (!data.results || !Array.isArray(data.results)) {
+      throw new Error('Invalid response from analysis service');
+    }
+
+    if (onStatus) onStatus('Finalizing...');
+    if (onProgress) onProgress(95);
+
+    console.log(`[Server] Analysis complete: ${data.results.length} results`);
+    
+    return data.results as SentimentResult[];
+  } catch (error) {
+    console.error('[Server] Sentiment analysis error:', error);
+    throw error;
+  }
+}
+
 export function aggregateNodeAnalysis(results: SentimentResult[]): NodeAnalysis[] {
   const nodeMap = new Map<string, SentimentResult[]>();
 

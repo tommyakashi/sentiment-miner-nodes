@@ -11,8 +11,8 @@ interface AnalysisLoadingOverlayProps {
 
 const STEP_LABELS = [
   'Initializing',
-  'Loading AI models',
-  'Processing embeddings',
+  'Preparing data',
+  'Sending to AI',
   'Analyzing sentiment',
   'Aggregating results'
 ];

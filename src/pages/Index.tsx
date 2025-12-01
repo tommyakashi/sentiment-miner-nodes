@@ -26,7 +26,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
-import { performSentimentAnalysis, aggregateNodeAnalysis } from '@/utils/sentiment/analyzers/sentimentAnalyzer';
+import { performSentimentAnalysisServer, aggregateNodeAnalysis } from '@/utils/sentiment/analyzers/sentimentAnalyzer';
 import { parseRedditJSON, extractTimeSeriesData } from '@/utils/redditParser';
 import type { Node, SentimentResult, NodeAnalysis } from '@/types/sentiment';
 import type { RedditData, RedditPost } from '@/types/reddit';
@@ -190,26 +190,31 @@ const Index = () => {
       return;
     }
 
-    // Step 1: Initializing - fade out window
+    // Step 1: Initializing - fade out window FIRST, show loading overlay
     setCurrentStep(1);
-    setIsWindowHiding(true);
     setProgress(0);
     setAnalysisStatus('Initializing...');
+    setIsWindowHiding(true);
     
-    // Wait for fade-out animation
+    // Wait for fade-out animation to complete
     await new Promise(resolve => setTimeout(resolve, 300));
     setShowWindow(false);
     setIsWindowHiding(false);
+    
+    // NOW show the loading overlay (after window is hidden)
     setIsAnalyzing(true);
+    
+    // Small delay to ensure React renders the overlay
+    await new Promise(resolve => setTimeout(resolve, 50));
 
     try {
       let textsToAnalyze: string[] = [];
       let rawData: RedditData[] = [];
       let participantsList: any[] = [];
 
-      // Step 2: Loading models
+      // Step 2: Preparing data
       setCurrentStep(2);
-      setAnalysisStatus('Loading AI models...');
+      setAnalysisStatus('Preparing data...');
       setProgress(10);
 
       rawData = stagedContent as RedditData[];
@@ -237,24 +242,24 @@ const Index = () => {
         setSources([{ name: 'Text/Other', value: textsToAnalyze.length }]);
       }
 
-      // Step 3: Processing embeddings
+      // Step 3: Sending to AI
       setCurrentStep(3);
-      setAnalysisStatus('Processing embeddings...');
+      setAnalysisStatus('Sending to AI...');
       setProgress(20);
 
-      // Step 4: Analyzing sentiment
+      // Step 4: Analyzing sentiment (server-side)
       setCurrentStep(4);
-      const analysisResults = await performSentimentAnalysis(
+      const analysisResults = await performSentimentAnalysisServer(
         textsToAnalyze, 
         nodes,
-        (progress) => setProgress(20 + progress * 0.6),
+        (progress) => setProgress(20 + progress * 0.65),
         (status) => setAnalysisStatus(status)
       );
 
       // Step 5: Aggregating results
       setCurrentStep(5);
       setAnalysisStatus('Aggregating results...');
-      setProgress(85);
+      setProgress(90);
 
       if (rawData.length > 0) {
         try {
@@ -306,9 +311,10 @@ const Index = () => {
 
     } catch (error) {
       console.error('Analysis error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'An error occurred during sentiment analysis.';
       toast({
         title: 'Analysis failed',
-        description: 'An error occurred during sentiment analysis.',
+        description: errorMessage,
         variant: 'destructive',
       });
     } finally {
