@@ -156,12 +156,29 @@ Return a JSON array with ${batchTexts.length} objects in order, each having: pol
       // Parse JSON from response (handle markdown code blocks)
       let parsed: any[];
       try {
-        const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/) || [null, content];
-        const jsonStr = jsonMatch[1].trim();
+        let jsonStr = content;
+        
+        // Strip markdown code blocks if present
+        if (content.includes('```')) {
+          const match = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+          if (match && match[1]) {
+            jsonStr = match[1];
+          } else {
+            // Fallback: just remove the backticks
+            jsonStr = content.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+          }
+        }
+        
+        jsonStr = jsonStr.trim();
         parsed = JSON.parse(jsonStr);
+        
+        // Ensure we have an array
+        if (!Array.isArray(parsed)) {
+          throw new Error('Response is not an array');
+        }
       } catch (parseError) {
         console.error(`[analyze-sentiment] Failed to parse batch ${batchIndex + 1}:`, parseError);
-        console.error(`[analyze-sentiment] Raw content:`, content.slice(0, 500));
+        console.error(`[analyze-sentiment] Raw content (first 300 chars):`, content.slice(0, 300));
         // Create fallback results for this batch
         parsed = batchTexts.map(() => ({
           polarity: 'neutral',
