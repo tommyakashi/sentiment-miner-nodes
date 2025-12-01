@@ -6,6 +6,7 @@ import { RedditScraper } from '@/components/RedditScraper';
 import { ScrapeHistory } from '@/components/ScrapeHistory';
 import { PaperScraper } from '@/components/PaperScraper';
 import { PaperHistory } from '@/components/PaperHistory';
+import { PaperResults } from '@/components/PaperResults';
 import { SentimentScore } from '@/components/SentimentScore';
 import { SentimentChart } from '@/components/SentimentChart';
 import { ParticipantsList } from '@/components/ParticipantsList';
@@ -609,34 +610,10 @@ const Index = () => {
             )}
 
             {scrapedPapers.length > 0 && (
-              <Card className="p-4 bg-card/80 backdrop-blur-sm border-border/50">
-                <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                  <BookOpen className="w-4 h-4" />
-                  Top Papers by Citations
-                </h4>
-                <div className="space-y-2">
-                  {scrapedPapers
-                    .sort((a, b) => b.citationCount - a.citationCount)
-                    .slice(0, 5)
-                    .map((paper) => (
-                      <div key={paper.paperId} className="p-3 rounded-lg bg-muted/30 border border-border/50">
-                        <a 
-                          href={paper.url} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="text-sm font-medium hover:text-primary line-clamp-2"
-                        >
-                          {paper.title}
-                        </a>
-                        <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                          <span>{paper.year}</span>
-                          <span>{paper.citationCount} citations</span>
-                          <span>{paper.authors.slice(0, 2).map(a => a.name).join(', ')}{paper.authors.length > 2 ? ' et al.' : ''}</span>
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              </Card>
+              <PaperResults 
+                papers={scrapedPapers}
+                title="Scraped AI Papers"
+              />
             )}
           </div>
         );
