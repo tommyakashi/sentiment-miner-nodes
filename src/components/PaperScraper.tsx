@@ -198,36 +198,30 @@ export function PaperScraper({ onDataScraped, nodes }: PaperScraperProps) {
   return (
     <div className="space-y-4">
       {/* Header Card */}
-      <Card className="relative overflow-hidden border-emerald-500/20 bg-gradient-to-br from-card/90 to-emerald-950/20 backdrop-blur-xl">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-emerald-500/10 via-transparent to-transparent" />
-        <div className="relative p-5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="relative">
-                <div className="absolute inset-0 bg-emerald-500/30 blur-xl rounded-full" />
-                <div className="relative p-3 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl">
-                  <BookOpen className="w-6 h-6 text-white" />
-                </div>
-              </div>
-              <div>
-                <h3 className="text-xl font-bold tracking-tight">Academic Scanner</h3>
-                <div className="flex items-center gap-2 mt-1">
-                  <Database className="w-3 h-3 text-emerald-400" />
-                  <span className="text-xs font-mono text-emerald-400/80">SEMANTIC SCHOLAR API</span>
-                </div>
+      <Card className="p-6 bg-card/60 backdrop-blur-sm border-border/50">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
+              <BookOpen className="w-6 h-6 text-blue-400" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold tracking-tight">Academic Scanner</h3>
+              <div className="flex items-center gap-2 mt-1">
+                <Database className="w-3 h-3 text-blue-400" />
+                <span className="text-xs font-mono text-muted-foreground">SEMANTIC SCHOLAR + arXiv</span>
               </div>
             </div>
-            
-            {/* Status Indicator */}
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
-              <span className={cn(
-                "w-2 h-2 rounded-full",
-                isLoading ? "bg-amber-400 animate-pulse" : "bg-emerald-400"
-              )} />
-              <span className="text-xs font-mono text-emerald-400">
-                {isLoading ? 'SCANNING' : 'READY'}
-              </span>
-            </div>
+          </div>
+          
+          {/* Status Indicator */}
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20">
+            <span className={cn(
+              "w-2 h-2 rounded-full",
+              isLoading ? "bg-amber-400 animate-pulse" : "bg-emerald-400"
+            )} />
+            <span className="text-xs font-mono text-blue-400">
+              {isLoading ? 'SCANNING' : 'READY'}
+            </span>
           </div>
         </div>
       </Card>
@@ -251,8 +245,8 @@ export function PaperScraper({ onDataScraped, nodes }: PaperScraperProps) {
                   "flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all",
                   "border",
                   searchMode === id
-                    ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-400"
-                    : "bg-transparent border-border/50 text-muted-foreground hover:border-border hover:text-foreground"
+                    ? "bg-blue-500/10 border-blue-500/30 text-blue-400"
+                    : "bg-background/30 border-border/50 text-muted-foreground hover:border-border hover:text-foreground"
                 )}
               >
                 <Icon className="w-4 h-4" />
@@ -271,7 +265,7 @@ export function PaperScraper({ onDataScraped, nodes }: PaperScraperProps) {
               value={authorQuery}
               onChange={(e) => setAuthorQuery(e.target.value)}
               disabled={isLoading}
-              className="bg-background/50 border-border/50 focus:border-emerald-500/50"
+              className="bg-background/30 border-border/50"
             />
           </div>
         )}
@@ -285,12 +279,12 @@ export function PaperScraper({ onDataScraped, nodes }: PaperScraperProps) {
                 <Button
                   variant="outline"
                   className={cn(
-                    "flex-1 justify-start text-left font-mono bg-background/50 border-border/50",
+                    "flex-1 justify-start text-left font-mono bg-background/30 border-border/50",
                     !startDate && "text-muted-foreground"
                   )}
                   disabled={isLoading}
                 >
-                  <CalendarIcon className="mr-2 h-4 w-4 text-emerald-400" />
+                  <CalendarIcon className="mr-2 h-4 w-4 text-blue-400" />
                   {startDate ? format(startDate, "MMM yyyy") : "From"}
                 </Button>
               </PopoverTrigger>
@@ -306,19 +300,19 @@ export function PaperScraper({ onDataScraped, nodes }: PaperScraperProps) {
               </PopoverContent>
             </Popover>
             
-            <div className="w-8 h-px bg-gradient-to-r from-transparent via-emerald-500/50 to-transparent" />
+            <div className="w-8 h-px bg-border/50" />
             
             <Popover>
               <PopoverTrigger asChild>
                 <Button
                   variant="outline"
                   className={cn(
-                    "flex-1 justify-start text-left font-mono bg-background/50 border-border/50",
+                    "flex-1 justify-start text-left font-mono bg-background/30 border-border/50",
                     !endDate && "text-muted-foreground"
                   )}
                   disabled={isLoading}
                 >
-                  <CalendarIcon className="mr-2 h-4 w-4 text-emerald-400" />
+                  <CalendarIcon className="mr-2 h-4 w-4 text-blue-400" />
                   {endDate ? format(endDate, "MMM yyyy") : "To"}
                 </Button>
               </PopoverTrigger>
@@ -344,7 +338,7 @@ export function PaperScraper({ onDataScraped, nodes }: PaperScraperProps) {
                 Research Topics
               </label>
               <div className="flex items-center gap-3">
-                <span className="text-xs font-mono text-emerald-400">
+                <span className="text-xs font-mono text-blue-400">
                   {selectedNodes.length}/{nodes.length}
                 </span>
                 <button
@@ -373,11 +367,11 @@ export function PaperScraper({ onDataScraped, nodes }: PaperScraperProps) {
                     key={node.id}
                     onClick={() => !isLoading && toggleNode(node.id)}
                     className={cn(
-                      "px-3 py-1.5 rounded-full text-xs font-medium transition-all",
+                      "px-3 py-1.5 rounded-lg text-xs font-medium transition-all",
                       "border",
                       isSelected
-                        ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-400"
-                        : "bg-transparent border-border/50 text-muted-foreground hover:border-border hover:text-foreground"
+                        ? "bg-blue-500/10 border-blue-500/30 text-blue-400"
+                        : "bg-background/30 border-border/50 text-muted-foreground hover:border-border hover:text-foreground"
                     )}
                   >
                     {node.name}
@@ -398,14 +392,14 @@ export function PaperScraper({ onDataScraped, nodes }: PaperScraperProps) {
                   onChange={(e) => setNewKeyword(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && addCustomKeyword()}
                   disabled={isLoading}
-                  className="bg-background/50 border-border/50"
+                  className="bg-background/30 border-border/50"
                 />
                 <Button
                   variant="outline"
                   size="icon"
                   onClick={addCustomKeyword}
                   disabled={isLoading || !newKeyword.trim()}
-                  className="shrink-0"
+                  className="shrink-0 border-border/50"
                 >
                   <Plus className="w-4 h-4" />
                 </Button>
@@ -415,8 +409,8 @@ export function PaperScraper({ onDataScraped, nodes }: PaperScraperProps) {
                   {customKeywords.map((keyword) => (
                     <Badge
                       key={keyword}
-                      variant="secondary"
-                      className="bg-primary/10 text-primary border border-primary/20 pr-1"
+                      variant="outline"
+                      className="bg-primary/10 text-foreground border-primary/20 pr-1"
                     >
                       {keyword}
                       <button
@@ -435,16 +429,16 @@ export function PaperScraper({ onDataScraped, nodes }: PaperScraperProps) {
 
         {/* Progress */}
         {isLoading && (
-          <div className="space-y-3 p-4 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
+          <div className="space-y-3 p-4 rounded-lg bg-background/30 border border-border/50">
             <div className="flex items-center justify-between text-sm">
               <div className="flex items-center gap-2">
-                <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
-                <span className="font-mono text-emerald-400">SCANNING</span>
+                <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
+                <span className="font-mono text-blue-400">SCANNING</span>
               </div>
-              <span className="font-mono text-muted-foreground">{elapsedTime}s</span>
+              <span className="font-mono text-foreground">{elapsedTime}s</span>
             </div>
             <Progress value={progress} className="h-1.5" />
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-muted-foreground font-mono">
               {searchMode === 'author' 
                 ? `Fetching papers by ${authorQuery}...`
                 : `Processing ${Math.min(activeTopics.length, 10)} research topics...`}
@@ -454,11 +448,7 @@ export function PaperScraper({ onDataScraped, nodes }: PaperScraperProps) {
 
         {/* Scan Button */}
         <Button
-          className={cn(
-            "w-full h-14 text-lg font-semibold transition-all",
-            "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500",
-            "shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/30"
-          )}
+          className="w-full h-12 text-lg"
           onClick={handleScrape}
           disabled={isLoading}
         >

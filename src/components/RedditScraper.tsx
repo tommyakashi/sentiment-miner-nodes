@@ -218,11 +218,11 @@ export function RedditScraper({ onDataScraped }: RedditScraperProps) {
   };
 
   return (
-    <Card className="p-6 space-y-6 bg-card/80 backdrop-blur-sm border-border/50 data-card">
+    <Card className="p-6 space-y-6 bg-card/60 backdrop-blur-sm border-border/50">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-gradient-to-br from-orange-500 to-red-500 rounded-lg glow-primary" style={{ boxShadow: '0 0 20px hsl(25 95% 53% / 0.3)' }}>
-            <Radio className="w-5 h-5 text-white" />
+          <div className="w-12 h-12 rounded-lg bg-orange-500/10 border border-orange-500/20 flex items-center justify-center">
+            <Radio className="w-6 h-6 text-orange-400" />
           </div>
           <div>
             <h3 className="text-lg font-semibold tracking-tight">Reddit Signal Scanner</h3>
@@ -232,69 +232,72 @@ export function RedditScraper({ onDataScraped }: RedditScraperProps) {
           </div>
         </div>
 
-        {/* Mode Toggle - ON AIR style */}
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => {
-              if (!isLoading && customSubreddits.length === 0) {
-                setFastMode(!fastMode);
-                setCustomSubreddits([]);
-              }
-            }}
-            disabled={isLoading || customSubreddits.length > 0}
-            className={`
-              relative px-4 py-2 rounded-md font-bold text-sm uppercase tracking-wider
-              border-2 transition-all duration-300
-              ${fastMode 
-                ? 'bg-amber-500/20 border-amber-500 text-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.4)]' 
-                : 'bg-blue-500/20 border-blue-500 text-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.4)]'
-              }
-              ${isLoading || customSubreddits.length > 0 ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105 cursor-pointer'}
-            `}
-          >
-            <div className="flex items-center gap-2">
-              <span className={`w-2 h-2 rounded-full animate-pulse ${fastMode ? 'bg-amber-400' : 'bg-blue-400'}`} />
-              <span className="text-[10px] text-muted-foreground">MODE</span>
-              <span>{fastMode ? 'FAST' : 'FULL'}</span>
-            </div>
-          </button>
-        </div>
+        {/* Mode Toggle */}
+        <button
+          onClick={() => {
+            if (!isLoading && customSubreddits.length === 0) {
+              setFastMode(!fastMode);
+              setCustomSubreddits([]);
+            }
+          }}
+          disabled={isLoading || customSubreddits.length > 0}
+          className={`
+            relative px-4 py-2 rounded-lg font-bold text-sm uppercase tracking-wider
+            border transition-all duration-300
+            ${fastMode 
+              ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' 
+              : 'bg-blue-500/10 border-blue-500/30 text-blue-400'
+            }
+            ${isLoading || customSubreddits.length > 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-opacity-20 cursor-pointer'}
+          `}
+        >
+          <div className="flex items-center gap-2">
+            <span className={`w-2 h-2 rounded-full animate-pulse ${fastMode ? 'bg-amber-400' : 'bg-blue-400'}`} />
+            <span className="text-[10px] text-muted-foreground">MODE</span>
+            <span>{fastMode ? 'FAST' : 'FULL'}</span>
+          </div>
+        </button>
       </div>
 
       {/* Mode details */}
-      <div className={`text-xs px-3 py-1.5 rounded-md inline-flex items-center gap-1.5 border ${fastMode ? 'bg-amber-500/5 border-amber-500/30 text-amber-500' : 'bg-blue-500/5 border-blue-500/30 text-blue-500'}`}>
+      <div className={`text-xs px-3 py-2 rounded-lg inline-flex items-center gap-2 border ${fastMode ? 'bg-amber-500/5 border-amber-500/20 text-amber-400' : 'bg-blue-500/5 border-blue-500/20 text-blue-400'}`}>
         {fastMode ? (
           <>
-            <Zap className="w-3 h-3" />
-            15 core subreddits (~20s)
+            <Zap className="w-3.5 h-3.5" />
+            <span className="font-mono">19 core subreddits • ~20s scan time</span>
           </>
         ) : (
           <>
-            <Clock className="w-3 h-3" />
-            39 subreddits (~60s)
+            <Clock className="w-3.5 h-3.5" />
+            <span className="font-mono">42 subreddits • ~60s comprehensive scan</span>
           </>
         )}
       </div>
 
       {/* Sort Mode Selection */}
       <div className="space-y-3">
-        <label className="text-sm font-medium">Sort By</label>
+        <label className="text-sm font-medium text-foreground">Sort By</label>
         <div className="flex gap-2">
           {sortModeOptions.map((option) => (
-            <Button
+            <button
               key={option.value}
-              variant={selectedSortMode === option.value ? 'default' : 'outline'}
-              size="sm"
-              className="flex items-center gap-1.5"
               onClick={() => setSelectedSortMode(option.value)}
               disabled={isLoading}
+              className={`
+                flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium transition-all
+                ${selectedSortMode === option.value 
+                  ? 'bg-primary/10 border-primary/30 text-foreground' 
+                  : 'bg-background/30 border-border/50 text-muted-foreground hover:text-foreground hover:border-border'
+                }
+                disabled:opacity-50 disabled:cursor-not-allowed
+              `}
             >
               {option.icon}
               <span>{option.label}</span>
-            </Button>
+            </button>
           ))}
         </div>
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs text-muted-foreground font-mono">
           {sortModeOptions.find(o => o.value === selectedSortMode)?.description}
           {selectedSortMode === 'top' && ' for the selected time range'}
         </p>
@@ -302,19 +305,27 @@ export function RedditScraper({ onDataScraped }: RedditScraperProps) {
 
       {/* Time Range Selection */}
       <div className="space-y-3">
-        <label className="text-sm font-medium">Time Range {selectedSortMode !== 'top' && <span className="text-muted-foreground">(filter only)</span>}</label>
+        <label className="text-sm font-medium text-foreground">
+          Time Range {selectedSortMode !== 'top' && <span className="text-muted-foreground font-normal">(filter only)</span>}
+        </label>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
           {timeRangeOptions.map((option) => (
-            <Button
+            <button
               key={option.value}
-              variant={selectedTimeRange === option.value ? 'default' : 'outline'}
-              className="flex flex-col h-auto py-3"
               onClick={() => setSelectedTimeRange(option.value)}
               disabled={isLoading}
+              className={`
+                flex flex-col items-center py-3 px-4 rounded-lg border text-sm transition-all
+                ${selectedTimeRange === option.value 
+                  ? 'bg-primary/10 border-primary/30' 
+                  : 'bg-background/30 border-border/50 hover:border-border'
+                }
+                disabled:opacity-50 disabled:cursor-not-allowed
+              `}
             >
-              <span className="font-semibold">{option.label}</span>
-              <span className="text-xs opacity-70">{option.description}</span>
-            </Button>
+              <span className="font-semibold text-foreground">{option.label}</span>
+              <span className="text-xs text-muted-foreground">{option.description}</span>
+            </button>
           ))}
         </div>
       </div>
@@ -382,29 +393,29 @@ export function RedditScraper({ onDataScraped }: RedditScraperProps) {
 
       {/* Real-time Progress */}
       {isLoading && (
-        <div className="space-y-3 p-4 border rounded-lg bg-muted/20">
+        <div className="space-y-4 p-4 rounded-lg border border-border/50 bg-background/30">
           <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">
-              Scraping {completedSubreddits.length + currentBatch.length} of {activeSubreddits.length}
+            <span className="text-muted-foreground font-mono">
+              Processing {completedSubreddits.length + currentBatch.length} / {activeSubreddits.length}
             </span>
-            <span className="font-mono text-muted-foreground">{elapsedTime}s</span>
+            <span className="font-mono text-foreground">{elapsedTime}s</span>
           </div>
           
-          <Progress value={progress} className="h-2" />
+          <Progress value={progress} className="h-1.5" />
           
           {/* Current batch indicator */}
           {currentBatch.length > 0 && (
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <CircleDot className="w-3 h-3 text-orange-500 animate-pulse" />
-                Currently scraping:
+                <CircleDot className="w-3 h-3 text-orange-400 animate-pulse" />
+                <span className="font-mono">SCANNING</span>
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {currentBatch.map((sub) => (
                   <Badge 
                     key={sub} 
-                    variant="secondary" 
-                    className="text-xs animate-pulse bg-orange-500/20 text-orange-600"
+                    variant="outline" 
+                    className="text-xs animate-pulse border-orange-500/30 text-orange-400 bg-orange-500/10"
                   >
                     r/{sub}
                   </Badge>
@@ -416,19 +427,19 @@ export function RedditScraper({ onDataScraped }: RedditScraperProps) {
           {/* Completed subreddits */}
           {completedSubreddits.length > 0 && (
             <div className="flex flex-wrap gap-1">
-              {completedSubreddits.slice(-10).map((sub) => (
+              {completedSubreddits.slice(-8).map((sub) => (
                 <Badge 
                   key={sub} 
                   variant="outline" 
-                  className="text-xs text-green-600 border-green-500/30"
+                  className="text-xs border-emerald-500/30 text-emerald-400 bg-emerald-500/10"
                 >
                   <CheckCircle2 className="w-2.5 h-2.5 mr-1" />
                   {sub}
                 </Badge>
               ))}
-              {completedSubreddits.length > 10 && (
-                <Badge variant="outline" className="text-xs text-muted-foreground">
-                  +{completedSubreddits.length - 10} more
+              {completedSubreddits.length > 8 && (
+                <Badge variant="outline" className="text-xs text-muted-foreground border-border/50">
+                  +{completedSubreddits.length - 8} more
                 </Badge>
               )}
             </div>
