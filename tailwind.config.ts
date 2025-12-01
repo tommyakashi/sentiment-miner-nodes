@@ -90,6 +90,20 @@ export default {
           "0%": { backgroundPosition: "-200% 0" },
           "100%": { backgroundPosition: "200% 0" },
         },
+        "logo-glow": {
+          "0%": { 
+            filter: "drop-shadow(0 0 2px hsl(0 0% 100% / 0.3)) drop-shadow(0 0 4px hsl(0 0% 100% / 0.1))",
+            opacity: "0.7"
+          },
+          "50%": { 
+            filter: "drop-shadow(0 0 8px hsl(0 0% 100% / 0.8)) drop-shadow(0 0 20px hsl(0 0% 100% / 0.5)) drop-shadow(0 0 40px hsl(0 0% 100% / 0.3))",
+            opacity: "1"
+          },
+          "100%": { 
+            filter: "drop-shadow(0 0 2px hsl(0 0% 100% / 0.3)) drop-shadow(0 0 4px hsl(0 0% 100% / 0.1))",
+            opacity: "0.7"
+          },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -97,6 +111,7 @@ export default {
         "fade-in": "fade-in 0.5s ease-out forwards",
         "pulse-glow": "pulse-glow 2s ease-in-out infinite",
         "shimmer": "shimmer 2s linear infinite",
+        "logo-glow": "logo-glow 3s ease-in-out infinite",
       },
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',

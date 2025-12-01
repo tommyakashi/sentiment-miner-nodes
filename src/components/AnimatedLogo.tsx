@@ -1,0 +1,15 @@
+import tbgLogo from "@/assets/tbg-logo.webp";
+
+const AnimatedLogo = () => {
+  return (
+    <div className="flex items-center justify-center">
+      <img
+        src={tbgLogo}
+        alt="TBG Logo"
+        className="h-8 w-auto animate-logo-glow"
+      />
+    </div>
+  );
+};
+
+export default AnimatedLogo;
