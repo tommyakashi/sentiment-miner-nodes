@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useToast } from '@/hooks/use-toast';
+import { usePaperHistory } from '@/hooks/usePaperHistory';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
@@ -52,6 +53,7 @@ export function PaperScraper({ onDataScraped, nodes }: PaperScraperProps) {
   const [newKeyword, setNewKeyword] = useState('');
   const startTimeRef = useRef<number>(0);
   const { toast } = useToast();
+  const { addScrape } = usePaperHistory();
 
   // Initialize selected nodes to all nodes
   useEffect(() => {
@@ -121,11 +123,6 @@ export function PaperScraper({ onDataScraped, nodes }: PaperScraperProps) {
     startTimeRef.current = Date.now();
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        throw new Error('Not authenticated');
-      }
-
       const searchTopics = searchMode === 'author' ? [] : activeTopics.slice(0, 10);
       const searchAuthor = searchMode === 'nodes' ? undefined : authorQuery.trim();
 
@@ -136,7 +133,7 @@ export function PaperScraper({ onDataScraped, nodes }: PaperScraperProps) {
           startDate: format(startDate, 'yyyy-MM-dd'),
           endDate: format(endDate, 'yyyy-MM-dd'),
           limit: 100,
-          saveToDb: true,
+          saveToDb: false,
         }
       });
 
@@ -150,6 +147,17 @@ export function PaperScraper({ onDataScraped, nodes }: PaperScraperProps) {
       });
 
       if (data.data && data.data.length > 0) {
+        // Save to localStorage
+        addScrape({
+          keywords: searchTopics,
+          author_query: searchAuthor || null,
+          year_min: startDate.getFullYear(),
+          year_max: endDate.getFullYear(),
+          domains: null,
+          total_papers: data.summary.totalPapers,
+          papers: data.data,
+        });
+
         onDataScraped(data.data);
         toast({
           title: 'Scrape Complete',

@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { NodeManager } from '@/components/NodeManager';
 import { RedditScraper } from '@/components/RedditScraper';
@@ -38,8 +37,6 @@ import type { AcademicPaper } from '@/types/paper';
 import { Activity, Zap, BookOpen } from 'lucide-react';
 
 const Index = () => {
-  const navigate = useNavigate();
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [showIntro, setShowIntro] = useState(true);
   const [introFading, setIntroFading] = useState(false);
   const [selectedMode, setSelectedMode] = useState<ModeId | null>(null);
@@ -73,7 +70,7 @@ const Index = () => {
   const [logoVisible, setLogoVisible] = useState(false);
   
   useEffect(() => {
-    if (!isCheckingAuth && showIntro) {
+    if (showIntro) {
       // Logo fades in after brief black screen
       const showLogoTimer = setTimeout(() => {
         setLogoVisible(true);
@@ -94,7 +91,7 @@ const Index = () => {
         clearTimeout(hideTimer);
       };
     }
-  }, [isCheckingAuth, showIntro]);
+  }, [showIntro]);
   
   const TOTAL_STEPS = 5;
 
@@ -135,28 +132,6 @@ const Index = () => {
     }
   }, []);
 
-  // Check auth status
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) {
-        navigate('/auth');
-      } else {
-        setIsCheckingAuth(false);
-      }
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        if (!session) {
-          navigate('/auth');
-        } else {
-          setIsCheckingAuth(false);
-        }
-      }
-    );
-
-    return () => subscription.unsubscribe();
-  }, [navigate]);
 
   const handleFilesLoaded = async (content: any[], fileType: 'reddit' | 'text', fileCount: number) => {
     if (content.length === 0) {
@@ -463,23 +438,6 @@ const Index = () => {
       setAnalysisStatus('');
     }
   };
-
-  if (isCheckingAuth) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center relative overflow-hidden">
-        <ParticleBackground particleCount={50} interactive={false} />
-        <div className="text-center z-10">
-          <div className="relative">
-            <div className="w-20 h-20 mx-auto rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center animate-pulse">
-              <Activity className="w-10 h-10 text-primary-foreground" />
-            </div>
-            <div className="absolute inset-0 w-20 h-20 mx-auto rounded-full bg-primary/20 animate-ping" />
-          </div>
-          <p className="text-muted-foreground mt-6 font-mono text-sm">Initializing observatory...</p>
-        </div>
-      </div>
-    );
-  }
 
   // Intro splash screen with animated logo - starts pitch black
   if (showIntro) {
