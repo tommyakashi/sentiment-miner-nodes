@@ -485,7 +485,7 @@ const Index = () => {
   if (showIntro) {
     return (
       <div className={`min-h-screen bg-black flex items-center justify-center relative overflow-hidden transition-opacity duration-[1500ms] ${introFading ? 'opacity-0' : 'opacity-100'}`}>
-        <div className={`text-center z-10 ${logoVisible ? 'animate-eyes-open' : 'opacity-0'}`}>
+        <div className={`text-center z-10 transition-opacity duration-[3000ms] ease-in ${logoVisible ? 'opacity-100' : 'opacity-0'}`}>
           <div className="scale-[3]">
             <AnimatedLogo />
           </div>

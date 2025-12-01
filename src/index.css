@@ -226,28 +226,4 @@
   .stagger-children > *:nth-child(4) { animation-delay: 0.2s; }
   .stagger-children > *:nth-child(5) { animation-delay: 0.25s; }
   .stagger-children > *:nth-child(6) { animation-delay: 0.3s; }
-
-  /* Eyes opening animation - slow organic fade */
-  @keyframes eyes-open {
-    0% {
-      opacity: 0;
-      filter: blur(8px);
-    }
-    30% {
-      opacity: 0.15;
-      filter: blur(4px);
-    }
-    60% {
-      opacity: 0.5;
-      filter: blur(2px);
-    }
-    100% {
-      opacity: 1;
-      filter: blur(0px);
-    }
-  }
-
-  .animate-eyes-open {
-    animation: eyes-open 3.5s cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
-  }
 }
