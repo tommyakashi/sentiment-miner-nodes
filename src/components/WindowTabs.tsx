@@ -141,8 +141,8 @@ export function WindowTabs({ activeTab, onTabChange, dataCount = 0, onBackToHome
 
               {/* Dropdown Menu */}
               {hasSubTabs && isHovered && (
-                <div className="absolute top-full left-0 mt-0.5 z-50 min-w-[160px] animate-fade-in">
-                  <div className="bg-[hsl(230,15%,10%)] backdrop-blur-xl border border-border/50 rounded-lg shadow-xl overflow-hidden">
+                <div className="absolute top-full left-0 pt-1 z-50 min-w-[160px]">
+                  <div className="bg-[hsl(230,15%,10%)] backdrop-blur-xl border border-border/50 rounded-lg shadow-xl overflow-hidden animate-fade-in">
                     {tab.subTabs.map((subTab) => (
                       <button
                         key={subTab.id}
