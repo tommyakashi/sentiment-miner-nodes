@@ -28,8 +28,9 @@ interface SentimentResult {
   confidence: number;
 }
 
-const BATCH_SIZE = 100; // Process 100 texts per AI call for faster execution
-const MAX_EXECUTION_TIME = 50000; // 50 seconds max before returning partial results
+// Reduced batch size to prevent output token truncation
+const BATCH_SIZE = 25;
+const MAX_EXECUTION_TIME = 100000; // 100 seconds max before returning partial results
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -39,7 +40,28 @@ serve(async (req) => {
   const startTime = Date.now();
 
   try {
-    const { texts, nodes } = await req.json() as { texts: string[]; nodes: Node[] };
+    const requestText = await req.text();
+    if (!requestText) {
+      return new Response(JSON.stringify({ error: 'Empty request body' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    let texts: string[];
+    let nodes: Node[];
+    
+    try {
+      const body = JSON.parse(requestText);
+      texts = body.texts;
+      nodes = body.nodes;
+    } catch (parseErr) {
+      console.error('[analyze-sentiment] Failed to parse request body:', parseErr);
+      return new Response(JSON.stringify({ error: 'Invalid JSON in request body' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
     
     if (!texts || !Array.isArray(texts) || texts.length === 0) {
       return new Response(JSON.stringify({ error: 'No texts provided' }), {
@@ -62,27 +84,10 @@ serve(async (req) => {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
-    const nodesList = nodes.map(n => `- "${n.name}" (ID: ${n.id})`).join('\n');
+    // Create compact node list for prompt
+    const nodesList = nodes.map(n => `${n.id}:${n.name}`).join(', ');
     
-    const systemPrompt = `You are a sentiment analysis expert. Analyze texts and classify them by sentiment and topic.
-
-Available topics/nodes:
-${nodesList}
-
-For each text, determine:
-1. **polarity**: "positive", "neutral", or "negative"
-2. **polarityScore**: A number from -1.0 (very negative) to +1.0 (very positive)
-3. **bestMatchingNodeId**: The ID of the most relevant topic from the list
-4. **confidence**: How confident you are (0.0 to 1.0)
-5. **kpiScores**: Rate each KPI from -1.0 to +1.0:
-   - trust: Level of trust/credibility expressed
-   - optimism: Hopefulness/positive outlook
-   - frustration: Annoyance/difficulty expressed
-   - clarity: How clear/understandable the subject is
-   - access: Ease of access/availability
-   - fairness: Perception of fairness/equity
-
-Respond ONLY with a JSON array of results matching the input texts order.`;
+    const systemPrompt = `Sentiment analyzer. For each text return JSON object with: polarity("positive"/"neutral"/"negative"), polarityScore(-1 to 1), bestMatchingNodeId(from: ${nodesList}), confidence(0-1), kpiScores{trust,optimism,frustration,clarity,access,fairness}(each -1 to 1). Return ONLY a JSON array, no markdown.`;
 
     const allResults: SentimentResult[] = [];
     const totalBatches = Math.ceil(texts.length / BATCH_SIZE);
@@ -91,12 +96,12 @@ Respond ONLY with a JSON array of results matching the input texts order.`;
       const startIdx = batchIndex * BATCH_SIZE;
       const batchTexts = texts.slice(startIdx, startIdx + BATCH_SIZE);
       
-      console.log(`[analyze-sentiment] Processing batch ${batchIndex + 1}/${totalBatches} (${batchTexts.length} texts)`);
+      console.log(`[analyze-sentiment] Batch ${batchIndex + 1}/${totalBatches} (${batchTexts.length} texts)`);
 
       // Check if we're approaching timeout - return partial results if so
       const elapsed = Date.now() - startTime;
       if (elapsed > MAX_EXECUTION_TIME && allResults.length > 0) {
-        console.log(`[analyze-sentiment] Approaching timeout at ${elapsed}ms, returning ${allResults.length} partial results`);
+        console.log(`[analyze-sentiment] Timeout at ${elapsed}ms, returning ${allResults.length} partial results`);
         return new Response(JSON.stringify({ 
           results: allResults,
           isPartial: true,
@@ -107,13 +112,10 @@ Respond ONLY with a JSON array of results matching the input texts order.`;
         });
       }
 
-      const textsForPrompt = batchTexts.map((t, i) => `[${i}] "${t.slice(0, 300)}${t.length > 300 ? '...' : ''}"`).join('\n\n');
+      // Compact text format
+      const textsForPrompt = batchTexts.map((t, i) => `${i}:"${t.slice(0, 200)}"`).join('\n');
 
-      const userPrompt = `Analyze these ${batchTexts.length} texts:
-
-${textsForPrompt}
-
-Return a JSON array with ${batchTexts.length} objects in order, each having: polarity, polarityScore, bestMatchingNodeId, confidence, kpiScores (trust, optimism, frustration, clarity, access, fairness).`;
+      const userPrompt = `Analyze ${batchTexts.length} texts:\n${textsForPrompt}`;
 
       const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
@@ -128,6 +130,7 @@ Return a JSON array with ${batchTexts.length} objects in order, each having: pol
             { role: "user", content: userPrompt }
           ],
           temperature: 0.1,
+          max_tokens: 8000, // Ensure enough tokens for complete response
         }),
       });
 
@@ -136,6 +139,18 @@ Return a JSON array with ${batchTexts.length} objects in order, each having: pol
         console.error(`[analyze-sentiment] AI error: ${response.status} - ${errorText}`);
         
         if (response.status === 429) {
+          // If we have partial results, return them
+          if (allResults.length > 0) {
+            return new Response(JSON.stringify({ 
+              results: allResults,
+              isPartial: true,
+              processedCount: allResults.length,
+              totalCount: texts.length,
+              warning: "Rate limited, returning partial results"
+            }), {
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            });
+          }
           return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again later." }), {
             status: 429,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -150,41 +165,54 @@ Return a JSON array with ${batchTexts.length} objects in order, each having: pol
         throw new Error(`AI request failed: ${response.status}`);
       }
 
-      const data = await response.json();
+      let data: any;
+      try {
+        data = await response.json();
+      } catch (jsonErr) {
+        console.error(`[analyze-sentiment] Failed to parse AI response as JSON:`, jsonErr);
+        // Use fallback for this batch
+        data = { choices: [{ message: { content: '[]' } }] };
+      }
+      
       const content = data.choices?.[0]?.message?.content || '';
       
-      // Parse JSON from response (handle markdown code blocks)
+      // Parse JSON from response
       let parsed: any[];
       try {
-        let jsonStr = content;
+        let jsonStr = content.trim();
         
         // Strip markdown code blocks if present
-        if (content.includes('```')) {
-          const match = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+        if (jsonStr.includes('```')) {
+          const match = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
           if (match && match[1]) {
-            jsonStr = match[1];
+            jsonStr = match[1].trim();
           } else {
-            // Fallback: just remove the backticks
-            jsonStr = content.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+            jsonStr = jsonStr.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
           }
         }
         
-        jsonStr = jsonStr.trim();
+        // Try to find JSON array in response
+        const arrayMatch = jsonStr.match(/\[[\s\S]*\]/);
+        if (arrayMatch) {
+          jsonStr = arrayMatch[0];
+        }
+        
         parsed = JSON.parse(jsonStr);
         
-        // Ensure we have an array
         if (!Array.isArray(parsed)) {
           throw new Error('Response is not an array');
         }
+        
+        console.log(`[analyze-sentiment] Batch ${batchIndex + 1} parsed: ${parsed.length} results`);
       } catch (parseError) {
-        console.error(`[analyze-sentiment] Failed to parse batch ${batchIndex + 1}:`, parseError);
-        console.error(`[analyze-sentiment] Raw content (first 300 chars):`, content.slice(0, 300));
+        console.error(`[analyze-sentiment] Parse error batch ${batchIndex + 1}:`, parseError);
+        console.error(`[analyze-sentiment] Content preview:`, content.slice(0, 200));
         // Create fallback results for this batch
         parsed = batchTexts.map(() => ({
           polarity: 'neutral',
           polarityScore: 0,
           bestMatchingNodeId: nodes[0].id,
-          confidence: 0.5,
+          confidence: 0.3,
           kpiScores: { trust: 0, optimism: 0, frustration: 0, clarity: 0, access: 0, fairness: 0 }
         }));
       }
@@ -195,7 +223,7 @@ Return a JSON array with ${batchTexts.length} objects in order, each having: pol
           polarity: 'neutral',
           polarityScore: 0,
           bestMatchingNodeId: nodes[0].id,
-          confidence: 0.5,
+          confidence: 0.3,
           kpiScores: { trust: 0, optimism: 0, frustration: 0, clarity: 0, access: 0, fairness: 0 }
         };
 
@@ -215,13 +243,13 @@ Return a JSON array with ${batchTexts.length} objects in order, each having: pol
             access: result.kpiScores?.access ?? 0,
             fairness: result.kpiScores?.fairness ?? 0,
           },
-          confidence: typeof result.confidence === 'number' ? Math.min(0.95, result.confidence) : 0.5,
+          confidence: typeof result.confidence === 'number' ? Math.min(0.95, result.confidence) : 0.3,
         });
       }
 
       // Small delay between batches to avoid rate limiting
       if (batchIndex < totalBatches - 1) {
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 200));
       }
     }
 
