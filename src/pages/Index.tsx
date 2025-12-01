@@ -86,7 +86,7 @@ const Index = () => {
       const hideTimer = setTimeout(() => {
         setShowIntro(false);
         setIntroFading(false);
-      }, 3700); // Hide at 3.7s
+      }, 4700); // Hide at 4.7s (1.5s fade duration)
       
       return () => {
         clearTimeout(showLogoTimer);
@@ -484,7 +484,7 @@ const Index = () => {
   // Intro splash screen with animated logo - starts pitch black
   if (showIntro) {
     return (
-      <div className={`min-h-screen bg-black flex items-center justify-center relative overflow-hidden transition-opacity duration-500 ${introFading ? 'opacity-0' : 'opacity-100'}`}>
+      <div className={`min-h-screen bg-black flex items-center justify-center relative overflow-hidden transition-opacity duration-[1500ms] ${introFading ? 'opacity-0' : 'opacity-100'}`}>
         <div className={`text-center z-10 transition-opacity duration-1000 ${logoVisible ? 'opacity-100' : 'opacity-0'}`}>
           <div className="scale-[3]">
             <AnimatedLogo />
