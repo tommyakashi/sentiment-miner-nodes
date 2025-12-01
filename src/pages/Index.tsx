@@ -25,6 +25,7 @@ import { WindowTabs, TabId } from '@/components/WindowTabs';
 import { ModeSelector, ModeId } from '@/components/ModeSelector';
 import { ManualUpload } from '@/components/ManualUpload';
 import { AnalysisLoadingOverlay } from '@/components/AnalysisLoadingOverlay';
+import AnimatedLogo from '@/components/AnimatedLogo';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -39,6 +40,8 @@ import { Activity, Zap, BookOpen } from 'lucide-react';
 const Index = () => {
   const navigate = useNavigate();
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [showIntro, setShowIntro] = useState(true);
+  const [introFading, setIntroFading] = useState(false);
   const [selectedMode, setSelectedMode] = useState<ModeId | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>('scanner');
   const [isModeTransitioning, setIsModeTransitioning] = useState(false);
@@ -65,6 +68,25 @@ const Index = () => {
   const [paperOverallSentiment, setPaperOverallSentiment] = useState<number>(0);
   const [isPaperDataReady, setIsPaperDataReady] = useState(false);
   const { toast } = useToast();
+
+  // Intro splash screen timer
+  useEffect(() => {
+    if (!isCheckingAuth && showIntro) {
+      const fadeTimer = setTimeout(() => {
+        setIntroFading(true);
+      }, 2500); // Start fading at 2.5s
+      
+      const hideTimer = setTimeout(() => {
+        setShowIntro(false);
+        setIntroFading(false);
+      }, 3000); // Hide at 3s
+      
+      return () => {
+        clearTimeout(fadeTimer);
+        clearTimeout(hideTimer);
+      };
+    }
+  }, [isCheckingAuth, showIntro]);
   
   const TOTAL_STEPS = 5;
 
@@ -446,6 +468,20 @@ const Index = () => {
             <div className="absolute inset-0 w-20 h-20 mx-auto rounded-full bg-primary/20 animate-ping" />
           </div>
           <p className="text-muted-foreground mt-6 font-mono text-sm">Initializing observatory...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Intro splash screen with animated logo
+  if (showIntro) {
+    return (
+      <div className={`min-h-screen bg-background flex items-center justify-center relative overflow-hidden transition-opacity duration-500 ${introFading ? 'opacity-0' : 'opacity-100'}`}>
+        <ParticleBackground particleCount={80} interactive={false} />
+        <div className="text-center z-10">
+          <div className="scale-[3] mb-8">
+            <AnimatedLogo />
+          </div>
         </div>
       </div>
     );
