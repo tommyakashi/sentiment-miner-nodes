@@ -1,5 +1,5 @@
-import { Card } from '@/components/ui/card';
-import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { Database } from 'lucide-react';
 
 interface SourceDistributionProps {
   sources: Array<{ name: string; value: number }>;
@@ -7,44 +7,67 @@ interface SourceDistributionProps {
 
 export function SourceDistribution({ sources }: SourceDistributionProps) {
   const COLORS = [
-    'hsl(var(--chart-1))',
-    'hsl(var(--chart-2))',
-    'hsl(var(--chart-3))',
-    'hsl(var(--chart-4))',
-    'hsl(var(--chart-5))',
+    'hsl(0, 0%, 100%)',
+    'hsl(0, 0%, 70%)',
+    'hsl(0, 0%, 50%)',
+    'hsl(0, 0%, 35%)',
   ];
 
+  const total = sources.reduce((sum, s) => sum + s.value, 0);
+
   return (
-    <Card className="p-6">
-      <ResponsiveContainer width="100%" height={250}>
-        <PieChart>
-          <Pie
-            data={sources}
-            cx="50%"
-            cy="50%"
-            labelLine={false}
-            label={({ name, percent }) => {
-              const pct = typeof percent === 'number' ? percent : 0;
-              return `${name}: ${(pct * 100).toFixed(0)}%`;
-            }}
-            outerRadius={80}
-            fill="#8884d8"
-            dataKey="value"
-          >
-            {sources.map((entry, index) => (
-              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-            ))}
-          </Pie>
-          <Tooltip
-            contentStyle={{
-              backgroundColor: 'hsl(var(--card))',
-              border: '1px solid hsl(var(--border))',
-              borderRadius: '8px',
-            }}
-          />
-          <Legend />
-        </PieChart>
-      </ResponsiveContainer>
-    </Card>
+    <div className="relative bg-black/80 backdrop-blur-xl rounded-lg border border-white/10 p-4 font-mono">
+      {/* Header */}
+      <div className="flex items-center gap-2 mb-4">
+        <Database className="w-4 h-4 text-muted-foreground" />
+        <span className="text-xs text-muted-foreground uppercase tracking-wider">Sources</span>
+        <span className="text-xs text-muted-foreground ml-auto tabular-nums">{total} total</span>
+      </div>
+
+      <div className="flex items-center gap-4">
+        <ResponsiveContainer width={100} height={100}>
+          <PieChart>
+            <Pie
+              data={sources}
+              cx="50%"
+              cy="50%"
+              innerRadius={25}
+              outerRadius={45}
+              dataKey="value"
+              stroke="hsl(0 0% 4%)"
+              strokeWidth={2}
+            >
+              {sources.map((_, index) => (
+                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+              ))}
+            </Pie>
+            <Tooltip
+              contentStyle={{
+                backgroundColor: 'hsl(0 0% 4%)',
+                border: '1px solid hsl(0 0% 20%)',
+                borderRadius: '6px',
+                fontFamily: 'ui-monospace, monospace',
+                fontSize: '10px',
+              }}
+            />
+          </PieChart>
+        </ResponsiveContainer>
+
+        <div className="flex-1 space-y-2">
+          {sources.map((source, idx) => (
+            <div key={source.name} className="flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2">
+                <div 
+                  className="w-2 h-2 rounded-full" 
+                  style={{ backgroundColor: COLORS[idx % COLORS.length] }}
+                />
+                <span className="text-muted-foreground">{source.name}</span>
+              </div>
+              <span className="tabular-nums">{source.value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }

@@ -1,7 +1,5 @@
-import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { User } from 'lucide-react';
+import { Users } from 'lucide-react';
 
 interface Participant {
   username: string;
@@ -16,47 +14,41 @@ interface ParticipantsListProps {
 }
 
 export function ParticipantsList({ participants, title }: ParticipantsListProps) {
-  const getBarWidth = (score: number) => {
-    const normalized = ((score + 100) / 200) * 100;
-    return `${Math.max(0, Math.min(100, normalized))}%`;
-  };
-
-  const getBarColor = (score: number) => {
-    if (score > 30) return 'bg-sentiment-positive';
-    if (score < -30) return 'bg-sentiment-negative';
-    return 'bg-sentiment-neutral';
+  const getScoreColor = (score: number) => {
+    if (score > 30) return 'text-sentiment-positive';
+    if (score < -30) return 'text-sentiment-negative';
+    return 'text-muted-foreground';
   };
 
   return (
-    <Card className="p-6">
-      <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-        <User className="w-5 h-5" />
-        {title}
-      </h3>
-      <ScrollArea className="h-[300px]">
-        <div className="space-y-3">
+    <div className="relative bg-black/80 backdrop-blur-xl rounded-lg border border-white/10 p-4 font-mono">
+      {/* Header */}
+      <div className="flex items-center gap-2 mb-3">
+        <Users className="w-4 h-4 text-muted-foreground" />
+        <span className="text-xs text-muted-foreground uppercase tracking-wider">{title}</span>
+      </div>
+
+      <ScrollArea className="h-[180px]">
+        <div className="space-y-2">
           {participants.map((participant, idx) => (
-            <div key={idx} className="space-y-1">
-              <div className="flex items-center justify-between text-sm">
-                <span className="font-medium text-primary">{participant.username}</span>
-                <Badge variant="outline" className="text-xs">
-                  {participant.count} posts
-                </Badge>
+            <div 
+              key={idx} 
+              className="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0"
+            >
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                <span className="text-xs text-muted-foreground tabular-nums w-4">{idx + 1}</span>
+                <span className="text-xs truncate">{participant.username}</span>
               </div>
-              <div className="relative h-2 bg-muted rounded-full overflow-hidden">
-                <div
-                  className={`h-full transition-all ${getBarColor(participant.sentimentScore || 0)}`}
-                  style={{ width: getBarWidth(participant.sentimentScore || 0) }}
-                />
-              </div>
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>Score: {participant.sentimentScore?.toFixed(1) || 'N/A'}</span>
-                <span>Upvotes: {participant.totalUpvotes}</span>
+              <div className="flex items-center gap-3 text-xs">
+                <span className="text-muted-foreground tabular-nums">{participant.count}p</span>
+                <span className={`tabular-nums w-10 text-right ${getScoreColor(participant.sentimentScore || 0)}`}>
+                  {participant.sentimentScore ? (participant.sentimentScore > 0 ? '+' : '') + participant.sentimentScore.toFixed(0) : '—'}
+                </span>
               </div>
             </div>
           ))}
         </div>
       </ScrollArea>
-    </Card>
+    </div>
   );
 }

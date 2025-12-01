@@ -1,6 +1,4 @@
-import { Card } from '@/components/ui/card';
-import { TrendingUp, TrendingDown, Info } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { TrendingUp, TrendingDown, Activity } from 'lucide-react';
 
 interface SentimentScoreProps {
   score: number;
@@ -14,60 +12,57 @@ export function SentimentScore({ score, label }: SentimentScoreProps) {
     return 'text-sentiment-neutral';
   };
 
-  const getBgColor = () => {
-    if (score > 15) return 'bg-sentiment-positive/10';
-    if (score < -15) return 'bg-sentiment-negative/10';
-    return 'bg-sentiment-neutral/10';
+  const getBorderColor = () => {
+    if (score > 15) return 'border-sentiment-positive/30';
+    if (score < -15) return 'border-sentiment-negative/30';
+    return 'border-white/20';
   };
 
   const getSentimentLabel = () => {
-    if (score > 15) return 'Positive';
-    if (score < -15) return 'Negative';
-    return 'Neutral';
-  };
-
-  const getExplanation = () => {
-    if (score > 30) return 'The overall sentiment is positive. Most content expresses favorable opinions, optimism, and satisfaction.';
-    if (score < -30) return 'The overall sentiment is negative. Most content expresses concerns, dissatisfaction, or criticism.';
-    return 'The overall sentiment is neutral. Content is balanced with mixed positive and negative opinions.';
+    if (score > 15) return 'POSITIVE';
+    if (score < -15) return 'NEGATIVE';
+    return 'NEUTRAL';
   };
 
   return (
-    <Card className={`p-6 ${getBgColor()} border-2`}>
-      <div className="text-center">
-        <div className="flex items-center justify-center gap-2 mb-2">
-          <span className="text-sm font-medium text-muted-foreground">{label}</span>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger>
-                <Info className="w-4 h-4 text-muted-foreground" />
-              </TooltipTrigger>
-              <TooltipContent className="max-w-xs">
-                <p className="text-sm">
-                  Scores range from -100 (very negative) to +100 (very positive). 
-                  Values between -15 and +15 are considered neutral.
-                </p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+    <div className={`relative bg-black/80 backdrop-blur-xl rounded-lg border ${getBorderColor()} p-4 font-mono`}>
+      {/* Header */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <Activity className="w-4 h-4 text-muted-foreground" />
+          <span className="text-xs text-muted-foreground uppercase tracking-wider">{label}</span>
         </div>
-        <div className={`text-6xl font-bold ${getColor()} mb-2`}>
-          {score > 0 ? '+' : ''}{Math.round(score)}
-        </div>
-        <div className="flex items-center justify-center gap-2 mb-3">
+        <div className="flex items-center gap-1.5">
           {score > 0 ? (
-            <TrendingUp className="w-5 h-5 text-sentiment-positive" />
-          ) : (
-            <TrendingDown className="w-5 h-5 text-sentiment-negative" />
-          )}
-          <span className={`text-lg font-semibold ${getColor()}`}>
+            <TrendingUp className="w-3.5 h-3.5 text-sentiment-positive" />
+          ) : score < 0 ? (
+            <TrendingDown className="w-3.5 h-3.5 text-sentiment-negative" />
+          ) : null}
+          <span className={`text-xs font-medium ${getColor()}`}>
             {getSentimentLabel()}
           </span>
         </div>
-        <p className="text-sm text-muted-foreground max-w-md mx-auto">
-          {getExplanation()}
-        </p>
       </div>
-    </Card>
+
+      {/* Score Display */}
+      <div className="flex items-baseline gap-1">
+        <span className={`text-4xl font-bold tabular-nums ${getColor()}`}>
+          {score > 0 ? '+' : ''}{Math.round(score)}
+        </span>
+        <span className="text-sm text-muted-foreground">/100</span>
+      </div>
+
+      {/* Progress bar */}
+      <div className="mt-3 h-1 bg-white/10 rounded-full overflow-hidden">
+        <div 
+          className={`h-full transition-all duration-500 ${
+            score > 15 ? 'bg-sentiment-positive' : 
+            score < -15 ? 'bg-sentiment-negative' : 
+            'bg-sentiment-neutral'
+          }`}
+          style={{ width: `${Math.abs(score)}%` }}
+        />
+      </div>
+    </div>
   );
 }

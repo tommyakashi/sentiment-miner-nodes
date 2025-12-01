@@ -1,6 +1,6 @@
-import { Card } from '@/components/ui/card';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { TrendingUp } from 'lucide-react';
+import { useMemo } from 'react';
+import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
+import { Target } from 'lucide-react';
 import type { SentimentResult } from '@/types/sentiment';
 
 interface ConfidenceDistributionProps {
@@ -8,53 +8,74 @@ interface ConfidenceDistributionProps {
 }
 
 export function ConfidenceDistribution({ results }: ConfidenceDistributionProps) {
-  // Create buckets for confidence scores
-  const buckets = [
-    { range: '0-0.2', min: 0, max: 0.2, count: 0 },
-    { range: '0.2-0.4', min: 0.2, max: 0.4, count: 0 },
-    { range: '0.4-0.6', min: 0.4, max: 0.6, count: 0 },
-    { range: '0.6-0.8', min: 0.6, max: 0.8, count: 0 },
-    { range: '0.8-1.0', min: 0.8, max: 1.0, count: 0 },
-  ];
+  const chartData = useMemo(() => {
+    const buckets = [
+      { range: '0-20', min: 0, max: 0.2, count: 0 },
+      { range: '20-40', min: 0.2, max: 0.4, count: 0 },
+      { range: '40-60', min: 0.4, max: 0.6, count: 0 },
+      { range: '60-80', min: 0.6, max: 0.8, count: 0 },
+      { range: '80-100', min: 0.8, max: 1.0, count: 0 },
+    ];
 
-  results.forEach((result) => {
-    const bucket = buckets.find(b => result.confidence >= b.min && result.confidence < b.max);
-    if (bucket) bucket.count++;
-  });
+    results.forEach(r => {
+      const bucket = buckets.find(b => r.confidence >= b.min && r.confidence < b.max);
+      if (bucket) bucket.count++;
+      else if (r.confidence === 1.0) buckets[4].count++;
+    });
 
-  const avgConfidence = results.reduce((sum, r) => sum + r.confidence, 0) / results.length;
+    return buckets.map(b => ({ range: b.range, count: b.count }));
+  }, [results]);
+
+  const avgConfidence = useMemo(() => {
+    if (results.length === 0) return 0;
+    return results.reduce((sum, r) => sum + r.confidence, 0) / results.length;
+  }, [results]);
 
   return (
-    <Card className="p-6">
-      <div className="flex items-center gap-2 mb-2">
-        <TrendingUp className="w-5 h-5 text-primary" />
-        <h3 className="text-lg font-semibold">Confidence Distribution</h3>
+    <div className="relative bg-black/80 backdrop-blur-xl rounded-lg border border-white/10 p-4 font-mono">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Target className="w-4 h-4 text-muted-foreground" />
+          <span className="text-xs text-muted-foreground uppercase tracking-wider">Confidence</span>
+        </div>
+        <div className="text-xs">
+          <span className="text-muted-foreground">avg: </span>
+          <span className="tabular-nums">{(avgConfidence * 100).toFixed(0)}%</span>
+        </div>
       </div>
-      <p className="text-sm text-muted-foreground mb-4">
-        Average Confidence: <span className="font-semibold text-foreground">{avgConfidence.toFixed(3)}</span>
-      </p>
-      <ResponsiveContainer width="100%" height={200}>
-        <BarChart data={buckets}>
-          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+
+      <ResponsiveContainer width="100%" height={120}>
+        <BarChart data={chartData} barCategoryGap="20%">
           <XAxis 
             dataKey="range" 
-            stroke="hsl(var(--muted-foreground))"
-            tick={{ fontSize: 11 }}
+            tick={{ fill: 'hsl(0 0% 50%)', fontSize: 9, fontFamily: 'ui-monospace, monospace' }}
+            axisLine={false}
+            tickLine={false}
           />
           <YAxis 
-            stroke="hsl(var(--muted-foreground))"
-            tick={{ fontSize: 11 }}
+            tick={{ fill: 'hsl(0 0% 50%)', fontSize: 9, fontFamily: 'ui-monospace, monospace' }}
+            axisLine={false}
+            tickLine={false}
+            width={25}
           />
           <Tooltip
             contentStyle={{
-              backgroundColor: 'hsl(var(--card))',
-              border: '1px solid hsl(var(--border))',
-              borderRadius: '8px',
+              backgroundColor: 'hsl(0 0% 4%)',
+              border: '1px solid hsl(0 0% 20%)',
+              borderRadius: '6px',
+              fontFamily: 'ui-monospace, monospace',
+              fontSize: '10px',
             }}
           />
-          <Bar dataKey="count" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+          <Bar 
+            dataKey="count" 
+            fill="hsl(0 0% 100%)" 
+            radius={[2, 2, 0, 0]}
+            fillOpacity={0.8}
+          />
         </BarChart>
       </ResponsiveContainer>
-    </Card>
+    </div>
   );
 }

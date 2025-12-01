@@ -1,14 +1,14 @@
 import { useMemo } from 'react';
-import { Card } from '@/components/ui/card';
+import { Radar } from 'lucide-react';
 import {
   RadarChart,
   PolarGrid,
   PolarAngleAxis,
   PolarRadiusAxis,
-  Radar,
+  Radar as RechartsRadar,
   ResponsiveContainer,
+  Tooltip,
   Legend,
-  Tooltip as ChartTooltip,
 } from 'recharts';
 import type { NodeAnalysis } from '@/types/sentiment';
 
@@ -17,67 +17,74 @@ interface KPIRadarChartProps {
 }
 
 export function KPIRadarChart({ data }: KPIRadarChartProps) {
-  // Memoize radar data preparation
-  const radarData = useMemo(() => {
+  const chartData = useMemo(() => {
     const kpiNames = ['Trust', 'Optimism', 'Frustration', 'Clarity', 'Access', 'Fairness'];
     
-    return kpiNames.map((kpi) => {
+    return kpiNames.map(kpi => {
       const dataPoint: any = { kpi };
-      
-      data.slice(0, 5).forEach((node) => {
+      data.slice(0, 4).forEach((node, idx) => {
         const kpiKey = kpi.toLowerCase() as keyof typeof node.avgKpiScores;
-        // Normalize to 0-100 scale for better visualization
-        dataPoint[node.nodeName] = ((node.avgKpiScores[kpiKey] + 1) / 2) * 100;
+        dataPoint[`node${idx}`] = ((node.avgKpiScores[kpiKey] + 1) / 2) * 100;
       });
-      
       return dataPoint;
     });
   }, [data]);
 
   const colors = useMemo(() => [
-    'hsl(var(--chart-1))',
-    'hsl(var(--chart-2))',
-    'hsl(var(--chart-3))',
-    'hsl(var(--chart-4))',
-    'hsl(var(--chart-5))',
+    'hsl(0, 0%, 100%)',
+    'hsl(0, 0%, 70%)',
+    'hsl(0, 0%, 50%)',
+    'hsl(0, 0%, 35%)',
   ], []);
 
+  if (data.length === 0) return null;
+
   return (
-    <Card className="p-6">
-      <ResponsiveContainer width="100%" height={400}>
-        <RadarChart data={radarData}>
-          <PolarGrid stroke="hsl(var(--border))" />
+    <div className="relative bg-black/80 backdrop-blur-xl rounded-lg border border-white/10 p-4 font-mono">
+      {/* Header */}
+      <div className="flex items-center gap-2 mb-4">
+        <Radar className="w-4 h-4 text-muted-foreground" />
+        <span className="text-xs text-muted-foreground uppercase tracking-wider">KPI Radar</span>
+      </div>
+
+      <ResponsiveContainer width="100%" height={220}>
+        <RadarChart data={chartData}>
+          <PolarGrid stroke="hsl(0 0% 25%)" strokeOpacity={0.5} />
           <PolarAngleAxis 
             dataKey="kpi" 
-            tick={{ fill: 'hsl(var(--foreground))', fontSize: 12 }}
+            tick={{ fill: 'hsl(0 0% 60%)', fontSize: 10, fontFamily: 'ui-monospace, monospace' }}
           />
           <PolarRadiusAxis 
-            angle={90} 
+            angle={30} 
             domain={[0, 100]}
-            tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }}
-            tickFormatter={(value) => `${value}`}
-            label={{ value: '0 = Negative, 50 = Neutral, 100 = Positive', position: 'insideTopLeft', fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+            tick={{ fill: 'hsl(0 0% 40%)', fontSize: 8, fontFamily: 'ui-monospace, monospace' }}
+            tickCount={4}
           />
-          {data.slice(0, 5).map((node, index) => (
-            <Radar
+          {data.slice(0, 4).map((node, idx) => (
+            <RechartsRadar
               key={node.nodeId}
-              name={node.nodeName}
-              dataKey={node.nodeName}
-              stroke={colors[index]}
-              fill={colors[index]}
-              fillOpacity={0.2}
+              name={node.nodeName.length > 15 ? node.nodeName.slice(0, 15) + '...' : node.nodeName}
+              dataKey={`node${idx}`}
+              stroke={colors[idx]}
+              fill={colors[idx]}
+              fillOpacity={0.1}
+              strokeWidth={1.5}
             />
           ))}
-          <ChartTooltip
+          <Tooltip
             contentStyle={{
-              backgroundColor: 'hsl(var(--card))',
-              border: '1px solid hsl(var(--border))',
-              borderRadius: '8px',
+              backgroundColor: 'hsl(0 0% 4%)',
+              border: '1px solid hsl(0 0% 20%)',
+              borderRadius: '6px',
+              fontFamily: 'ui-monospace, monospace',
+              fontSize: '10px',
             }}
           />
-          <Legend />
+          <Legend 
+            wrapperStyle={{ fontSize: '10px', fontFamily: 'ui-monospace, monospace' }}
+          />
         </RadarChart>
       </ResponsiveContainer>
-    </Card>
+    </div>
   );
 }
