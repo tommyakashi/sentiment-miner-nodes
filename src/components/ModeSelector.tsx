@@ -1,7 +1,7 @@
-import { Radio, BarChart3, History, Upload, Settings } from 'lucide-react';
+import { Radio, BarChart3, History, Upload, Settings, BookOpen } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-export type ModeId = 'scanner' | 'analysis' | 'archive' | 'upload' | 'settings';
+export type ModeId = 'scanner' | 'papers' | 'analysis' | 'archive' | 'upload' | 'settings';
 
 interface Mode {
   id: ModeId;
@@ -16,6 +16,12 @@ const modes: Mode[] = [
     label: 'Reddit Scraper', 
     description: 'Collect signals from research communities',
     icon: <Radio className="w-6 h-6" />
+  },
+  { 
+    id: 'papers', 
+    label: 'Academic Papers', 
+    description: 'Scrape research papers from Semantic Scholar',
+    icon: <BookOpen className="w-6 h-6" />
   },
   { 
     id: 'analysis', 
@@ -67,7 +73,7 @@ export function ModeSelector({ onSelectMode, isVisible }: ModeSelectorProps) {
         </p>
       </div>
 
-      {/* Mode Cards Grid - 3 on top, 2 centered below */}
+      {/* Mode Cards Grid - 3 on top, 3 on bottom */}
       <div className="flex flex-col gap-4">
         {/* Top row - 3 cards */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -76,12 +82,10 @@ export function ModeSelector({ onSelectMode, isVisible }: ModeSelectorProps) {
           ))}
         </div>
         
-        {/* Bottom row - 2 cards centered */}
-        <div className="flex justify-center gap-4">
+        {/* Bottom row - 3 cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {modes.slice(3).map((mode) => (
-            <div key={mode.id} className="w-full sm:w-[calc(33.333%-0.5rem)]">
-              <ModeCard mode={mode} onSelect={onSelectMode} />
-            </div>
+            <ModeCard key={mode.id} mode={mode} onSelect={onSelectMode} />
           ))}
         </div>
       </div>

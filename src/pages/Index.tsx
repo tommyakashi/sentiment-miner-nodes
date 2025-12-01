@@ -4,6 +4,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { NodeManager } from '@/components/NodeManager';
 import { RedditScraper } from '@/components/RedditScraper';
 import { ScrapeHistory } from '@/components/ScrapeHistory';
+import { PaperScraper } from '@/components/PaperScraper';
+import { PaperHistory } from '@/components/PaperHistory';
 import { SentimentScore } from '@/components/SentimentScore';
 import { SentimentChart } from '@/components/SentimentChart';
 import { ParticipantsList } from '@/components/ParticipantsList';
@@ -30,7 +32,8 @@ import { performSentimentAnalysisServer, aggregateNodeAnalysis } from '@/utils/s
 import { parseRedditJSON, extractTimeSeriesData } from '@/utils/redditParser';
 import type { Node, SentimentResult, NodeAnalysis } from '@/types/sentiment';
 import type { RedditData, RedditPost } from '@/types/reddit';
-import { Activity, Zap } from 'lucide-react';
+import type { AcademicPaper } from '@/types/paper';
+import { Activity, Zap, BookOpen } from 'lucide-react';
 
 const Index = () => {
   const navigate = useNavigate();
@@ -55,6 +58,11 @@ const Index = () => {
   const [isDataReady, setIsDataReady] = useState(false);
   const [modelsPreloaded, setModelsPreloaded] = useState(false);
   const [scrapedPosts, setScrapedPosts] = useState<RedditPost[]>([]);
+  const [scrapedPapers, setScrapedPapers] = useState<AcademicPaper[]>([]);
+  const [paperResults, setPaperResults] = useState<SentimentResult[]>([]);
+  const [paperNodeAnalysis, setPaperNodeAnalysis] = useState<NodeAnalysis[]>([]);
+  const [paperOverallSentiment, setPaperOverallSentiment] = useState<number>(0);
+  const [isPaperDataReady, setIsPaperDataReady] = useState(false);
   const { toast } = useToast();
   
   const TOTAL_STEPS = 5;
@@ -330,6 +338,101 @@ const Index = () => {
     }
   };
 
+  const handlePapersLoaded = (papers: AcademicPaper[]) => {
+    setScrapedPapers(papers);
+    setIsPaperDataReady(papers.length > 0);
+    if (papers.length > 0) {
+      toast({
+        title: 'Papers loaded',
+        description: `${papers.length} papers ready for analysis`,
+      });
+    }
+  };
+
+  const handleStartPaperAnalysis = async () => {
+    if (scrapedPapers.length === 0) {
+      toast({
+        title: 'No papers loaded',
+        description: 'Search for papers first.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    if (nodes.length === 0) {
+      toast({
+        title: 'No nodes defined',
+        description: 'Configure analysis nodes in Settings.',
+        variant: 'destructive',
+      });
+      setActiveTab('settings');
+      return;
+    }
+
+    setCurrentStep(1);
+    setProgress(0);
+    setAnalysisStatus('Initializing paper analysis...');
+    setIsWindowHiding(true);
+    
+    await new Promise(resolve => setTimeout(resolve, 300));
+    setShowWindow(false);
+    setIsWindowHiding(false);
+    setIsAnalyzing(true);
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    try {
+      setCurrentStep(2);
+      setAnalysisStatus('Extracting paper texts...');
+      setProgress(10);
+
+      const textsToAnalyze = scrapedPapers.map(p => p.combinedText).filter(t => t.length > 0);
+      
+      setCurrentStep(3);
+      setAnalysisStatus('Sending to AI...');
+      setProgress(20);
+
+      setCurrentStep(4);
+      const analysisResults = await performSentimentAnalysisServer(
+        textsToAnalyze, 
+        nodes,
+        (progress) => setProgress(20 + progress * 0.65),
+        (status) => setAnalysisStatus(status)
+      );
+
+      setCurrentStep(5);
+      setAnalysisStatus('Aggregating results...');
+      setProgress(90);
+
+      const avgSentiment = analysisResults.reduce((sum, r) => sum + r.polarityScore, 0) / analysisResults.length;
+      const nodeAnalysisData = aggregateNodeAnalysis(analysisResults);
+
+      setProgress(100);
+      setPaperResults(analysisResults);
+      setPaperOverallSentiment(avgSentiment * 100);
+      setPaperNodeAnalysis(nodeAnalysisData);
+
+      toast({
+        title: 'Paper analysis complete',
+        description: `Analyzed ${textsToAnalyze.length} papers across ${nodeAnalysisData.length} topics.`,
+      });
+
+      setActiveTab('papers-analysis');
+
+    } catch (error) {
+      console.error('Paper analysis error:', error);
+      toast({
+        title: 'Analysis failed',
+        description: error instanceof Error ? error.message : 'An error occurred',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsAnalyzing(false);
+      setShowWindow(true);
+      setProgress(0);
+      setCurrentStep(1);
+      setAnalysisStatus('');
+    }
+  };
+
   if (isCheckingAuth) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center relative overflow-hidden">
@@ -463,6 +566,140 @@ const Index = () => {
                     onClick={() => setActiveTab('scanner')}
                   >
                     Go to Scanner
+                  </Button>
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+        );
+
+      case 'papers':
+        return (
+          <div className="p-6 space-y-6">
+            <PaperScraper 
+              onDataScraped={handlePapersLoaded}
+              nodes={nodes}
+            />
+
+            {isPaperDataReady && (
+              <Card className="p-4 border-emerald-500/20 bg-emerald-500/5">
+                <div className="flex items-center justify-between flex-wrap gap-4">
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                      <span className="text-sm font-mono">
+                        <span className="text-emerald-400 font-semibold">{scrapedPapers.length}</span>
+                        <span className="text-muted-foreground"> papers ready</span>
+                      </span>
+                    </div>
+                    <div className="text-sm font-mono text-muted-foreground">
+                      {nodes.length} nodes configured
+                    </div>
+                  </div>
+                  <Button
+                    onClick={handleStartPaperAnalysis}
+                    disabled={isAnalyzing || nodes.length === 0}
+                    className="gap-2"
+                  >
+                    <Zap className="w-4 h-4" />
+                    Run Paper Analysis
+                  </Button>
+                </div>
+              </Card>
+            )}
+
+            {scrapedPapers.length > 0 && (
+              <Card className="p-4 bg-card/80 backdrop-blur-sm border-border/50">
+                <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                  <BookOpen className="w-4 h-4" />
+                  Top Papers by Citations
+                </h4>
+                <div className="space-y-2">
+                  {scrapedPapers
+                    .sort((a, b) => b.citationCount - a.citationCount)
+                    .slice(0, 5)
+                    .map((paper) => (
+                      <div key={paper.paperId} className="p-3 rounded-lg bg-muted/30 border border-border/50">
+                        <a 
+                          href={paper.url} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-sm font-medium hover:text-primary line-clamp-2"
+                        >
+                          {paper.title}
+                        </a>
+                        <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                          <span>{paper.year}</span>
+                          <span>{paper.citationCount} citations</span>
+                          <span>{paper.authors.slice(0, 2).map(a => a.name).join(', ')}{paper.authors.length > 2 ? ' et al.' : ''}</span>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </Card>
+            )}
+          </div>
+        );
+
+      case 'papers-archive':
+        return (
+          <div className="p-6">
+            <PaperHistory 
+              onLoadScrape={(papers) => {
+                handlePapersLoaded(papers);
+                setActiveTab('papers');
+              }}
+            />
+          </div>
+        );
+
+      case 'papers-analysis':
+        return (
+          <ScrollArea className="h-[450px]">
+            <div className="p-4 space-y-3">
+              {paperResults.length > 0 ? (
+                <>
+                  <SentimentScore 
+                    score={paperOverallSentiment} 
+                    label="Academic Sentiment Index" 
+                  />
+
+                  {paperNodeAnalysis.length > 0 && (
+                    <KPISortableTable data={paperNodeAnalysis} />
+                  )}
+
+                  <div className="grid grid-cols-2 gap-3">
+                    {paperNodeAnalysis.length > 0 && <KPIRadarChart data={paperNodeAnalysis} />}
+                    <SourceDistribution sources={[{ name: 'Semantic Scholar', value: scrapedPapers.length }]} />
+                    {paperResults.length > 0 && <ConfidenceDistribution results={paperResults} />}
+                    {paperNodeAnalysis.length > 0 && <TopicsList topics={paperNodeAnalysis} />}
+                    {paperNodeAnalysis.length > 0 && <KPIHeatmap data={paperNodeAnalysis} />}
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3">
+                    {paperNodeAnalysis.slice(0, 3).map((node) => (
+                      <ExemplarQuotes
+                        key={node.nodeId}
+                        results={paperResults}
+                        nodeId={node.nodeId}
+                        nodeName={node.nodeName}
+                      />
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="text-center py-16">
+                  <BookOpen className="w-16 h-16 mx-auto text-muted-foreground/30 mb-4" />
+                  <h3 className="text-lg font-semibold mb-2">No Paper Analysis Results</h3>
+                  <p className="text-muted-foreground text-sm">
+                    Search for papers and run analysis to see results here.
+                  </p>
+                  <Button 
+                    variant="outline" 
+                    className="mt-4"
+                    onClick={() => setActiveTab('papers')}
+                  >
+                    Go to Paper Scanner
                   </Button>
                 </div>
               )}

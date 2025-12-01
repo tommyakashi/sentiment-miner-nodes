@@ -1,7 +1,7 @@
 import { cn } from '@/lib/utils';
-import { X, Plus, Radio, History, Activity, Settings, BarChart3, Upload, Home } from 'lucide-react';
+import { X, Plus, Radio, History, Activity, Settings, BarChart3, Upload, Home, BookOpen } from 'lucide-react';
 
-export type TabId = 'scanner' | 'archive' | 'analysis' | 'upload' | 'settings';
+export type TabId = 'scanner' | 'papers' | 'papers-archive' | 'papers-analysis' | 'archive' | 'analysis' | 'upload' | 'settings';
 
 interface Tab {
   id: TabId;
@@ -11,8 +11,11 @@ interface Tab {
 
 const tabs: Tab[] = [
   { id: 'scanner', label: 'Signal Scanner', icon: <Radio className="w-3.5 h-3.5" /> },
+  { id: 'papers', label: 'Paper Scanner', icon: <BookOpen className="w-3.5 h-3.5" /> },
   { id: 'archive', label: 'Archive', icon: <History className="w-3.5 h-3.5" /> },
+  { id: 'papers-archive', label: 'Paper Archive', icon: <History className="w-3.5 h-3.5" /> },
   { id: 'analysis', label: 'Analysis', icon: <BarChart3 className="w-3.5 h-3.5" /> },
+  { id: 'papers-analysis', label: 'Paper Analysis', icon: <BarChart3 className="w-3.5 h-3.5" /> },
   { id: 'upload', label: 'Manual Upload', icon: <Upload className="w-3.5 h-3.5" /> },
   { id: 'settings', label: 'Settings', icon: <Settings className="w-3.5 h-3.5" /> },
 ];
