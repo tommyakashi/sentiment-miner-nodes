@@ -1,4 +1,3 @@
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { Database } from 'lucide-react';
 
 interface SourceDistributionProps {
@@ -18,55 +17,40 @@ export function SourceDistribution({ sources }: SourceDistributionProps) {
   return (
     <div className="relative bg-black/80 backdrop-blur-xl rounded-lg border border-white/10 p-4 font-mono">
       {/* Header */}
-      <div className="flex items-center gap-2 mb-4">
+      <div className="flex items-center gap-2 mb-3">
         <Database className="w-4 h-4 text-muted-foreground" />
         <span className="text-xs text-muted-foreground uppercase tracking-wider">Sources</span>
         <span className="text-xs text-muted-foreground ml-auto tabular-nums">{total} total</span>
       </div>
 
-      <div className="flex items-center gap-4">
-        <ResponsiveContainer width={100} height={100}>
-          <PieChart>
-            <Pie
-              data={sources}
-              cx="50%"
-              cy="50%"
-              innerRadius={25}
-              outerRadius={45}
-              dataKey="value"
-              stroke="hsl(0 0% 4%)"
-              strokeWidth={2}
-            >
-              {sources.map((_, index) => (
-                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-              ))}
-            </Pie>
-            <Tooltip
-              contentStyle={{
-                backgroundColor: 'hsl(0 0% 4%)',
-                border: '1px solid hsl(0 0% 20%)',
-                borderRadius: '6px',
-                fontFamily: 'ui-monospace, monospace',
-                fontSize: '10px',
-              }}
-            />
-          </PieChart>
-        </ResponsiveContainer>
-
-        <div className="flex-1 space-y-2">
-          {sources.map((source, idx) => (
-            <div key={source.name} className="flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2">
-                <div 
-                  className="w-2 h-2 rounded-full" 
-                  style={{ backgroundColor: COLORS[idx % COLORS.length] }}
-                />
-                <span className="text-muted-foreground">{source.name}</span>
+      {/* Source bars */}
+      <div className="space-y-3">
+        {sources.map((source, idx) => {
+          const percentage = total > 0 ? (source.value / total) * 100 : 0;
+          return (
+            <div key={source.name} className="space-y-1.5">
+              <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <div 
+                    className="w-2 h-2 rounded-full" 
+                    style={{ backgroundColor: COLORS[idx % COLORS.length] }}
+                  />
+                  <span className="text-foreground">{source.name}</span>
+                </div>
+                <span className="tabular-nums text-muted-foreground">{source.value}</span>
               </div>
-              <span className="tabular-nums">{source.value}</span>
+              <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                <div 
+                  className="h-full rounded-full transition-all"
+                  style={{ 
+                    width: `${percentage}%`,
+                    backgroundColor: COLORS[idx % COLORS.length] 
+                  }}
+                />
+              </div>
             </div>
-          ))}
-        </div>
+          );
+        })}
       </div>
     </div>
   );
