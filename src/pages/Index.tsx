@@ -465,13 +465,13 @@ const Index = () => {
 
             {/* Analysis Controls */}
             {isDataReady && (
-              <Card className="p-4 border-primary/20 bg-primary/5">
+              <Card className="p-4 border-border/50 bg-background/30">
                 <div className="flex items-center justify-between flex-wrap gap-4">
                   <div className="flex items-center gap-4">
                     <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                      <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                       <span className="text-sm font-mono">
-                        <span className="text-primary font-semibold">{stagedContent.length}</span>
+                        <span className="text-foreground font-semibold">{stagedContent.length}</span>
                         <span className="text-muted-foreground"> signals ready</span>
                       </span>
                     </div>
@@ -482,7 +482,7 @@ const Index = () => {
                   <Button
                     onClick={handleStartAnalysis}
                     disabled={isAnalyzing || nodes.length === 0}
-                    className="gap-2 bg-gradient-to-r from-primary to-accent hover:opacity-90"
+                    className="gap-2"
                   >
                     <Zap className="w-4 h-4" />
                     Run Analysis
@@ -583,13 +583,13 @@ const Index = () => {
             />
 
             {isPaperDataReady && (
-              <Card className="p-4 border-emerald-500/20 bg-emerald-500/5">
+              <Card className="p-4 border-border/50 bg-background/30">
                 <div className="flex items-center justify-between flex-wrap gap-4">
                   <div className="flex items-center gap-4">
                     <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                      <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
                       <span className="text-sm font-mono">
-                        <span className="text-emerald-400 font-semibold">{scrapedPapers.length}</span>
+                        <span className="text-foreground font-semibold">{scrapedPapers.length}</span>
                         <span className="text-muted-foreground"> papers ready</span>
                       </span>
                     </div>
@@ -602,8 +602,8 @@ const Index = () => {
                     disabled={isAnalyzing || nodes.length === 0}
                     className="gap-2"
                   >
-                    <Zap className="w-4 h-4" />
-                    Run Paper Analysis
+                    <BookOpen className="w-4 h-4" />
+                    Analyze Papers
                   </Button>
                 </div>
               </Card>
