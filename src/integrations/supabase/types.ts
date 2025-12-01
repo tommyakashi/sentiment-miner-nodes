@@ -50,6 +50,45 @@ export type Database = {
         }
         Relationships: []
       }
+      paper_scrapes: {
+        Row: {
+          author_query: string | null
+          created_at: string | null
+          domains: string[] | null
+          id: string
+          keywords: string[] | null
+          papers: Json | null
+          total_papers: number | null
+          user_id: string
+          year_max: number | null
+          year_min: number | null
+        }
+        Insert: {
+          author_query?: string | null
+          created_at?: string | null
+          domains?: string[] | null
+          id?: string
+          keywords?: string[] | null
+          papers?: Json | null
+          total_papers?: number | null
+          user_id: string
+          year_max?: number | null
+          year_min?: number | null
+        }
+        Update: {
+          author_query?: string | null
+          created_at?: string | null
+          domains?: string[] | null
+          id?: string
+          keywords?: string[] | null
+          papers?: Json | null
+          total_papers?: number | null
+          user_id?: string
+          year_max?: number | null
+          year_min?: number | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string
