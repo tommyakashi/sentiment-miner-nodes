@@ -771,7 +771,10 @@ const Index = () => {
 
       {/* Tutorial Sequence */}
       {showTutorial && (
-        <TutorialSequence onComplete={handleTutorialComplete} />
+        <TutorialSequence 
+          onComplete={handleTutorialComplete} 
+          currentView={selectedMode ? selectedMode as any : 'modeSelector'}
+        />
       )}
 
       {/* Analysis Loading Overlay */}

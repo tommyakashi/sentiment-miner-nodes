@@ -1,201 +1,269 @@
-import { useState, useEffect } from 'react';
-import { Settings, Radio, Download, Brain, BarChart3 } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Settings, Radio, Brain, BarChart3, ChevronRight, BookOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface TutorialStep {
   icon: React.ReactNode;
   title: string;
-  description: string;
+  instruction: string;
+  targetSelector: string; // CSS selector for the element to highlight
+  position: 'top' | 'bottom' | 'left' | 'right';
 }
 
 const TUTORIAL_STEPS: TutorialStep[] = [
   {
-    icon: <Settings className="w-6 h-6" />,
+    icon: <Settings className="w-5 h-5" />,
     title: 'Configure Nodes',
-    description: 'Set up analysis topics in Settings',
+    instruction: 'Start here to set up your analysis topics. These "nodes" define what themes you want to track across your data.',
+    targetSelector: '[data-tutorial="settings"]',
+    position: 'top',
   },
   {
-    icon: <Radio className="w-6 h-6" />,
-    title: 'Choose Source',
-    description: 'Reddit or Academic Papers',
+    icon: <Radio className="w-5 h-5" />,
+    title: 'Scrape Reddit',
+    instruction: 'Collect sentiment data from research communities on Reddit. Configure subreddits, time range, and hit scrape.',
+    targetSelector: '[data-tutorial="scanner"]',
+    position: 'bottom',
   },
   {
-    icon: <Download className="w-6 h-6" />,
-    title: 'Scrape Data',
-    description: 'Collect content automatically',
+    icon: <BookOpen className="w-5 h-5" />,
+    title: 'Or Academic Papers',
+    instruction: 'Alternatively, scrape academic papers from arXiv and Semantic Scholar. Search by keywords or authors.',
+    targetSelector: '[data-tutorial="papers"]',
+    position: 'bottom',
   },
   {
-    icon: <Brain className="w-6 h-6" />,
-    title: 'Analyze',
-    description: 'AI-powered sentiment analysis',
+    icon: <Brain className="w-5 h-5" />,
+    title: 'Run Analysis',
+    instruction: 'After scraping, click "Run Analysis" to process your data. AI will evaluate sentiment across all your nodes.',
+    targetSelector: '[data-tutorial="analysis"]',
+    position: 'top',
   },
   {
-    icon: <BarChart3 className="w-6 h-6" />,
+    icon: <BarChart3 className="w-5 h-5" />,
     title: 'View Results',
-    description: 'Explore insights & trends',
+    instruction: 'Explore sentiment scores, trends, and key insights. Results are organized by your configured analysis nodes.',
+    targetSelector: '[data-tutorial="archive"]',
+    position: 'top',
   },
 ];
 
-const STEP_DURATION = 1200; // ms per step
-const FADE_IN_DELAY = 400; // ms between step appearances
+const STEP_DISPLAY_TIME = 4000; // ms to show each step
 
 interface TutorialSequenceProps {
   onComplete: () => void;
+  currentView: 'modeSelector' | 'scanner' | 'papers' | 'analysis' | 'settings' | null;
 }
 
-export function TutorialSequence({ onComplete }: TutorialSequenceProps) {
-  const [activeStep, setActiveStep] = useState(-1);
-  const [visibleSteps, setVisibleSteps] = useState<number[]>([]);
-  const [isFadingOut, setIsFadingOut] = useState(false);
+export function TutorialSequence({ onComplete, currentView }: TutorialSequenceProps) {
+  const [currentStep, setCurrentStep] = useState(0);
+  const [isVisible, setIsVisible] = useState(true);
+  const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
+  const [highlightRect, setHighlightRect] = useState<DOMRect | null>(null);
+
+  // Calculate position of target element
+  const updateTargetPosition = useCallback(() => {
+    const step = TUTORIAL_STEPS[currentStep];
+    if (!step) return;
+
+    const target = document.querySelector(step.targetSelector);
+    if (target) {
+      const rect = target.getBoundingClientRect();
+      setHighlightRect(rect);
+
+      // Position tooltip based on step configuration
+      let x = rect.left + rect.width / 2;
+      let y = rect.top + rect.height / 2;
+
+      switch (step.position) {
+        case 'top':
+          y = rect.top - 20;
+          break;
+        case 'bottom':
+          y = rect.bottom + 20;
+          break;
+        case 'left':
+          x = rect.left - 20;
+          break;
+        case 'right':
+          x = rect.right + 20;
+          break;
+      }
+
+      setTooltipPosition({ x, y });
+    } else {
+      setHighlightRect(null);
+    }
+  }, [currentStep]);
 
   useEffect(() => {
-    // Sequentially reveal steps
-    const revealTimers: NodeJS.Timeout[] = [];
+    updateTargetPosition();
     
-    TUTORIAL_STEPS.forEach((_, index) => {
-      const timer = setTimeout(() => {
-        setVisibleSteps(prev => [...prev, index]);
-        setActiveStep(index);
-      }, index * FADE_IN_DELAY);
-      revealTimers.push(timer);
-    });
-
-    // Auto-complete after all steps shown + viewing time
-    const completeTimer = setTimeout(() => {
-      handleComplete();
-    }, (TUTORIAL_STEPS.length * FADE_IN_DELAY) + STEP_DURATION);
+    // Update on resize
+    window.addEventListener('resize', updateTargetPosition);
+    
+    // Also poll for element changes (for dynamic content)
+    const interval = setInterval(updateTargetPosition, 500);
 
     return () => {
-      revealTimers.forEach(clearTimeout);
-      clearTimeout(completeTimer);
+      window.removeEventListener('resize', updateTargetPosition);
+      clearInterval(interval);
     };
-  }, []);
+  }, [updateTargetPosition]);
+
+  const handleNext = () => {
+    if (currentStep < TUTORIAL_STEPS.length - 1) {
+      setCurrentStep(prev => prev + 1);
+    } else {
+      handleComplete();
+    }
+  };
 
   const handleComplete = () => {
-    setIsFadingOut(true);
+    setIsVisible(false);
     localStorage.setItem('tutorial-completed', 'true');
-    setTimeout(onComplete, 500);
+    setTimeout(onComplete, 300);
   };
 
   const handleSkip = () => {
     handleComplete();
   };
 
+  if (!isVisible) return null;
+
+  const step = TUTORIAL_STEPS[currentStep];
+  const hasTarget = highlightRect !== null;
+
   return (
-    <div 
-      className={`fixed inset-0 z-50 flex flex-col items-center justify-center bg-background transition-opacity duration-500 ${
-        isFadingOut ? 'opacity-0' : 'opacity-100'
-      }`}
-    >
-      {/* Tutorial title */}
-      <div 
-        className={`mb-8 text-center transition-all duration-500 ${
-          visibleSteps.length > 0 ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
-        }`}
-      >
-        <h2 className="text-lg font-medium text-muted-foreground tracking-wide uppercase">
-          Quick Start
-        </h2>
-      </div>
-
-      {/* Steps container */}
-      <div className="flex items-center gap-4">
-        {TUTORIAL_STEPS.map((step, index) => {
-          const isVisible = visibleSteps.includes(index);
-          const isActive = activeStep === index;
-          
-          return (
-            <div key={index} className="flex items-center">
-              {/* Step box */}
-              <div
-                className={`
-                  relative flex flex-col items-center justify-center
-                  w-28 h-28 rounded-xl
-                  bg-card/60 backdrop-blur-xl
-                  border transition-all duration-500
-                  ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}
-                  ${isActive 
-                    ? 'border-primary/60 shadow-[0_0_30px_rgba(255,255,255,0.15)]' 
-                    : 'border-border/30'
-                  }
-                `}
-                style={{
-                  transitionDelay: `${index * 50}ms`,
-                }}
-              >
-                {/* Glow effect for active step */}
-                {isActive && (
-                  <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-primary/10 via-transparent to-primary/5 pointer-events-none" />
-                )}
-                
-                {/* Icon */}
-                <div className={`
-                  mb-2 transition-colors duration-300
-                  ${isActive ? 'text-primary' : 'text-muted-foreground'}
-                `}>
-                  {step.icon}
-                </div>
-                
-                {/* Title */}
-                <span className={`
-                  text-xs font-medium text-center px-2 transition-colors duration-300
-                  ${isActive ? 'text-foreground' : 'text-muted-foreground'}
-                `}>
-                  {step.title}
-                </span>
-                
-                {/* Description */}
-                <span className="text-[10px] text-muted-foreground/70 text-center px-2 mt-1">
-                  {step.description}
-                </span>
-
-                {/* Step number indicator */}
-                <div className={`
-                  absolute -top-2 -right-2 w-5 h-5 rounded-full
-                  flex items-center justify-center text-[10px] font-medium
-                  transition-all duration-300
-                  ${isActive 
-                    ? 'bg-primary text-primary-foreground' 
-                    : 'bg-muted text-muted-foreground'
-                  }
-                `}>
-                  {index + 1}
-                </div>
-              </div>
-
-              {/* Connector line */}
-              {index < TUTORIAL_STEPS.length - 1 && (
-                <div 
-                  className={`
-                    w-8 h-px mx-1 transition-all duration-500
-                    ${visibleSteps.includes(index + 1) 
-                      ? 'bg-border/50' 
-                      : 'bg-transparent'
-                    }
-                  `}
-                  style={{
-                    transitionDelay: `${(index + 1) * FADE_IN_DELAY}ms`,
-                  }}
+    <div className="fixed inset-0 z-[60] pointer-events-none">
+      {/* Dimmed overlay with cutout for highlighted element */}
+      <div className="absolute inset-0 pointer-events-auto">
+        <svg className="w-full h-full">
+          <defs>
+            <mask id="tutorial-mask">
+              <rect x="0" y="0" width="100%" height="100%" fill="white" />
+              {hasTarget && (
+                <rect
+                  x={highlightRect.left - 8}
+                  y={highlightRect.top - 8}
+                  width={highlightRect.width + 16}
+                  height={highlightRect.height + 16}
+                  rx="12"
+                  fill="black"
                 />
               )}
-            </div>
-          );
-        })}
+            </mask>
+          </defs>
+          <rect
+            x="0"
+            y="0"
+            width="100%"
+            height="100%"
+            fill="rgba(0, 0, 0, 0.75)"
+            mask="url(#tutorial-mask)"
+          />
+        </svg>
       </div>
 
-      {/* Skip button */}
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={handleSkip}
+      {/* Highlight border around target */}
+      {hasTarget && (
+        <div
+          className="absolute border-2 border-primary rounded-xl pointer-events-none transition-all duration-300 animate-pulse"
+          style={{
+            left: highlightRect.left - 8,
+            top: highlightRect.top - 8,
+            width: highlightRect.width + 16,
+            height: highlightRect.height + 16,
+            boxShadow: '0 0 30px rgba(255, 255, 255, 0.3), inset 0 0 20px rgba(255, 255, 255, 0.1)',
+          }}
+        />
+      )}
+
+      {/* Tooltip card */}
+      <div
         className={`
-          mt-8 text-muted-foreground hover:text-foreground
-          transition-all duration-500
-          ${visibleSteps.length > 0 ? 'opacity-100' : 'opacity-0'}
+          absolute pointer-events-auto
+          transition-all duration-500 ease-out
+          ${hasTarget ? 'opacity-100 translate-y-0' : 'opacity-100'}
         `}
+        style={{
+          left: hasTarget 
+            ? step.position === 'left' 
+              ? highlightRect!.left - 320 
+              : step.position === 'right'
+                ? highlightRect!.right + 20
+                : highlightRect!.left + highlightRect!.width / 2 - 150
+            : '50%',
+          top: hasTarget
+            ? step.position === 'top'
+              ? highlightRect!.top - 180
+              : step.position === 'bottom'
+                ? highlightRect!.bottom + 20
+                : highlightRect!.top + highlightRect!.height / 2 - 80
+            : '50%',
+          transform: hasTarget ? 'none' : 'translate(-50%, -50%)',
+        }}
       >
-        Skip
-      </Button>
+        <div className="w-[300px] bg-card/95 backdrop-blur-xl rounded-xl border border-border/50 shadow-2xl overflow-hidden">
+          {/* Header */}
+          <div className="flex items-center gap-3 p-4 border-b border-border/30">
+            <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 text-primary">
+              {step.icon}
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground uppercase tracking-wide">
+                Step {currentStep + 1} of {TUTORIAL_STEPS.length}
+              </div>
+              <div className="font-medium text-foreground">
+                {step.title}
+              </div>
+            </div>
+          </div>
+
+          {/* Content */}
+          <div className="p-4">
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              {step.instruction}
+            </p>
+          </div>
+
+          {/* Progress dots */}
+          <div className="flex justify-center gap-1.5 pb-3">
+            {TUTORIAL_STEPS.map((_, index) => (
+              <div
+                key={index}
+                className={`w-1.5 h-1.5 rounded-full transition-colors duration-300 ${
+                  index === currentStep 
+                    ? 'bg-primary' 
+                    : index < currentStep 
+                      ? 'bg-primary/50' 
+                      : 'bg-muted'
+                }`}
+              />
+            ))}
+          </div>
+
+          {/* Actions */}
+          <div className="flex items-center justify-between p-4 pt-0">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleSkip}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              Skip
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleNext}
+              className="gap-1"
+            >
+              {currentStep < TUTORIAL_STEPS.length - 1 ? 'Next' : 'Done'}
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

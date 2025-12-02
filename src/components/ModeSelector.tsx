@@ -149,6 +149,7 @@ function ModeCard({ mode, onSelect, index }: ModeCardProps) {
   return (
     <button
       onClick={() => onSelect(mode.id)}
+      data-tutorial={mode.id}
       className={cn(
         "relative bg-card/60 backdrop-blur-sm rounded-xl border border-border/50",
         "p-6 cursor-pointer group w-full text-left",
