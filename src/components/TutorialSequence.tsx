@@ -54,8 +54,8 @@ const TUTORIAL_STEPS: TutorialStep[] = [
   },
 ];
 
-const STEP_REVEAL_DELAY = 400;
-const OVERVIEW_HOLD_TIME = 2000;
+const STEP_REVEAL_DELAY = 1200; // ms between each step (slower reveal)
+const OVERVIEW_HOLD_TIME = 3000; // ms to hold after all steps shown
 
 interface TutorialSequenceProps {
   onComplete: () => void;
