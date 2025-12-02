@@ -682,30 +682,28 @@ serve(async (req) => {
     
     console.log(`[Scraper] Starting: ${targetSubreddits.length} subreddits, timeRange=${timeRange}, sortMode=${sortMode}, fastMode=${fastMode}`);
 
-    // Auth check
+    // Auth is optional - function works without login
     const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: 'Missing authorization header' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
-    const jwt = authHeader.replace('Bearer ', '');
     
-    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: `Bearer ${jwt}` } }
-    });
-
-    const { data: { user }, error: userError } = await supabase.auth.getUser(jwt);
-    if (userError || !user) {
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    let user = null;
+    let supabase = createClient(supabaseUrl, supabaseAnonKey);
+    
+    if (authHeader) {
+      const jwt = authHeader.replace('Bearer ', '');
+      supabase = createClient(supabaseUrl, supabaseAnonKey, {
+        global: { headers: { Authorization: `Bearer ${jwt}` } }
+      });
+      
+      const { data: { user: authUser } } = await supabase.auth.getUser(jwt);
+      user = authUser;
     }
+    
+    console.log(`[Auth] User: ${user ? user.email : 'anonymous'}`);
+    
+    // If no user, disable DB saving
+    const actualSaveToDb = saveToDb && user !== null;
 
     // Scrape with optimized parallelism
     const allPosts: RedditPost[] = [];
@@ -774,11 +772,11 @@ serve(async (req) => {
 
     console.log(`[Scraper] After filter: ${filteredPosts.length} posts, ${filteredComments.length} comments`);
 
-    // Save to database
+    // Save to database (only if user is authenticated)
     let dataSourceId = null;
     const finalData = [...filteredPosts, ...filteredComments];
     
-    if (saveToDb && finalData.length > 0) {
+    if (actualSaveToDb && finalData.length > 0 && user) {
       const timeRangeLabel = {
         'day': 'Today',
         '3days': 'Past 3 Days',
