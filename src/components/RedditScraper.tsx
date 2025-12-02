@@ -25,26 +25,32 @@ import {
 } from 'lucide-react';
 import type { RedditData } from '@/types/reddit';
 
+// AI-specific subreddits (content always kept)
+const AI_SPECIFIC_SUBREDDITS = [
+  'MachineLearning', 'datascience', 'artificial', 'deeplearning',
+  'LanguageTechnology', 'computervision', 'reinforcementlearning', 
+  'learnmachinelearning', 'MLQuestions', 'LocalLLaMA', 'LocalLLM',
+  'MachineLearningResearch', 'MLPapers', 'ControlProblem', 'AIethics',
+  'singularity', 'AGI', 'StableDiffusion', 'AI_Agents', 'aiengineering'
+];
+
+// General subreddits (content filtered for AI-relevance)
+const GENERAL_SUBREDDITS = [
+  'AskAcademia', 'GradSchool', 'PhD', 'science', 'AcademicPsychology',
+  'labrats', 'Professors', 'scholarships', 'researchstudents', 'PostDoc',
+  'OpenScience', 'SciencePolicy', 'engineering', 'AskScienceDiscussion',
+  'academia', 'ScientificComputing', 'cscareerquestions', 'compsci', 
+  'algorithms', 'robotics', 'QuantumComputing', 'computerscience', 'HCI'
+];
+
 // Core high-activity subreddits for fast mode
 const FAST_MODE_SUBREDDITS = [
-  'AskAcademia', 'GradSchool', 'PhD', 'science', 'MachineLearning',
-  'datascience', 'LocalLLaMA', 'LocalLLM', 'cscareerquestions', 'labrats', 'Professors',
-  'singularity', 'AGI', 'artificial', 'deeplearning', 'compsci', 'StableDiffusion',
-  'AI_Agents', 'aiengineering'
+  ...AI_SPECIFIC_SUBREDDITS.slice(0, 12),
+  'cscareerquestions', 'compsci', 'robotics'
 ];
 
 // Full list for comprehensive analysis
-const ALL_SUBREDDITS = [
-  'AskAcademia', 'GradSchool', 'PhD', 'science', 'AcademicPsychology',
-  'labrats', 'Professors', 'scholarships', 'researchstudents', 'PostDoc',
-  'OpenScience', 'MachineLearning', 'datascience', 'SciencePolicy', 'engineering',
-  'AskScienceDiscussion', 'academia', 'ScientificComputing', 'artificial', 'deeplearning',
-  'LanguageTechnology', 'computervision', 'reinforcementlearning', 'learnmachinelearning',
-  'MLQuestions', 'LocalLLaMA', 'LocalLLM', 'cscareerquestions', 'compsci', 'algorithms',
-  'MachineLearningResearch', 'robotics', 'QuantumComputing', 'computerscience',
-  'MLPapers', 'ControlProblem', 'AIethics', 'singularity', 'AGI', 'HCI',
-  'StableDiffusion', 'AI_Agents', 'aiengineering'
-];
+const ALL_SUBREDDITS = [...AI_SPECIFIC_SUBREDDITS, ...GENERAL_SUBREDDITS];
 
 type TimeRange = 'day' | '3days' | 'week' | 'month';
 type SortMode = 'top' | 'hot' | 'rising';
@@ -279,12 +285,12 @@ export function RedditScraper({ onDataScraped }: RedditScraperProps) {
         {fastMode ? (
           <>
             <Zap className="w-3.5 h-3.5" />
-            <span className="font-mono">19 core subreddits • ~20s scan time</span>
+            <span className="font-mono">{AI_SPECIFIC_SUBREDDITS.length} AI + 3 filtered • ~20s scan</span>
           </>
         ) : (
           <>
             <Clock className="w-3.5 h-3.5" />
-            <span className="font-mono">42 subreddits • ~60s comprehensive scan</span>
+            <span className="font-mono">{AI_SPECIFIC_SUBREDDITS.length} AI + {GENERAL_SUBREDDITS.length} filtered • ~60s scan</span>
           </>
         )}
       </div>
