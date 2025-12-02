@@ -6,24 +6,84 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Core high-activity subreddits for fast mode (15 subreddits)
+// AI-specific subreddits (content always kept)
+const AI_SPECIFIC_SUBREDDITS = [
+  'MachineLearning', 'datascience', 'artificial', 'deeplearning',
+  'LanguageTechnology', 'computervision', 'reinforcementlearning', 
+  'learnmachinelearning', 'MLQuestions', 'LocalLLaMA', 'LocalLLM',
+  'MachineLearningResearch', 'MLPapers', 'ControlProblem', 'AIethics',
+  'singularity', 'AGI', 'StableDiffusion', 'AI_Agents', 'aiengineering'
+];
+
+// General subreddits (content filtered for AI-relevance)
+const GENERAL_SUBREDDITS = [
+  'AskAcademia', 'GradSchool', 'PhD', 'science', 'AcademicPsychology',
+  'labrats', 'Professors', 'scholarships', 'researchstudents', 'PostDoc',
+  'OpenScience', 'SciencePolicy', 'engineering', 'AskScienceDiscussion',
+  'academia', 'ScientificComputing', 'cscareerquestions', 'compsci', 
+  'algorithms', 'robotics', 'QuantumComputing', 'computerscience', 'HCI'
+];
+
+// Core high-activity subreddits for fast mode
 const FAST_MODE_SUBREDDITS = [
-  'AskAcademia', 'GradSchool', 'PhD', 'science', 'MachineLearning',
-  'datascience', 'LocalLLaMA', 'cscareerquestions', 'labrats', 'Professors',
-  'singularity', 'AGI', 'artificial', 'deeplearning', 'compsci'
+  ...AI_SPECIFIC_SUBREDDITS.slice(0, 12), // Top 12 AI-specific
+  'cscareerquestions', 'compsci', 'robotics' // Keep a few general with filtering
 ];
 
 // Full subreddits for comprehensive analysis
-const DEFAULT_SUBREDDITS = [
-  'AskAcademia', 'GradSchool', 'PhD', 'science', 'AcademicPsychology',
-  'labrats', 'Professors', 'scholarships', 'researchstudents', 'PostDoc',
-  'OpenScience', 'MachineLearning', 'datascience', 'SciencePolicy', 'engineering',
-  'AskScienceDiscussion', 'academia', 'ScientificComputing', 'artificial', 'deeplearning',
-  'LanguageTechnology', 'computervision', 'reinforcementlearning', 'learnmachinelearning',
-  'MLQuestions', 'LocalLLaMA', 'cscareerquestions', 'compsci', 'algorithms',
-  'MachineLearningResearch', 'robotics', 'QuantumComputing', 'computerscience',
-  'MLPapers', 'ControlProblem', 'AIethics', 'singularity', 'AGI', 'HCI'
+const DEFAULT_SUBREDDITS = [...AI_SPECIFIC_SUBREDDITS, ...GENERAL_SUBREDDITS];
+
+// Keywords for AI-relevance filtering on general subreddits
+const AI_KEYWORDS = [
+  // Core AI/ML terms
+  'artificial intelligence', 'machine learning', 'deep learning', 'neural network',
+  'natural language processing', 'nlp', 'computer vision', 'reinforcement learning',
+  'supervised learning', 'unsupervised learning', 'transformer', 'attention mechanism',
+  
+  // Model names and architectures
+  'gpt', 'chatgpt', 'gpt-4', 'gpt-5', 'claude', 'gemini', 'llama', 'mistral',
+  'stable diffusion', 'midjourney', 'dall-e', 'dalle', 'bert', 'roberta',
+  'diffusion model', 'language model', 'llm', 'large language model',
+  'foundation model', 'multimodal', 'vision language model',
+  
+  // Companies and labs
+  'openai', 'anthropic', 'deepmind', 'google ai', 'meta ai', 'microsoft ai',
+  'hugging face', 'huggingface', 'nvidia ai', 'tesla ai', 'xai', 'cohere',
+  
+  // Techniques and concepts
+  'fine-tuning', 'fine tuning', 'finetuning', 'prompt engineering', 'rag',
+  'retrieval augmented', 'embedding', 'vector database', 'tokenization',
+  'inference', 'training data', 'dataset', 'benchmark', 'evaluation',
+  'hallucination', 'alignment', 'rlhf', 'dpo', 'chain of thought', 'cot',
+  'agent', 'agentic', 'autonomous agent', 'ai agent', 'tool use',
+  
+  // Research and applications
+  'agi', 'artificial general intelligence', 'ai safety', 'ai ethics',
+  'ai research', 'ml research', 'ai paper', 'arxiv', 'neurips', 'icml', 'iclr',
+  'ai assistant', 'chatbot', 'conversational ai', 'generative ai', 'gen ai',
+  'text generation', 'image generation', 'code generation', 'copilot',
+  
+  // Technical terms
+  'gpu', 'cuda', 'tensor', 'pytorch', 'tensorflow', 'jax', 'keras',
+  'parameter', 'weight', 'gradient', 'backpropagation', 'loss function',
+  'activation', 'dropout', 'batch normalization', 'convolution', 'cnn', 'rnn',
+  'lstm', 'gan', 'vae', 'autoencoder', 'classifier', 'regression',
+  
+  // Industry impact
+  'ai job', 'ai career', 'ai replacing', 'automation', 'ai impact',
+  'ai regulation', 'ai policy', 'ai governance', 'ai law'
 ];
+
+// Check if text is AI-related (case-insensitive keyword matching)
+function isAIRelated(text: string): boolean {
+  const lowerText = text.toLowerCase();
+  return AI_KEYWORDS.some(keyword => lowerText.includes(keyword));
+}
+
+// Check if a subreddit is AI-specific (no filtering needed)
+function isAISpecificSubreddit(subreddit: string): boolean {
+  return AI_SPECIFIC_SUBREDDITS.includes(subreddit);
+}
 
 type TimeRange = 'day' | 'week' | 'month' | '3days';
 type SortMode = 'top' | 'hot' | 'rising';
@@ -767,10 +827,28 @@ serve(async (req) => {
 
     // Filter by time range
     const cutoffTimestamp = getTimestampForRange(timeRange as TimeRange) * 1000;
-    const filteredPosts = allPosts.filter(p => new Date(p.createdAt).getTime() >= cutoffTimestamp);
-    const filteredComments = allComments.filter(c => new Date(c.createdAt).getTime() >= cutoffTimestamp);
+    const timeFilteredPosts = allPosts.filter(p => new Date(p.createdAt).getTime() >= cutoffTimestamp);
+    const timeFilteredComments = allComments.filter(c => new Date(c.createdAt).getTime() >= cutoffTimestamp);
 
-    console.log(`[Scraper] After filter: ${filteredPosts.length} posts, ${filteredComments.length} comments`);
+    // Apply AI-relevance filter for general subreddits
+    const filteredPosts = timeFilteredPosts.filter(p => {
+      // Always keep posts from AI-specific subreddits
+      if (isAISpecificSubreddit(p.parsedCommunityName)) return true;
+      // For general subreddits, check if content is AI-related
+      const textToCheck = `${p.title} ${p.body}`;
+      return isAIRelated(textToCheck);
+    });
+
+    const filteredComments = timeFilteredComments.filter(c => {
+      // Always keep comments from AI-specific subreddits
+      if (isAISpecificSubreddit(c.communityName.replace('r/', ''))) return true;
+      // For general subreddits, check if content is AI-related
+      return isAIRelated(c.body);
+    });
+
+    const aiFilteredOut = (timeFilteredPosts.length - filteredPosts.length) + (timeFilteredComments.length - filteredComments.length);
+    console.log(`[Scraper] After time filter: ${timeFilteredPosts.length} posts, ${timeFilteredComments.length} comments`);
+    console.log(`[Scraper] After AI filter: ${filteredPosts.length} posts, ${filteredComments.length} comments (${aiFilteredOut} non-AI items filtered)`);
 
     // Save to database (only if user is authenticated)
     let dataSourceId = null;
