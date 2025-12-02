@@ -25,6 +25,7 @@ import { ModeSelector, ModeId } from '@/components/ModeSelector';
 import { ManualUpload } from '@/components/ManualUpload';
 import { AnalysisLoadingOverlay } from '@/components/AnalysisLoadingOverlay';
 import AnimatedLogo from '@/components/AnimatedLogo';
+import { TutorialSequence } from '@/components/TutorialSequence';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -39,6 +40,7 @@ import { Activity, Zap, BookOpen } from 'lucide-react';
 const Index = () => {
   const [showIntro, setShowIntro] = useState(true);
   const [introFading, setIntroFading] = useState(false);
+  const [showTutorial, setShowTutorial] = useState(false);
   const [selectedMode, setSelectedMode] = useState<ModeId | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>('scanner');
   const [isModeTransitioning, setIsModeTransitioning] = useState(false);
@@ -71,6 +73,9 @@ const Index = () => {
   
   useEffect(() => {
     if (showIntro) {
+      // Check if tutorial was already completed
+      const tutorialCompleted = localStorage.getItem('tutorial-completed') === 'true';
+      
       // Logo fades in after brief black screen
       const showLogoTimer = setTimeout(() => {
         setLogoVisible(true);
@@ -83,6 +88,10 @@ const Index = () => {
       const hideTimer = setTimeout(() => {
         setShowIntro(false);
         setIntroFading(false);
+        // Show tutorial if not completed before
+        if (!tutorialCompleted) {
+          setShowTutorial(true);
+        }
       }, 4700); // Hide at 4.7s (1.5s fade duration)
       
       return () => {
@@ -92,6 +101,10 @@ const Index = () => {
       };
     }
   }, [showIntro]);
+
+  const handleTutorialComplete = () => {
+    setShowTutorial(false);
+  };
   
   const TOTAL_STEPS = 5;
 
@@ -740,6 +753,26 @@ const Index = () => {
       {/* Subtle Grid Overlay */}
       <div className="fixed inset-0 observatory-grid pointer-events-none z-0 opacity-50" />
       
+      {/* Intro Splash Screen */}
+      {showIntro && (
+        <div 
+          className={`fixed inset-0 z-[100] bg-background flex items-center justify-center transition-opacity duration-[1500ms] ease-out ${
+            introFading ? 'opacity-0' : 'opacity-100'
+          }`}
+        >
+          <div className={`transition-opacity duration-[3000ms] ease-in ${
+            logoVisible ? 'opacity-100' : 'opacity-0'
+          }`}>
+            <AnimatedLogo />
+          </div>
+        </div>
+      )}
+
+      {/* Tutorial Sequence */}
+      {showTutorial && (
+        <TutorialSequence onComplete={handleTutorialComplete} />
+      )}
+
       {/* Analysis Loading Overlay */}
       <AnalysisLoadingOverlay 
         isVisible={isAnalyzing && !showWindow}
