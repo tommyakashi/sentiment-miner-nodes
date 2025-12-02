@@ -73,9 +73,7 @@ const Index = () => {
   
   useEffect(() => {
     if (showIntro) {
-      // Force show tutorial for testing (remove this line after confirming it works)
-      localStorage.removeItem('tutorial-completed');
-      const tutorialCompleted = false;
+      // Always show tutorial prompt (no localStorage check)
       
       // Logo fades in after brief black screen
       const showLogoTimer = setTimeout(() => {
@@ -89,10 +87,8 @@ const Index = () => {
       const hideTimer = setTimeout(() => {
         setShowIntro(false);
         setIntroFading(false);
-        // Show tutorial if not completed before
-        if (!tutorialCompleted) {
-          setShowTutorial(true);
-        }
+        // Always show tutorial prompt
+        setShowTutorial(true);
       }, 4700); // Hide at 4.7s (1.5s fade duration)
       
       return () => {
