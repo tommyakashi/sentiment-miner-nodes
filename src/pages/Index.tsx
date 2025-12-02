@@ -73,8 +73,9 @@ const Index = () => {
   
   useEffect(() => {
     if (showIntro) {
-      // Check if tutorial was already completed
-      const tutorialCompleted = localStorage.getItem('tutorial-completed') === 'true';
+      // Force show tutorial for testing (remove this line after confirming it works)
+      localStorage.removeItem('tutorial-completed');
+      const tutorialCompleted = false;
       
       // Logo fades in after brief black screen
       const showLogoTimer = setTimeout(() => {
