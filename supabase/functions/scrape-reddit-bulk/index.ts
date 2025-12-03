@@ -901,6 +901,28 @@ serve(async (req) => {
     }
 
     const successCount = Object.keys(subredditStats).filter(k => subredditStats[k].posts > 0).length;
+    const executionTimeMs = Date.now() - EXECUTION_START;
+
+    // Log scrape metrics (always, regardless of auth)
+    try {
+      await supabase
+        .from('scrape_metrics')
+        .insert({
+          scrape_type: 'reddit',
+          time_range: timeRange,
+          sort_mode: sortMode,
+          fast_mode: fastMode,
+          subreddits_attempted: targetSubreddits.length,
+          subreddits_successful: successCount,
+          posts_collected: filteredPosts.length,
+          comments_collected: filteredComments.length,
+          total_items: finalData.length,
+          execution_time_ms: executionTimeMs
+        });
+      console.log(`[Metrics] Logged: ${finalData.length} items in ${executionTimeMs}ms`);
+    } catch (metricsError) {
+      console.error('[Metrics] Failed to log:', metricsError);
+    }
 
     return new Response(
       JSON.stringify({
