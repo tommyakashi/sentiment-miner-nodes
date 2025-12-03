@@ -169,6 +169,54 @@ export type Database = {
         }
         Relationships: []
       }
+      scrape_metrics: {
+        Row: {
+          comments_collected: number | null
+          created_at: string
+          error_message: string | null
+          execution_time_ms: number | null
+          fast_mode: boolean | null
+          id: string
+          posts_collected: number | null
+          scrape_type: string
+          sort_mode: string | null
+          subreddits_attempted: number | null
+          subreddits_successful: number | null
+          time_range: string | null
+          total_items: number | null
+        }
+        Insert: {
+          comments_collected?: number | null
+          created_at?: string
+          error_message?: string | null
+          execution_time_ms?: number | null
+          fast_mode?: boolean | null
+          id?: string
+          posts_collected?: number | null
+          scrape_type?: string
+          sort_mode?: string | null
+          subreddits_attempted?: number | null
+          subreddits_successful?: number | null
+          time_range?: string | null
+          total_items?: number | null
+        }
+        Update: {
+          comments_collected?: number | null
+          created_at?: string
+          error_message?: string | null
+          execution_time_ms?: number | null
+          fast_mode?: boolean | null
+          id?: string
+          posts_collected?: number | null
+          scrape_type?: string
+          sort_mode?: string | null
+          subreddits_attempted?: number | null
+          subreddits_successful?: number | null
+          time_range?: string | null
+          total_items?: number | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
