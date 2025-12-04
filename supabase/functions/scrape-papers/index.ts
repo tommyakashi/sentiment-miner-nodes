@@ -313,27 +313,11 @@ serve(async (req) => {
   }
 
   try {
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Missing authorization header' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
+    console.log('[Papers] Starting scrape request');
+    
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_ANON_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Not authenticated' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
     const body: SearchParams = await req.json();
     const { 
@@ -435,12 +419,12 @@ serve(async (req) => {
 
     console.log(`Found ${finalPapers.length} high-impact AI papers (SS: ${semanticScholarCount}, arXiv: ${arxivCount})`);
 
-    // Save to database
+    // Save to database (using anonymous since auth is disabled)
     if (saveToDb && finalPapers.length > 0) {
       const { error: saveError } = await supabase
         .from('paper_scrapes')
         .insert({
-          user_id: user.id,
+          user_id: 'anonymous',
           keywords,
           author_query: authorQuery,
           year_min: startDate ? new Date(startDate).getFullYear() : yearMin,

@@ -15,3 +15,6 @@ verify_jwt = false
 [functions.analyze-sentiment]
 verify_jwt = false
 timeout = 300
+
+[functions.scrape-papers]
+verify_jwt = false
