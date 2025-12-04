@@ -331,8 +331,8 @@ export function ResultsTable({
     <div className="space-y-6">
       {/* Node Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {nodeAnalysis.map((node) => (
-          <Card key={node.nodeId} className="p-4">
+        {nodeAnalysis.map((node, index) => (
+          <Card key={node.nodeId} className="p-4 border-blue-500/20 bg-gradient-to-br from-blue-500/5 to-transparent hover:border-blue-500/30 transition-colors">
             <h3 className="font-semibold mb-2">{node.nodeName}</h3>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
@@ -362,9 +362,9 @@ export function ResultsTable({
       </div>
 
       {/* Results Table */}
-      <Card className="p-6">
+      <Card className="p-6 border-emerald-500/20">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold">Analysis Results</h2>
+          <h2 className="text-xl font-semibold text-emerald-400">Analysis Results</h2>
           <div className="flex gap-2">
             <Button onClick={exportSummaryCSV}>
               <Download className="w-4 h-4 mr-2" />
