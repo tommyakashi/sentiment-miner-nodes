@@ -548,9 +548,6 @@ const Index = () => {
                     {sources.length > 0 && <SourceDistribution sources={sources} />}
                     {results.length > 0 && <ConfidenceDistribution results={results} />}
                     {nodeAnalysis.length > 0 && <TopicsList topics={nodeAnalysis} />}
-                    {participants.length > 0 && (
-                      <ParticipantsList participants={participants} title="Contributors" />
-                    )}
                     {nodeAnalysis.length > 0 && <KPIHeatmap data={nodeAnalysis} />}
                   </div>
 
