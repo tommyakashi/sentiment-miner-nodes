@@ -548,10 +548,11 @@ const Index = () => {
                     {sources.length > 0 && <SourceDistribution sources={sources} />}
                     {results.length > 0 && <ConfidenceDistribution results={results} />}
                     {nodeAnalysis.length > 0 && <TopicsList topics={nodeAnalysis} />}
-                    {nodeAnalysis.length > 0 && <KPIHeatmap data={nodeAnalysis} />}
                   </div>
 
-                  <div className="grid grid-cols-3 gap-3">
+                  {nodeAnalysis.length > 0 && <KPIHeatmap data={nodeAnalysis} />}
+
+                  <div className="space-y-3">
                     {nodeAnalysis.slice(0, 3).map((node) => (
                       <ExemplarQuotes
                         key={node.nodeId}
