@@ -7,12 +7,12 @@ interface KPIHeatmapProps {
 
 export function KPIHeatmap({ data }: KPIHeatmapProps) {
   const kpis = [
-    { key: 'trust', label: 'Tru' },
-    { key: 'optimism', label: 'Opt' },
-    { key: 'frustration', label: 'Fru' },
-    { key: 'clarity', label: 'Cla' },
-    { key: 'access', label: 'Acc' },
-    { key: 'fairness', label: 'Fai' },
+    { key: 'trust', label: 'Trust' },
+    { key: 'optimism', label: 'Optimism' },
+    { key: 'frustration', label: 'Frustration' },
+    { key: 'clarity', label: 'Clarity' },
+    { key: 'access', label: 'Access' },
+    { key: 'fairness', label: 'Fairness' },
   ];
 
   const getCellColor = (value: number) => {
@@ -37,16 +37,16 @@ export function KPIHeatmap({ data }: KPIHeatmapProps) {
             <tr>
               <th className="text-left p-1.5 text-muted-foreground font-normal border-b border-white/10">Node</th>
               {kpis.map((kpi) => (
-                <th key={kpi.key} className="text-center p-1.5 text-muted-foreground font-normal border-b border-white/10 w-10">
+                <th key={kpi.key} className="text-center p-1.5 text-muted-foreground font-normal border-b border-white/10 min-w-[70px]">
                   {kpi.label}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {data.slice(0, 6).map((node) => (
+            {data.map((node) => (
               <tr key={node.nodeId} className="border-b border-white/5 last:border-0">
-                <td className="p-1.5 max-w-[120px] truncate">{node.nodeName}</td>
+                <td className="p-1.5 whitespace-nowrap">{node.nodeName}</td>
                 {kpis.map((kpi) => {
                   const value = node.avgKpiScores[kpi.key as keyof typeof node.avgKpiScores];
                   return (
