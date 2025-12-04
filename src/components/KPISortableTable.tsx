@@ -99,11 +99,11 @@ export function KPISortableTable({ data }: KPISortableTableProps) {
   };
 
   return (
-    <div className="relative bg-black/80 backdrop-blur-xl rounded-lg border border-white/10 overflow-hidden font-mono">
+    <div className="relative bg-black/80 backdrop-blur-xl rounded-lg border border-blue-500/20 overflow-hidden font-mono">
       {/* Header */}
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-white/10">
-        <BarChart3 className="w-4 h-4 text-muted-foreground" />
-        <span className="text-xs text-muted-foreground uppercase tracking-wider">KPI Analysis</span>
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-blue-500/20 bg-blue-500/5">
+        <BarChart3 className="w-4 h-4 text-blue-400" />
+        <span className="text-xs text-blue-400 uppercase tracking-wider">KPI Analysis</span>
         <span className="text-xs text-muted-foreground ml-auto">{data.length} nodes</span>
       </div>
 
@@ -124,7 +124,7 @@ export function KPISortableTable({ data }: KPISortableTableProps) {
                 onClick={() => handleSort('totalTexts')}
               >
                 <div className="flex items-center justify-end gap-1">
-                  N {getSortIcon('totalTexts')}
+                  Count {getSortIcon('totalTexts')}
                 </div>
               </TableHead>
               <TableHead 
@@ -132,7 +132,7 @@ export function KPISortableTable({ data }: KPISortableTableProps) {
                 onClick={() => handleSort('avgPolarity')}
               >
                 <div className="flex items-center justify-end gap-1">
-                  Pol {getSortIcon('avgPolarity')}
+                  Polarity {getSortIcon('avgPolarity')}
                 </div>
               </TableHead>
               <TableHead 
@@ -140,7 +140,7 @@ export function KPISortableTable({ data }: KPISortableTableProps) {
                 onClick={() => handleSort('trust')}
               >
                 <div className="flex items-center justify-end gap-1">
-                  Tru {getSortIcon('trust')}
+                  Trust {getSortIcon('trust')}
                 </div>
               </TableHead>
               <TableHead 
@@ -148,7 +148,7 @@ export function KPISortableTable({ data }: KPISortableTableProps) {
                 onClick={() => handleSort('optimism')}
               >
                 <div className="flex items-center justify-end gap-1">
-                  Opt {getSortIcon('optimism')}
+                  Optimism {getSortIcon('optimism')}
                 </div>
               </TableHead>
               <TableHead 
@@ -156,10 +156,10 @@ export function KPISortableTable({ data }: KPISortableTableProps) {
                 onClick={() => handleSort('frustration')}
               >
                 <div className="flex items-center justify-end gap-1">
-                  Fru {getSortIcon('frustration')}
+                  Frustration {getSortIcon('frustration')}
                 </div>
               </TableHead>
-              <TableHead className="text-xs">Dist</TableHead>
+              <TableHead className="text-xs">Distribution</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
