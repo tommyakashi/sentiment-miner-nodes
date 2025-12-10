@@ -459,10 +459,18 @@ export async function performSentimentAnalysisServer(
   }
 
   const allResults: SentimentResult[] = [];
+  let maxProgress = 10; // Track max progress to prevent going backwards
+  
+  const updateProgress = (newProgress: number) => {
+    if (newProgress > maxProgress) {
+      maxProgress = newProgress;
+      if (onProgress) onProgress(Math.round(maxProgress));
+    }
+  };
   
   try {
     if (onStatus) onStatus(`Starting analysis of ${texts.length} texts...`);
-    if (onProgress) onProgress(10);
+    updateProgress(10);
 
     const response = await fetch(`${SUPABASE_URL}/functions/v1/analyze-sentiment`, {
       method: 'POST',
@@ -523,8 +531,9 @@ export async function performSentimentAnalysisServer(
                   if (data.type === 'start') {
                     if (onStatus) onStatus(`Analyzing ${data.totalTexts} texts in ${data.totalBatches} batches...`);
                   } else if (data.type === 'batch_start') {
-                    const progress = 10 + ((data.batch - 1) / data.totalBatches) * 80;
-                    if (onProgress) onProgress(Math.round(progress));
+                    // Use processedCount for accurate progress
+                    const progress = 10 + ((data.processedCount || 0) / texts.length) * 80;
+                    updateProgress(progress);
                     if (onStatus) onStatus(`Processing batch ${data.batch}/${data.totalBatches}...`);
                   }
                   break;
@@ -534,8 +543,9 @@ export async function performSentimentAnalysisServer(
                   if (data.results && Array.isArray(data.results)) {
                     allResults.push(...data.results);
                   }
-                  const progress = 10 + (data.batch / data.totalBatches) * 80;
-                  if (onProgress) onProgress(Math.round(progress));
+                  // Use actual processed count for accurate progress
+                  const progress = 10 + (data.processedCount / data.totalCount) * 80;
+                  updateProgress(progress);
                   if (onStatus) onStatus(`Completed batch ${data.batch}/${data.totalBatches} (${data.processedCount}/${data.totalCount} texts)`);
                   console.log(`[Server] Batch ${data.batch} complete: ${data.results?.length || 0} results, total: ${allResults.length}`);
                   break;

@@ -28,7 +28,7 @@ interface SentimentResult {
   confidence: number;
 }
 
-const BATCH_SIZE = 25;
+const BATCH_SIZE = 50; // Larger batches for faster processing
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -138,7 +138,7 @@ serve(async (req) => {
                   { role: "user", content: userPrompt }
                 ],
                 temperature: 0.1,
-                max_tokens: 8000,
+                max_tokens: 16000, // Larger token limit for bigger batches
               }),
             });
 
