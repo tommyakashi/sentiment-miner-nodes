@@ -28,7 +28,23 @@ interface SentimentResult {
   confidence: number;
 }
 
-const BATCH_SIZE = 50; // Larger batches for faster processing
+interface AnalysisItem {
+  polarity: 'positive' | 'neutral' | 'negative';
+  polarityScore: number;
+  bestMatchingNodeId: string;
+  confidence: number;
+  kpiScores: {
+    trust: number;
+    optimism: number;
+    frustration: number;
+    clarity: number;
+    access: number;
+    fairness: number;
+  };
+}
+
+const BATCH_SIZE = 75; // Larger batches with tool calling reliability
+const PARALLEL_BATCHES = 2; // Process 2 batches concurrently
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -75,7 +91,7 @@ serve(async (req) => {
       });
     }
 
-    console.log(`[analyze-sentiment] Starting streaming analysis: ${texts.length} texts, ${nodes.length} nodes`);
+    console.log(`[analyze-sentiment] Starting parallel analysis: ${texts.length} texts, ${nodes.length} nodes, batch size ${BATCH_SIZE}, parallelism ${PARALLEL_BATCHES}`);
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
@@ -84,9 +100,51 @@ serve(async (req) => {
 
     // Create compact node list for prompt
     const nodesList = nodes.map(n => `${n.id}:${n.name}`).join(', ');
-    const systemPrompt = `Sentiment analyzer. For each text return JSON object with: polarity("positive"/"neutral"/"negative"), polarityScore(-1 to 1), bestMatchingNodeId(from: ${nodesList}), confidence(0-1), kpiScores{trust,optimism,frustration,clarity,access,fairness}(each -1 to 1). Return ONLY a JSON array, no markdown.`;
+    const systemPrompt = `You are a sentiment analyzer. Analyze each text and return structured data. Available nodes: ${nodesList}. For each text, determine: sentiment polarity, polarity score (-1 to 1), best matching node from the list, confidence (0-1), and KPI scores for trust, optimism, frustration, clarity, access, fairness (each -1 to 1).`;
 
     const totalBatches = Math.ceil(texts.length / BATCH_SIZE);
+
+    // Tool definition for structured output
+    const analysisTools = [
+      {
+        type: "function",
+        function: {
+          name: "submit_analysis_results",
+          description: "Submit the sentiment analysis results for all texts",
+          parameters: {
+            type: "object",
+            properties: {
+              results: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    polarity: { type: "string", enum: ["positive", "neutral", "negative"] },
+                    polarityScore: { type: "number", description: "Score from -1 (negative) to 1 (positive)" },
+                    bestMatchingNodeId: { type: "string", description: "ID of the best matching node" },
+                    confidence: { type: "number", description: "Confidence score from 0 to 1" },
+                    kpiScores: {
+                      type: "object",
+                      properties: {
+                        trust: { type: "number" },
+                        optimism: { type: "number" },
+                        frustration: { type: "number" },
+                        clarity: { type: "number" },
+                        access: { type: "number" },
+                        fairness: { type: "number" }
+                      },
+                      required: ["trust", "optimism", "frustration", "clarity", "access", "fairness"]
+                    }
+                  },
+                  required: ["polarity", "polarityScore", "bestMatchingNodeId", "confidence", "kpiScores"]
+                }
+              }
+            },
+            required: ["results"]
+          }
+        }
+      }
+    ];
 
     // Create streaming response using Server-Sent Events
     const stream = new ReadableStream({
@@ -107,22 +165,12 @@ serve(async (req) => {
 
         const allResults: SentimentResult[] = [];
 
-        for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
-          const startIdx = batchIndex * BATCH_SIZE;
-          const batchTexts = texts.slice(startIdx, startIdx + BATCH_SIZE);
-          
+        // Process a single batch with tool calling
+        async function processBatch(batchIndex: number, batchTexts: string[]): Promise<SentimentResult[]> {
           console.log(`[analyze-sentiment] Batch ${batchIndex + 1}/${totalBatches} (${batchTexts.length} texts)`);
           
-          // Send batch progress
-          sendEvent('progress', { 
-            type: 'batch_start', 
-            batch: batchIndex + 1, 
-            totalBatches,
-            processedCount: allResults.length
-          });
-
-          const textsForPrompt = batchTexts.map((t, i) => `${i}:"${t.slice(0, 200)}"`).join('\n');
-          const userPrompt = `Analyze ${batchTexts.length} texts:\n${textsForPrompt}`;
+          const textsForPrompt = batchTexts.map((t, i) => `[${i}] "${t.slice(0, 250)}"`).join('\n');
+          const userPrompt = `Analyze these ${batchTexts.length} texts and call submit_analysis_results with one result per text:\n${textsForPrompt}`;
 
           try {
             const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -137,85 +185,66 @@ serve(async (req) => {
                   { role: "system", content: systemPrompt },
                   { role: "user", content: userPrompt }
                 ],
-                temperature: 0.1,
-                max_tokens: 16000, // Larger token limit for bigger batches
+                tools: analysisTools,
+                tool_choice: { type: "function", function: { name: "submit_analysis_results" } },
+                max_tokens: 20000,
               }),
             });
 
             if (!response.ok) {
               const errorText = await response.text();
-              console.error(`[analyze-sentiment] AI error: ${response.status} - ${errorText}`);
+              console.error(`[analyze-sentiment] AI error batch ${batchIndex + 1}: ${response.status} - ${errorText}`);
               
               if (response.status === 429) {
-                sendEvent('error', { 
-                  type: 'rate_limit', 
-                  message: 'Rate limited, returning partial results',
-                  partialResults: allResults.length
-                });
-                break;
+                throw new Error('rate_limit');
               }
               if (response.status === 402) {
-                sendEvent('error', { 
-                  type: 'credits_exhausted', 
-                  message: 'AI credits exhausted'
-                });
-                break;
+                throw new Error('credits_exhausted');
               }
               throw new Error(`AI request failed: ${response.status}`);
             }
 
-            let data: any;
-            try {
-              data = await response.json();
-            } catch (jsonErr) {
-              console.error(`[analyze-sentiment] Failed to parse AI response as JSON:`, jsonErr);
-              data = { choices: [{ message: { content: '[]' } }] };
+            const data = await response.json();
+            
+            // Extract results from tool call
+            let parsed: AnalysisItem[] = [];
+            const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+            
+            if (toolCall?.function?.arguments) {
+              try {
+                const args = JSON.parse(toolCall.function.arguments);
+                parsed = args.results || [];
+                console.log(`[analyze-sentiment] Batch ${batchIndex + 1} tool call: ${parsed.length} results`);
+              } catch (toolParseError) {
+                console.error(`[analyze-sentiment] Tool parse error batch ${batchIndex + 1}:`, toolParseError);
+              }
             }
             
-            const content = data.choices?.[0]?.message?.content || '';
-            
-            // Parse JSON from response
-            let parsed: any[];
-            try {
-              let jsonStr = content.trim();
-              
-              if (jsonStr.includes('```')) {
-                const match = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
-                if (match && match[1]) {
-                  jsonStr = match[1].trim();
-                } else {
-                  jsonStr = jsonStr.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+            // Fallback: try to extract from content if tool call failed
+            if (parsed.length === 0) {
+              const content = data.choices?.[0]?.message?.content || '';
+              if (content) {
+                try {
+                  let jsonStr = content.trim();
+                  if (jsonStr.includes('```')) {
+                    const match = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+                    if (match && match[1]) jsonStr = match[1].trim();
+                  }
+                  const arrayMatch = jsonStr.match(/\[[\s\S]*\]/);
+                  if (arrayMatch) jsonStr = arrayMatch[0];
+                  parsed = JSON.parse(jsonStr);
+                  console.log(`[analyze-sentiment] Batch ${batchIndex + 1} content fallback: ${parsed.length} results`);
+                } catch {
+                  console.error(`[analyze-sentiment] Fallback parse failed batch ${batchIndex + 1}`);
                 }
               }
-              
-              const arrayMatch = jsonStr.match(/\[[\s\S]*\]/);
-              if (arrayMatch) {
-                jsonStr = arrayMatch[0];
-              }
-              
-              parsed = JSON.parse(jsonStr);
-              
-              if (!Array.isArray(parsed)) {
-                throw new Error('Response is not an array');
-              }
-              
-              console.log(`[analyze-sentiment] Batch ${batchIndex + 1} parsed: ${parsed.length} results`);
-            } catch (parseError) {
-              console.error(`[analyze-sentiment] Parse error batch ${batchIndex + 1}:`, parseError);
-              parsed = batchTexts.map(() => ({
-                polarity: 'neutral',
-                polarityScore: 0,
-                bestMatchingNodeId: nodes[0].id,
-                confidence: 0.3,
-                kpiScores: { trust: 0, optimism: 0, frustration: 0, clarity: 0, access: 0, fairness: 0 }
-              }));
             }
 
             // Map parsed results to full SentimentResult objects
             const batchResults: SentimentResult[] = [];
             for (let i = 0; i < batchTexts.length; i++) {
               const result = parsed[i] || {
-                polarity: 'neutral',
+                polarity: 'neutral' as const,
                 polarityScore: 0,
                 bestMatchingNodeId: nodes[0].id,
                 confidence: 0.3,
@@ -242,28 +271,79 @@ serve(async (req) => {
               });
             }
 
-            allResults.push(...batchResults);
-
-            // Stream batch results immediately
-            sendEvent('batch_complete', { 
-              batch: batchIndex + 1, 
-              totalBatches,
-              results: batchResults,
-              processedCount: allResults.length,
-              totalCount: texts.length
-            });
-
+            return batchResults;
           } catch (batchError) {
             console.error(`[analyze-sentiment] Batch ${batchIndex + 1} error:`, batchError);
-            sendEvent('batch_error', { 
+            throw batchError;
+          }
+        }
+
+        // Process batches in parallel groups
+        let rateLimited = false;
+        let creditsExhausted = false;
+
+        for (let groupStart = 0; groupStart < totalBatches && !rateLimited && !creditsExhausted; groupStart += PARALLEL_BATCHES) {
+          const groupEnd = Math.min(groupStart + PARALLEL_BATCHES, totalBatches);
+          const batchPromises: Promise<{ batchIndex: number; results: SentimentResult[] }>[] = [];
+
+          // Create batch promises for this parallel group
+          for (let batchIndex = groupStart; batchIndex < groupEnd; batchIndex++) {
+            const startIdx = batchIndex * BATCH_SIZE;
+            const batchTexts = texts.slice(startIdx, startIdx + BATCH_SIZE);
+            
+            // Send batch progress
+            sendEvent('progress', { 
+              type: 'batch_start', 
               batch: batchIndex + 1, 
-              error: batchError instanceof Error ? batchError.message : 'Unknown error'
+              totalBatches,
+              processedCount: allResults.length
             });
+
+            batchPromises.push(
+              processBatch(batchIndex, batchTexts)
+                .then(results => ({ batchIndex, results }))
+                .catch(error => {
+                  if (error.message === 'rate_limit') {
+                    rateLimited = true;
+                    sendEvent('error', { 
+                      type: 'rate_limit', 
+                      message: 'Rate limited, returning partial results',
+                      partialResults: allResults.length
+                    });
+                  } else if (error.message === 'credits_exhausted') {
+                    creditsExhausted = true;
+                    sendEvent('error', { 
+                      type: 'credits_exhausted', 
+                      message: 'AI credits exhausted'
+                    });
+                  } else {
+                    sendEvent('batch_error', { 
+                      batch: batchIndex + 1, 
+                      error: error.message 
+                    });
+                  }
+                  return { batchIndex, results: [] };
+                })
+            );
           }
 
-          // Small delay between batches
-          if (batchIndex < totalBatches - 1) {
-            await new Promise(resolve => setTimeout(resolve, 200));
+          // Wait for all batches in this parallel group
+          const batchResultsArray = await Promise.all(batchPromises);
+
+          // Process results in order
+          for (const { batchIndex, results } of batchResultsArray.sort((a, b) => a.batchIndex - b.batchIndex)) {
+            if (results.length > 0) {
+              allResults.push(...results);
+              
+              // Stream batch results
+              sendEvent('batch_complete', { 
+                batch: batchIndex + 1, 
+                totalBatches,
+                results: results,
+                processedCount: allResults.length,
+                totalCount: texts.length
+              });
+            }
           }
         }
 
