@@ -439,14 +439,14 @@ export async function performSentimentAnalysis(
   }
 }
 
-// Server-side sentiment analysis using Lovable AI
+// Server-side sentiment analysis using Lovable AI with SSE streaming
 export async function performSentimentAnalysisServer(
   texts: string[],
   nodes: Node[],
   onProgress?: (progress: number) => void,
   onStatus?: (status: string) => void
 ): Promise<SentimentResult[]> {
-  console.log(`[Server] Starting sentiment analysis: ${texts.length} texts, ${nodes.length} nodes`);
+  console.log(`[Server] Starting streaming sentiment analysis: ${texts.length} texts, ${nodes.length} nodes`);
   
   if (onStatus) onStatus('Connecting to AI service...');
   if (onProgress) onProgress(5);
@@ -458,82 +458,127 @@ export async function performSentimentAnalysisServer(
     throw new Error('Supabase configuration missing');
   }
 
-  // Estimate batches for progress calculation
-  const estimatedBatches = Math.ceil(texts.length / 25);
-  const progressPerBatch = 70 / estimatedBatches;
+  const allResults: SentimentResult[] = [];
   
   try {
-    if (onStatus) onStatus(`Analyzing ${texts.length} texts...`);
+    if (onStatus) onStatus(`Starting analysis of ${texts.length} texts...`);
     if (onProgress) onProgress(10);
 
-    // Simulate batch progress while waiting for response
-    let progressValue = 10;
-    let simulatedBatch = 0;
-    const progressInterval = setInterval(() => {
-      if (simulatedBatch < estimatedBatches) {
-        simulatedBatch++;
-        progressValue = 10 + (simulatedBatch * progressPerBatch);
-        if (onStatus) onStatus(`Processing batch ${simulatedBatch}/${estimatedBatches}...`);
-        if (onProgress) onProgress(Math.min(progressValue, 85));
-      }
-    }, 7000); // ~7s per batch based on logs
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/analyze-sentiment`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+      },
+      body: JSON.stringify({ texts, nodes }),
+    });
 
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 min timeout
-
-      const response = await fetch(`${SUPABASE_URL}/functions/v1/analyze-sentiment`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${SUPABASE_KEY}`,
-        },
-        body: JSON.stringify({ texts, nodes }),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-      clearInterval(progressInterval);
-
-      if (onStatus) onStatus('Receiving response...');
-      if (onProgress) onProgress(88);
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        
-        if (response.status === 429) {
-          throw new Error('Rate limit exceeded. Please wait a moment and try again.');
-        }
-        if (response.status === 402) {
-          throw new Error('AI credits exhausted. Please add credits to continue.');
-        }
-        
-        throw new Error(errorData.error || `Analysis failed: ${response.status}`);
-      }
-
-      if (onStatus) onStatus('Processing results...');
-      if (onProgress) onProgress(92);
-
-      const data = await response.json();
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
       
-      if (!data.results || !Array.isArray(data.results)) {
-        console.error('[Server] Invalid response structure:', data);
-        throw new Error('Invalid response from analysis service');
+      if (response.status === 429) {
+        throw new Error('Rate limit exceeded. Please wait a moment and try again.');
       }
-
-      if (onStatus) onStatus('Finalizing...');
-      if (onProgress) onProgress(98);
-
-      console.log(`[Server] Analysis complete: ${data.results.length} results`);
+      if (response.status === 402) {
+        throw new Error('AI credits exhausted. Please add credits to continue.');
+      }
       
-      return data.results as SentimentResult[];
-    } catch (fetchError) {
-      clearInterval(progressInterval);
-      if (fetchError instanceof Error && fetchError.name === 'AbortError') {
-        throw new Error('Analysis timed out. Try with fewer texts or check your connection.');
-      }
-      throw fetchError;
+      throw new Error(errorData.error || `Analysis failed: ${response.status}`);
     }
+
+    // Handle SSE streaming response
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error('No response stream available');
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+
+      // Process complete SSE events
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || ''; // Keep incomplete line in buffer
+
+      let currentEvent = '';
+      let currentData = '';
+
+      for (const line of lines) {
+        if (line.startsWith('event: ')) {
+          currentEvent = line.slice(7).trim();
+        } else if (line.startsWith('data: ')) {
+          currentData = line.slice(6).trim();
+          
+          if (currentEvent && currentData) {
+            try {
+              const data = JSON.parse(currentData);
+              
+              switch (currentEvent) {
+                case 'progress':
+                  if (data.type === 'start') {
+                    if (onStatus) onStatus(`Analyzing ${data.totalTexts} texts in ${data.totalBatches} batches...`);
+                  } else if (data.type === 'batch_start') {
+                    const progress = 10 + ((data.batch - 1) / data.totalBatches) * 80;
+                    if (onProgress) onProgress(Math.round(progress));
+                    if (onStatus) onStatus(`Processing batch ${data.batch}/${data.totalBatches}...`);
+                  }
+                  break;
+                  
+                case 'batch_complete':
+                  // Add batch results to accumulated results
+                  if (data.results && Array.isArray(data.results)) {
+                    allResults.push(...data.results);
+                  }
+                  const progress = 10 + (data.batch / data.totalBatches) * 80;
+                  if (onProgress) onProgress(Math.round(progress));
+                  if (onStatus) onStatus(`Completed batch ${data.batch}/${data.totalBatches} (${data.processedCount}/${data.totalCount} texts)`);
+                  console.log(`[Server] Batch ${data.batch} complete: ${data.results?.length || 0} results, total: ${allResults.length}`);
+                  break;
+                  
+                case 'batch_error':
+                  console.error(`[Server] Batch ${data.batch} error:`, data.error);
+                  break;
+                  
+                case 'error':
+                  if (data.type === 'rate_limit') {
+                    console.warn('[Server] Rate limited, returning partial results');
+                    if (onStatus) onStatus('Rate limited - returning partial results');
+                  } else if (data.type === 'credits_exhausted') {
+                    throw new Error('AI credits exhausted. Please add credits to continue.');
+                  }
+                  break;
+                  
+                case 'complete':
+                  // Final results - use these if we didn't accumulate from batches
+                  if (allResults.length === 0 && data.results) {
+                    allResults.push(...data.results);
+                  }
+                  if (onProgress) onProgress(95);
+                  if (onStatus) onStatus(`Analysis complete: ${data.processedCount} texts in ${Math.round(data.executionTimeMs / 1000)}s`);
+                  console.log(`[Server] Analysis complete: ${data.processedCount} results in ${data.executionTimeMs}ms`);
+                  break;
+              }
+            } catch (parseError) {
+              console.warn('[Server] Failed to parse SSE data:', currentData);
+            }
+          }
+          currentEvent = '';
+          currentData = '';
+        }
+      }
+    }
+
+    if (onStatus) onStatus('Finalizing...');
+    if (onProgress) onProgress(98);
+
+    console.log(`[Server] Streaming complete: ${allResults.length} total results`);
+    
+    return allResults;
   } catch (error) {
     console.error('[Server] Sentiment analysis error:', error);
     throw error;
