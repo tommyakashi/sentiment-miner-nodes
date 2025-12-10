@@ -41,7 +41,7 @@ export function NodeSelectionPage({ nodes, onContinue }: NodeSelectionPageProps)
     <div className="flex flex-col items-center justify-center min-h-[60vh] w-full max-w-2xl mx-auto px-4 animate-fade-in">
       {/* Header */}
       <div className="text-center mb-12">
-        <h1 className="text-3xl font-mono font-bold text-foreground tracking-tight mb-3">
+        <h1 className="text-3xl font-display font-bold text-foreground tracking-wider mb-3 glow-text">
           Configure Analysis
         </h1>
         <p className="text-muted-foreground font-mono text-sm">

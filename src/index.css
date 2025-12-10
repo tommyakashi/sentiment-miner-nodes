@@ -2,116 +2,120 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Uber-Inspired Design System
-   Clean, minimal, high-contrast monochromatic palette
+/* Futuristic Sci-Fi Design System
+   Cyan accents, glow effects, high-tech aesthetic
    All colors MUST be HSL.
 */
 
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
 @layer base {
   :root {
-    /* Core - Pure black foundation */
-    --background: 0 0% 4%;
+    /* Core - Deep space black */
+    --background: 220 20% 4%;
     --foreground: 0 0% 98%;
 
-    /* Cards - Dark gray surfaces */
-    --card: 0 0% 8%;
+    /* Cards - Dark surfaces with slight blue tint */
+    --card: 220 15% 8%;
     --card-foreground: 0 0% 98%;
 
-    --popover: 0 0% 10%;
+    --popover: 220 15% 10%;
     --popover-foreground: 0 0% 98%;
 
-    /* Primary - Pure white */
-    --primary: 0 0% 100%;
-    --primary-foreground: 0 0% 4%;
+    /* Primary - Cyan glow */
+    --primary: 185 100% 50%;
+    --primary-foreground: 220 20% 4%;
 
-    /* Secondary - Neutral gray */
-    --secondary: 0 0% 12%;
-    --secondary-foreground: 0 0% 85%;
+    /* Secondary - Muted cyan */
+    --secondary: 200 30% 12%;
+    --secondary-foreground: 185 60% 80%;
 
     /* Muted - Subtle backgrounds */
-    --muted: 0 0% 12%;
-    --muted-foreground: 0 0% 55%;
+    --muted: 220 15% 12%;
+    --muted-foreground: 200 20% 55%;
 
-    /* Accent - Same as primary */
-    --accent: 0 0% 100%;
-    --accent-foreground: 0 0% 4%;
+    /* Accent - Bright cyan */
+    --accent: 185 100% 60%;
+    --accent-foreground: 220 20% 4%;
 
     --destructive: 0 65% 50%;
     --destructive-foreground: 0 0% 100%;
 
     /* Borders and inputs */
-    --border: 0 0% 18%;
-    --input: 0 0% 14%;
-    --ring: 0 0% 100%;
+    --border: 200 30% 18%;
+    --input: 220 15% 14%;
+    --ring: 185 100% 50%;
 
-    --radius: 0.75rem;
+    --radius: 0.5rem;
 
-    /* Sentiment colors - Clean, distinct */
+    /* Sentiment colors */
     --sentiment-positive: 145 60% 45%;
     --sentiment-neutral: 45 10% 55%;
     --sentiment-negative: 0 65% 50%;
 
-    /* Chart colors - Monochromatic grayscale */
-    --chart-1: 0 0% 100%;
-    --chart-2: 0 0% 70%;
-    --chart-3: 0 0% 50%;
-    --chart-4: 0 0% 35%;
-    --chart-5: 0 0% 25%;
+    /* Chart colors - Cyan gradient */
+    --chart-1: 185 100% 60%;
+    --chart-2: 185 80% 50%;
+    --chart-3: 200 60% 45%;
+    --chart-4: 210 50% 40%;
+    --chart-5: 220 40% 35%;
 
-    /* Shadows - Subtle, no glows */
-    --shadow-card: 0 4px 12px -4px hsl(0 0% 0% / 0.4);
-    --shadow-elevated: 0 8px 24px -8px hsl(0 0% 0% / 0.5);
+    /* Glow effects */
+    --glow-primary: 0 0 20px hsl(185 100% 50% / 0.4);
+    --glow-intense: 0 0 30px hsl(185 100% 50% / 0.6), 0 0 60px hsl(185 100% 50% / 0.3);
+    --shadow-card: 0 4px 20px -4px hsl(185 100% 50% / 0.1), 0 0 40px -10px hsl(185 100% 50% / 0.05);
+    --shadow-elevated: 0 8px 32px -8px hsl(0 0% 0% / 0.5), 0 0 60px -20px hsl(185 100% 50% / 0.15);
 
     /* Transitions */
     --transition-smooth: all 0.2s ease;
 
-    /* Grid overlay - Very subtle */
-    --grid-color: hsl(0 0% 50% / 0.02);
+    /* Grid overlay */
+    --grid-color: hsl(185 100% 50% / 0.03);
   }
 
   /* Dark mode is the default */
   .dark {
-    --background: 0 0% 4%;
+    --background: 220 20% 4%;
     --foreground: 0 0% 98%;
-    --card: 0 0% 8%;
+    --card: 220 15% 8%;
     --card-foreground: 0 0% 98%;
-    --popover: 0 0% 10%;
+    --popover: 220 15% 10%;
     --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 100%;
-    --primary-foreground: 0 0% 4%;
-    --secondary: 0 0% 12%;
-    --secondary-foreground: 0 0% 85%;
-    --muted: 0 0% 12%;
-    --muted-foreground: 0 0% 55%;
-    --accent: 0 0% 100%;
-    --accent-foreground: 0 0% 4%;
+    --primary: 185 100% 50%;
+    --primary-foreground: 220 20% 4%;
+    --secondary: 200 30% 12%;
+    --secondary-foreground: 185 60% 80%;
+    --muted: 220 15% 12%;
+    --muted-foreground: 200 20% 55%;
+    --accent: 185 100% 60%;
+    --accent-foreground: 220 20% 4%;
     --destructive: 0 65% 50%;
     --destructive-foreground: 0 0% 100%;
-    --border: 0 0% 18%;
-    --input: 0 0% 14%;
-    --ring: 0 0% 100%;
+    --border: 200 30% 18%;
+    --input: 220 15% 14%;
+    --ring: 185 100% 50%;
   }
 
-  /* Light mode */
+  /* Light mode - Keep dark for futuristic feel */
   .light {
-    --background: 0 0% 100%;
-    --foreground: 0 0% 8%;
-    --card: 0 0% 98%;
-    --card-foreground: 0 0% 8%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 8%;
-    --primary: 0 0% 8%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 0 0% 94%;
-    --secondary-foreground: 0 0% 20%;
-    --muted: 0 0% 96%;
-    --muted-foreground: 0 0% 45%;
-    --accent: 0 0% 8%;
-    --accent-foreground: 0 0% 100%;
-    --border: 0 0% 88%;
-    --input: 0 0% 92%;
-    --ring: 0 0% 8%;
-    --grid-color: hsl(0 0% 50% / 0.03);
+    --background: 220 20% 4%;
+    --foreground: 0 0% 98%;
+    --card: 220 15% 8%;
+    --card-foreground: 0 0% 98%;
+    --popover: 220 15% 10%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 185 100% 50%;
+    --primary-foreground: 220 20% 4%;
+    --secondary: 200 30% 12%;
+    --secondary-foreground: 185 60% 80%;
+    --muted: 220 15% 12%;
+    --muted-foreground: 200 20% 55%;
+    --accent: 185 100% 60%;
+    --accent-foreground: 220 20% 4%;
+    --border: 200 30% 18%;
+    --input: 220 15% 14%;
+    --ring: 185 100% 50%;
+    --grid-color: hsl(185 100% 50% / 0.03);
   }
 }
 
@@ -125,7 +129,7 @@
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 
-  /* Grid overlay pattern - subtle */
+  /* Futuristic grid overlay */
   .observatory-grid {
     background-image: 
       linear-gradient(var(--grid-color) 1px, transparent 1px),
@@ -133,7 +137,7 @@
     background-size: 40px 40px;
   }
 
-  /* Data visualization card */
+  /* Futuristic card with glow */
   .data-card {
     @apply bg-card border border-border rounded-lg;
     box-shadow: var(--shadow-card);
@@ -141,12 +145,24 @@
   }
 
   .data-card:hover {
-    border-color: hsl(var(--primary) / 0.3);
+    border-color: hsl(var(--primary) / 0.5);
+    box-shadow: var(--glow-primary);
+  }
+
+  /* Glow text effect */
+  .glow-text {
+    text-shadow: 0 0 10px hsl(var(--primary) / 0.5), 0 0 20px hsl(var(--primary) / 0.3);
+  }
+
+  /* Glow border effect */
+  .glow-border {
+    box-shadow: 0 0 10px hsl(var(--primary) / 0.3), inset 0 0 10px hsl(var(--primary) / 0.1);
   }
 
   /* Status indicators */
   .status-dot {
     @apply w-2 h-2 rounded-full;
+    box-shadow: 0 0 6px currentColor;
   }
 
   .status-dot-positive {

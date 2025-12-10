@@ -28,7 +28,7 @@ export function SourceSelector({ onSelect, onBack }: SourceSelectorProps) {
 
       {/* Header */}
       <div className="text-center mb-12">
-        <h1 className="text-3xl font-mono font-bold text-foreground tracking-tight mb-3">
+        <h1 className="text-3xl font-display font-bold text-foreground tracking-wider mb-3 glow-text">
           Choose Data Source
         </h1>
         <p className="text-muted-foreground font-mono text-sm">
