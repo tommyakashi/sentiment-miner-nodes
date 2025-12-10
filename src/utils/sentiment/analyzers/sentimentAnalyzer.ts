@@ -458,20 +458,30 @@ export async function performSentimentAnalysisServer(
     throw new Error('Supabase configuration missing');
   }
 
+  // Estimate batches for progress calculation
+  const estimatedBatches = Math.ceil(texts.length / 25);
+  const progressPerBatch = 70 / estimatedBatches;
+  
   try {
     if (onStatus) onStatus(`Analyzing ${texts.length} texts...`);
-    if (onProgress) onProgress(15);
+    if (onProgress) onProgress(10);
 
-    // Start a simulated progress ticker while waiting
-    let progressValue = 15;
+    // Simulate batch progress while waiting for response
+    let progressValue = 10;
+    let simulatedBatch = 0;
     const progressInterval = setInterval(() => {
-      if (progressValue < 80) {
-        progressValue += Math.random() * 3;
-        if (onProgress) onProgress(Math.min(progressValue, 80));
+      if (simulatedBatch < estimatedBatches) {
+        simulatedBatch++;
+        progressValue = 10 + (simulatedBatch * progressPerBatch);
+        if (onStatus) onStatus(`Processing batch ${simulatedBatch}/${estimatedBatches}...`);
+        if (onProgress) onProgress(Math.min(progressValue, 85));
       }
-    }, 1000);
+    }, 7000); // ~7s per batch based on logs
 
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 min timeout
+
       const response = await fetch(`${SUPABASE_URL}/functions/v1/analyze-sentiment`, {
         method: 'POST',
         headers: {
@@ -479,9 +489,14 @@ export async function performSentimentAnalysisServer(
           'Authorization': `Bearer ${SUPABASE_KEY}`,
         },
         body: JSON.stringify({ texts, nodes }),
+        signal: controller.signal,
       });
 
+      clearTimeout(timeoutId);
       clearInterval(progressInterval);
+
+      if (onStatus) onStatus('Receiving response...');
+      if (onProgress) onProgress(88);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
@@ -497,22 +512,26 @@ export async function performSentimentAnalysisServer(
       }
 
       if (onStatus) onStatus('Processing results...');
-      if (onProgress) onProgress(85);
+      if (onProgress) onProgress(92);
 
       const data = await response.json();
       
       if (!data.results || !Array.isArray(data.results)) {
+        console.error('[Server] Invalid response structure:', data);
         throw new Error('Invalid response from analysis service');
       }
 
       if (onStatus) onStatus('Finalizing...');
-      if (onProgress) onProgress(95);
+      if (onProgress) onProgress(98);
 
       console.log(`[Server] Analysis complete: ${data.results.length} results`);
       
       return data.results as SentimentResult[];
     } catch (fetchError) {
       clearInterval(progressInterval);
+      if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+        throw new Error('Analysis timed out. Try with fewer texts or check your connection.');
+      }
       throw fetchError;
     }
   } catch (error) {
