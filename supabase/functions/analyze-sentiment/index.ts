@@ -98,9 +98,22 @@ serve(async (req) => {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
-    // Create compact node list for prompt
-    const nodesList = nodes.map(n => `${n.id}:${n.name}`).join(', ');
-    const systemPrompt = `You are a sentiment analyzer. Analyze each text and return structured data. Available nodes: ${nodesList}. For each text, determine: sentiment polarity, polarity score (-1 to 1), best matching node from the list, confidence (0-1), and KPI scores for trust, optimism, frustration, clarity, access, fairness (each -1 to 1).`;
+    // Create detailed node list with keywords for better matching
+    const nodesList = nodes.map(n => `- ${n.id}: "${n.name}" (keywords: ${n.keywords.slice(0, 5).join(', ')})`).join('\n');
+    const nodeIds = nodes.map(n => n.id).join(', ');
+    const systemPrompt = `You are a sentiment analyzer that categorizes research-related texts into thematic nodes.
+
+AVAILABLE NODES (you MUST use one of these exact IDs for bestMatchingNodeId):
+${nodesList}
+
+CRITICAL: Distribute texts across ALL relevant nodes based on their actual content. Each text should match the node whose theme is most relevant to the text's subject matter. Do NOT default to just one node.
+
+For each text, determine:
+1. bestMatchingNodeId: Choose from [${nodeIds}] based on which theme the text discusses
+2. polarity: "positive", "neutral", or "negative"
+3. polarityScore: -1 (very negative) to +1 (very positive)
+4. confidence: 0 to 1
+5. kpiScores: trust, optimism, frustration, clarity, access, fairness (each -1 to +1)`;
 
     const totalBatches = Math.ceil(texts.length / BATCH_SIZE);
 
