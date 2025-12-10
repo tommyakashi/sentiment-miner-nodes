@@ -268,7 +268,7 @@ const Index = () => {
       case 'source':
         return (
           <div className={`relative z-10 w-full transition-all duration-300 ${isTransitioning ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}>
-            <SourceSelector onSelect={handleSourceSelect} />
+            <SourceSelector onSelect={handleSourceSelect} onBack={() => transitionToStep('nodes')} />
           </div>
         );
 
