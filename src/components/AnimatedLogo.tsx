@@ -6,7 +6,7 @@ const AnimatedLogo = () => {
       <img
         src={tbgLogo}
         alt="TBG Logo"
-        className="h-32 md:h-48 w-auto animate-logo-glow"
+        className="h-40 w-auto animate-logo-glow"
       />
     </div>
   );
