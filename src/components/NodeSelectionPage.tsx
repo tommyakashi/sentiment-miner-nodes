@@ -54,11 +54,11 @@ export function NodeSelectionPage({ nodes, onContinue }: NodeSelectionPageProps)
         {/* Use All Nodes - Primary Action */}
         <button
           onClick={handleUseAll}
-          className="w-full group relative p-6 rounded-xl border border-border/50 bg-card/60 backdrop-blur-sm hover:border-primary/30 hover:bg-card/80 transition-all duration-300"
+          className="w-full group relative p-6 rounded-xl border border-border/50 bg-card/60 backdrop-blur-sm hover:border-primary/30 hover:bg-card/80 transition-all duration-300 hover:scale-[1.02] hover:shadow-lg"
         >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center">
+              <div className="w-12 h-12 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
                 <Zap className="w-6 h-6 text-primary" />
               </div>
               <div className="text-left">
