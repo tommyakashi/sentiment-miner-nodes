@@ -1,108 +1,48 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { NodeManager } from '@/components/NodeManager';
-import { RedditScraper } from '@/components/RedditScraper';
-import { ScrapeHistory } from '@/components/ScrapeHistory';
-import { PaperScraper } from '@/components/PaperScraper';
-import { PaperHistory } from '@/components/PaperHistory';
-import { PaperResults } from '@/components/PaperResults';
-import { SentimentScore } from '@/components/SentimentScore';
-import { SentimentChart } from '@/components/SentimentChart';
-import { ParticipantsList } from '@/components/ParticipantsList';
-import { TopicsList } from '@/components/TopicsList';
-import { KPISortableTable } from '@/components/KPISortableTable';
-import { KPIRadarChart } from '@/components/KPIRadarChart';
-import { KPIHeatmap } from '@/components/KPIHeatmap';
-import { ExemplarQuotes } from '@/components/ExemplarQuotes';
-import { SourceDistribution } from '@/components/SourceDistribution';
-import { ConfidenceDistribution } from '@/components/ConfidenceDistribution';
-import { TopPosts } from '@/components/TopPosts';
-import { InsightButton } from '@/components/InsightButton';
-import { ParticleBackground } from '@/components/ParticleBackground';
-import { FloatingWindow } from '@/components/FloatingWindow';
-import { WindowTabs, TabId } from '@/components/WindowTabs';
-import { ModeSelector, ModeId } from '@/components/ModeSelector';
-import { ManualUpload } from '@/components/ManualUpload';
+import { NodeSelectionPage } from '@/components/NodeSelectionPage';
+import { SourceSelector, SourceType } from '@/components/SourceSelector';
+import { RedditScraperSimplified } from '@/components/RedditScraperSimplified';
+import { PaperScraperSimplified } from '@/components/PaperScraperSimplified';
+import { ResultsPage } from '@/components/ResultsPage';
+import { ArchivePage } from '@/components/ArchivePage';
 import { AnalysisLoadingOverlay } from '@/components/AnalysisLoadingOverlay';
 import AnimatedLogo from '@/components/AnimatedLogo';
-import { TutorialSequence } from '@/components/TutorialSequence';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { ParticleBackground } from '@/components/ParticleBackground';
 import { useToast } from '@/hooks/use-toast';
 import { performSentimentAnalysisServer, aggregateNodeAnalysis } from '@/utils/sentiment/analyzers/sentimentAnalyzer';
 import { parseRedditJSON, extractTimeSeriesData } from '@/utils/redditParser';
 import type { Node, SentimentResult, NodeAnalysis } from '@/types/sentiment';
 import type { RedditData, RedditPost } from '@/types/reddit';
 import type { AcademicPaper } from '@/types/paper';
-import { Activity, Zap, BookOpen } from 'lucide-react';
+
+// App Flow Steps
+type AppStep = 'intro' | 'nodes' | 'source' | 'scraper' | 'loading' | 'results' | 'archive';
 
 const Index = () => {
-  const [showIntro, setShowIntro] = useState(true);
+  // Flow state
+  const [currentStep, setCurrentStep] = useState<AppStep>('intro');
+  const [selectedNodes, setSelectedNodes] = useState<Node[]>([]);
+  const [selectedSource, setSelectedSource] = useState<SourceType | null>(null);
+
+  // Intro animation state
+  const [logoVisible, setLogoVisible] = useState(false);
   const [introFading, setIntroFading] = useState(false);
-  const [showTutorial, setShowTutorial] = useState(false);
-  const [selectedMode, setSelectedMode] = useState<ModeId | null>(null);
-  const [activeTab, setActiveTab] = useState<TabId>('scanner');
-  const [isModeTransitioning, setIsModeTransitioning] = useState(false);
-  const [nodes, setNodes] = useState<Node[]>([]);
+
+  // Analysis state
   const [results, setResults] = useState<SentimentResult[]>([]);
   const [nodeAnalysis, setNodeAnalysis] = useState<NodeAnalysis[]>([]);
   const [timeSeriesData, setTimeSeriesData] = useState<any[]>([]);
-  const [participants, setParticipants] = useState<any[]>([]);
   const [overallSentiment, setOverallSentiment] = useState<number>(0);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [showWindow, setShowWindow] = useState(true);
-  const [isWindowHiding, setIsWindowHiding] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [currentStep, setCurrentStep] = useState(1);
-  const [analysisStatus, setAnalysisStatus] = useState<string>('');
   const [sources, setSources] = useState<Array<{ name: string; value: number }>>([]);
-  const [stagedContent, setStagedContent] = useState<any[]>([]);
-  const [isDataReady, setIsDataReady] = useState(false);
-  const [modelsPreloaded, setModelsPreloaded] = useState(false);
-  const [scrapedPosts, setScrapedPosts] = useState<RedditPost[]>([]);
-  const [scrapedPapers, setScrapedPapers] = useState<AcademicPaper[]>([]);
-  const [paperResults, setPaperResults] = useState<SentimentResult[]>([]);
-  const [paperNodeAnalysis, setPaperNodeAnalysis] = useState<NodeAnalysis[]>([]);
-  const [paperOverallSentiment, setPaperOverallSentiment] = useState<number>(0);
-  const [isPaperDataReady, setIsPaperDataReady] = useState(false);
+
+  // Loading overlay state
+  const [progress, setProgress] = useState(0);
+  const [loadingStep, setLoadingStep] = useState(1);
+  const [analysisStatus, setAnalysisStatus] = useState<string>('');
+  const [scrapedDataCount, setScrapedDataCount] = useState(0);
+
   const { toast } = useToast();
-
-  // Intro splash screen timer - starts pitch black, logo fades in
-  const [logoVisible, setLogoVisible] = useState(false);
-  
-  useEffect(() => {
-    if (showIntro) {
-      // Always show tutorial prompt (no localStorage check)
-      
-      // Logo fades in after brief black screen
-      const showLogoTimer = setTimeout(() => {
-        setLogoVisible(true);
-      }, 300); // Brief black pause
-      
-      const fadeTimer = setTimeout(() => {
-        setIntroFading(true);
-      }, 3200); // Start fading at 3.2s (giving logo 2.9s visible)
-      
-      const hideTimer = setTimeout(() => {
-        setShowIntro(false);
-        setIntroFading(false);
-        // Always show tutorial prompt
-        setShowTutorial(true);
-      }, 4700); // Hide at 4.7s (1.5s fade duration)
-      
-      return () => {
-        clearTimeout(showLogoTimer);
-        clearTimeout(fadeTimer);
-        clearTimeout(hideTimer);
-      };
-    }
-  }, [showIntro]);
-
-  const handleTutorialComplete = () => {
-    setShowTutorial(false);
-  };
-  
   const TOTAL_STEPS = 5;
 
   // Default nodes configuration
@@ -119,208 +59,135 @@ const Index = () => {
     { id: '10', name: 'Impact & Recognition', keywords: [] },
   ];
 
-  // Load nodes from localStorage on mount
+  // Load nodes from localStorage
+  const [allNodes, setAllNodes] = useState<Node[]>([]);
+  
   useEffect(() => {
     const savedNodes = localStorage.getItem('sentiment-nodes');
     if (savedNodes) {
       try {
         const parsed = JSON.parse(savedNodes);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          setNodes(parsed);
+          setAllNodes(parsed);
         } else {
-          setNodes(DEFAULT_NODES);
-          localStorage.setItem('sentiment-nodes', JSON.stringify(DEFAULT_NODES));
+          setAllNodes(DEFAULT_NODES);
         }
-      } catch (error) {
-        console.error('Error loading saved nodes:', error);
-        setNodes(DEFAULT_NODES);
-        localStorage.setItem('sentiment-nodes', JSON.stringify(DEFAULT_NODES));
+      } catch {
+        setAllNodes(DEFAULT_NODES);
       }
     } else {
-      setNodes(DEFAULT_NODES);
+      setAllNodes(DEFAULT_NODES);
       localStorage.setItem('sentiment-nodes', JSON.stringify(DEFAULT_NODES));
     }
   }, []);
 
+  // Intro splash screen animation
+  useEffect(() => {
+    if (currentStep === 'intro') {
+      const showLogoTimer = setTimeout(() => setLogoVisible(true), 300);
+      const fadeTimer = setTimeout(() => setIntroFading(true), 3200);
+      const hideTimer = setTimeout(() => {
+        setCurrentStep('nodes');
+        setIntroFading(false);
+        setLogoVisible(false);
+      }, 4700);
 
-  const handleFilesLoaded = async (content: any[], fileType: 'reddit' | 'text', fileCount: number) => {
-    if (content.length === 0) {
-      setStagedContent([]);
-      setIsDataReady(false);
-      setModelsPreloaded(false);
-      setResults([]);
-      setNodeAnalysis([]);
-      setTimeSeriesData([]);
-      setParticipants([]);
-      setOverallSentiment(0);
-      setScrapedPosts([]);
-      return;
+      return () => {
+        clearTimeout(showLogoTimer);
+        clearTimeout(fadeTimer);
+        clearTimeout(hideTimer);
+      };
     }
-    
-    setStagedContent(content);
-    setIsDataReady(true);
-    
-    const posts = content.filter((item: any) => item.dataType === 'post') as RedditPost[];
-    setScrapedPosts(posts);
-    
-    if (!modelsPreloaded) {
-      setAnalysisStatus('Preloading AI models...');
-      try {
-        const { initializeSentimentModel } = await import('@/utils/sentiment/models/sentimentModel');
-        const { initializeEmbeddingModel } = await import('@/utils/sentiment/models/embeddingModel');
-        
-        const modelTimeout = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Model loading timeout')), 60000)
-        );
-        
-        await Promise.race([
-          Promise.all([
-            initializeSentimentModel(),
-            initializeEmbeddingModel(),
-          ]),
-          modelTimeout
-        ]);
-        
-        setModelsPreloaded(true);
-        setAnalysisStatus('');
-        toast({
-          title: 'Ready to analyze',
-          description: `AI models loaded • ${content.length} items staged`,
-        });
-      } catch (error) {
-        console.error('Failed to preload models:', error);
-        setAnalysisStatus('');
-        setModelsPreloaded(false);
-      }
-    }
+  }, [currentStep]);
+
+  // Node selection handler
+  const handleNodesContinue = (nodes: Node[]) => {
+    setSelectedNodes(nodes);
+    setCurrentStep('source');
   };
 
-  const handleStartAnalysis = async () => {
-    if (stagedContent.length === 0) {
+  // Source selection handler
+  const handleSourceSelect = (source: SourceType) => {
+    setSelectedSource(source);
+    setCurrentStep('scraper');
+  };
+
+  // Combined scrape + analyze handler
+  const handleScrapeAndAnalyze = async (data: any[], sourceType: SourceType) => {
+    if (data.length === 0) {
       toast({
-        title: 'No data loaded',
-        description: 'Scrape Reddit data first.',
+        title: 'No data found',
+        description: 'Try different parameters.',
         variant: 'destructive',
       });
-      return;
-    }
-    if (nodes.length === 0) {
-      toast({
-        title: 'No nodes defined',
-        description: 'Configure analysis nodes in Settings.',
-        variant: 'destructive',
-      });
-      setActiveTab('settings');
       return;
     }
 
-    // Step 1: Initializing - fade out window FIRST, show loading overlay
-    setCurrentStep(1);
+    setScrapedDataCount(data.length);
+    setCurrentStep('loading');
     setProgress(0);
+    setLoadingStep(1);
     setAnalysisStatus('Initializing...');
-    setIsWindowHiding(true);
-    
-    // Wait for fade-out animation to complete
-    await new Promise(resolve => setTimeout(resolve, 300));
-    setShowWindow(false);
-    setIsWindowHiding(false);
-    
-    // NOW show the loading overlay (after window is hidden)
-    setIsAnalyzing(true);
-    
-    // Small delay to ensure React renders the overlay
-    await new Promise(resolve => setTimeout(resolve, 50));
 
     try {
       let textsToAnalyze: string[] = [];
-      let rawData: RedditData[] = [];
-      let participantsList: any[] = [];
 
       // Step 2: Preparing data
-      setCurrentStep(2);
+      setLoadingStep(2);
       setAnalysisStatus('Preparing data...');
       setProgress(10);
 
-      rawData = stagedContent as RedditData[];
-      
-      const isValidReddit = rawData.length > 0 && 
-        rawData.some((item: any) => 
-          item && typeof item === 'object' && 
-          ('text' in item || 'body' in item || 'title' in item) &&
-          'createdAt' in item
-        );
-
-      if (isValidReddit) {
+      if (sourceType === 'reddit') {
+        const rawData = data as RedditData[];
         const parsed = parseRedditJSON(rawData);
         textsToAnalyze = parsed.allText;
+        setSources([{ name: 'Reddit', value: textsToAnalyze.length }]);
 
-        participantsList = Array.from(parsed.participants.values())
-          .sort((a, b) => b.totalUpvotes - a.totalUpvotes)
-          .slice(0, 10);
-        
-        const sourceData = [{ name: 'Reddit', value: textsToAnalyze.length }];
-        setSources(sourceData);
-        setParticipants(participantsList);
+        // Extract time series for Reddit
+        try {
+          const timeSeries = extractTimeSeriesData(rawData, []);
+          setTimeSeriesData(timeSeries);
+        } catch {
+          setTimeSeriesData([]);
+        }
       } else {
-        textsToAnalyze = stagedContent as string[];
-        setSources([{ name: 'Text/Other', value: textsToAnalyze.length }]);
+        // Papers - extract combined text from each paper
+        const papers = data as AcademicPaper[];
+        textsToAnalyze = papers.map(p => p.combinedText).filter(t => t && t.length > 0);
+        setSources([{ name: 'Semantic Scholar', value: textsToAnalyze.length }]);
+        setTimeSeriesData([]);
       }
 
       // Step 3: Sending to AI
-      setCurrentStep(3);
+      setLoadingStep(3);
       setAnalysisStatus('Sending to AI...');
       setProgress(20);
 
       // Step 4: Analyzing sentiment (server-side)
-      setCurrentStep(4);
+      setLoadingStep(4);
       const analysisResults = await performSentimentAnalysisServer(
-        textsToAnalyze, 
-        nodes,
-        (progress) => setProgress(20 + progress * 0.65),
+        textsToAnalyze,
+        selectedNodes,
+        (p) => setProgress(20 + p * 0.65),
         (status) => setAnalysisStatus(status)
       );
 
       // Step 5: Aggregating results
-      setCurrentStep(5);
+      setLoadingStep(5);
       setAnalysisStatus('Aggregating results...');
       setProgress(90);
-
-      if (rawData.length > 0) {
-        try {
-          const timeSeries = extractTimeSeriesData(rawData, analysisResults);
-          setTimeSeriesData(timeSeries);
-        } catch (timeError) {
-          console.error('Error extracting time series:', timeError);
-          setTimeSeriesData([]);
-        }
-      }
 
       const avgSentiment = analysisResults.reduce((sum, r) => sum + r.polarityScore, 0) / analysisResults.length;
       const nodeAnalysisData = aggregateNodeAnalysis(analysisResults);
 
-      if (participantsList.length > 0) {
-        const participantIndex = new Map<string, SentimentResult[]>();
-        
-        analysisResults.forEach(result => {
-          const lowerText = result.text.toLowerCase();
-          participantsList.forEach(p => {
-            if (lowerText.includes(p.username.toLowerCase())) {
-              if (!participantIndex.has(p.username)) {
-                participantIndex.set(p.username, []);
-              }
-              participantIndex.get(p.username)!.push(result);
-            }
-          });
-        });
-
-        const participantsWithSentiment = participantsList.map(p => {
-          const userResults = participantIndex.get(p.username) || [];
-          const avgSent = userResults.length > 0
-            ? userResults.reduce((sum, r) => sum + r.polarityScore, 0) / userResults.length * 100
-            : 0;
-          return { ...p, sentimentScore: avgSent };
-        });
-        setParticipants(participantsWithSentiment);
+      // Update time series with results for Reddit
+      if (sourceType === 'reddit' && data.length > 0) {
+        try {
+          const timeSeries = extractTimeSeriesData(data as RedditData[], analysisResults);
+          setTimeSeriesData(timeSeries);
+        } catch {
+          // Keep existing time series
+        }
       }
 
       setProgress(100);
@@ -333,382 +200,109 @@ const Index = () => {
         description: `Analyzed ${textsToAnalyze.length} texts across ${nodeAnalysisData.length} topics.`,
       });
 
-      // Only switch to analysis tab if we got results
-      setActiveTab('analysis');
-
+      // Switch to results
+      setCurrentStep('results');
     } catch (error) {
       console.error('Analysis error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'An error occurred during sentiment analysis.';
-      toast({
-        title: 'Analysis failed',
-        description: errorMessage,
-        variant: 'destructive',
-      });
-      // Stay on current tab if analysis failed - don't switch to empty analysis
-    } finally {
-      setIsAnalyzing(false);
-      setShowWindow(true);
-      setProgress(0);
-      setCurrentStep(1);
-      setAnalysisStatus('');
-    }
-  };
-
-  const handlePapersLoaded = (papers: AcademicPaper[]) => {
-    setScrapedPapers(papers);
-    setIsPaperDataReady(papers.length > 0);
-    if (papers.length > 0) {
-      toast({
-        title: 'Papers loaded',
-        description: `${papers.length} papers ready for analysis`,
-      });
-    }
-  };
-
-  const handleStartPaperAnalysis = async () => {
-    if (scrapedPapers.length === 0) {
-      toast({
-        title: 'No papers loaded',
-        description: 'Search for papers first.',
-        variant: 'destructive',
-      });
-      return;
-    }
-    if (nodes.length === 0) {
-      toast({
-        title: 'No nodes defined',
-        description: 'Configure analysis nodes in Settings.',
-        variant: 'destructive',
-      });
-      setActiveTab('settings');
-      return;
-    }
-
-    setCurrentStep(1);
-    setProgress(0);
-    setAnalysisStatus('Initializing paper analysis...');
-    setIsWindowHiding(true);
-    
-    await new Promise(resolve => setTimeout(resolve, 300));
-    setShowWindow(false);
-    setIsWindowHiding(false);
-    setIsAnalyzing(true);
-    await new Promise(resolve => setTimeout(resolve, 50));
-
-    try {
-      setCurrentStep(2);
-      setAnalysisStatus('Extracting paper texts...');
-      setProgress(10);
-
-      const textsToAnalyze = scrapedPapers.map(p => p.combinedText).filter(t => t.length > 0);
-      
-      setCurrentStep(3);
-      setAnalysisStatus('Sending to AI...');
-      setProgress(20);
-
-      setCurrentStep(4);
-      const analysisResults = await performSentimentAnalysisServer(
-        textsToAnalyze, 
-        nodes,
-        (progress) => setProgress(20 + progress * 0.65),
-        (status) => setAnalysisStatus(status)
-      );
-
-      setCurrentStep(5);
-      setAnalysisStatus('Aggregating results...');
-      setProgress(90);
-
-      const avgSentiment = analysisResults.reduce((sum, r) => sum + r.polarityScore, 0) / analysisResults.length;
-      const nodeAnalysisData = aggregateNodeAnalysis(analysisResults);
-
-      setProgress(100);
-      setPaperResults(analysisResults);
-      setPaperOverallSentiment(avgSentiment * 100);
-      setPaperNodeAnalysis(nodeAnalysisData);
-
-      toast({
-        title: 'Paper analysis complete',
-        description: `Analyzed ${textsToAnalyze.length} papers across ${nodeAnalysisData.length} topics.`,
-      });
-
-      setActiveTab('papers-analysis');
-
-    } catch (error) {
-      console.error('Paper analysis error:', error);
       toast({
         title: 'Analysis failed',
         description: error instanceof Error ? error.message : 'An error occurred',
         variant: 'destructive',
       });
+      setCurrentStep('scraper');
     } finally {
-      setIsAnalyzing(false);
-      setShowWindow(true);
       setProgress(0);
-      setCurrentStep(1);
+      setLoadingStep(1);
       setAnalysisStatus('');
     }
   };
 
-  // Intro splash screen with animated logo - starts pitch black
-  if (showIntro) {
-    return (
-      <div className={`min-h-screen bg-black flex items-center justify-center relative overflow-hidden transition-opacity duration-[1500ms] ${introFading ? 'opacity-0' : 'opacity-100'}`}>
-        <div className={`text-center z-10 transition-opacity duration-[3000ms] ease-in ${logoVisible ? 'opacity-100' : 'opacity-0'}`}>
-          <div className="scale-[3]">
-            <AnimatedLogo />
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // Navigation handlers
+  const handleGoHome = () => {
+    setCurrentStep('source');
+  };
 
-  const renderTabContent = () => {
-    switch (activeTab) {
-      case 'scanner':
+  const handleViewArchive = () => {
+    setCurrentStep('archive');
+  };
+
+  const handleArchiveLoad = (data: any) => {
+    // If loading from archive, go back to scraper with data ready
+    // For simplicity, we'll re-analyze the data
+    if (selectedSource) {
+      handleScrapeAndAnalyze(data, selectedSource);
+    }
+  };
+
+  // Render based on current step
+  const renderContent = () => {
+    switch (currentStep) {
+      case 'intro':
         return (
-          <div className="p-6 space-y-6">
-            {/* Scraper */}
-            <RedditScraper 
-              onDataScraped={(data) => {
-                handleFilesLoaded(data, 'reddit', 1);
-              }} 
-            />
-
-            {/* Analysis Controls */}
-            {isDataReady && (
-              <Card className="p-4 border-border/50 bg-background/30">
-                <div className="flex items-center justify-between flex-wrap gap-4">
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                      <span className="text-sm font-mono">
-                        <span className="text-foreground font-semibold">{stagedContent.length}</span>
-                        <span className="text-muted-foreground"> signals ready</span>
-                      </span>
-                    </div>
-                    <div className="text-sm font-mono text-muted-foreground">
-                      {nodes.length} nodes configured
-                    </div>
-                  </div>
-                  <Button
-                    onClick={handleStartAnalysis}
-                    disabled={isAnalyzing || nodes.length === 0}
-                    className="gap-2"
-                  >
-                    <Zap className="w-4 h-4" />
-                    Run Analysis
-                  </Button>
-                </div>
-              </Card>
-            )}
-
-            {/* Top Posts */}
-            {scrapedPosts.length > 0 && (
-              <TopPosts posts={scrapedPosts} title="Trending Signals" />
-            )}
-          </div>
-        );
-
-      case 'archive':
-        return (
-          <div className="p-6">
-            <ScrapeHistory 
-              onLoadScrape={(data) => {
-                handleFilesLoaded(data, 'reddit', 1);
-                setActiveTab('scanner');
-              }}
-            />
-          </div>
-        );
-
-      case 'analysis':
-        return (
-          <ScrollArea className="h-[450px]">
-            <div className="p-4 space-y-3">
-              {results.length > 0 ? (
-                <>
-                  <SentimentScore 
-                    score={overallSentiment} 
-                    label="Composite Sentiment Index" 
-                  />
-
-                  {timeSeriesData.length > 0 && (
-                    <SentimentChart
-                      data={timeSeriesData}
-                      title="Temporal Analysis"
-                    />
-                  )}
-
-                  {nodeAnalysis.length > 0 && (
-                    <KPISortableTable data={nodeAnalysis} />
-                  )}
-
-                  <div className="grid grid-cols-2 gap-3">
-                    {nodeAnalysis.length > 0 && <KPIRadarChart data={nodeAnalysis} />}
-                    {sources.length > 0 && <SourceDistribution sources={sources} />}
-                    {results.length > 0 && <ConfidenceDistribution results={results} />}
-                    {nodeAnalysis.length > 0 && <TopicsList topics={nodeAnalysis} />}
-                  </div>
-
-                  {nodeAnalysis.length > 0 && <KPIHeatmap data={nodeAnalysis} />}
-
-                  <div className="space-y-3">
-                    {nodeAnalysis.slice(0, 3).map((node) => (
-                      <ExemplarQuotes
-                        key={node.nodeId}
-                        results={results}
-                        nodeId={node.nodeId}
-                        nodeName={node.nodeName}
-                      />
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <div className="text-center py-16">
-                  <Activity className="w-16 h-16 mx-auto text-muted-foreground/30 mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">No Analysis Results</h3>
-                  <p className="text-muted-foreground text-sm">
-                    Scrape data and run analysis to see results here.
-                  </p>
-                  <Button 
-                    variant="outline" 
-                    className="mt-4"
-                    onClick={() => setActiveTab('scanner')}
-                  >
-                    Go to Scanner
-                  </Button>
-                </div>
-              )}
+          <div className={`fixed inset-0 z-[100] bg-background flex items-center justify-center transition-opacity duration-[1500ms] ease-out ${introFading ? 'opacity-0' : 'opacity-100'}`}>
+            <div className={`transition-opacity duration-[3000ms] ease-in ${logoVisible ? 'opacity-100' : 'opacity-0'}`}>
+              <AnimatedLogo />
             </div>
-          </ScrollArea>
+          </div>
         );
 
-      case 'papers':
+      case 'nodes':
         return (
-          <div className="p-6 space-y-6">
-            <PaperScraper 
-              onDataScraped={handlePapersLoaded}
-              nodes={nodes}
-            />
+          <div className="relative z-10 w-full">
+            <NodeSelectionPage nodes={allNodes} onContinue={handleNodesContinue} />
+          </div>
+        );
 
-            {isPaperDataReady && (
-              <Card className="p-4 border-border/50 bg-background/30">
-                <div className="flex items-center justify-between flex-wrap gap-4">
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
-                      <span className="text-sm font-mono">
-                        <span className="text-foreground font-semibold">{scrapedPapers.length}</span>
-                        <span className="text-muted-foreground"> papers ready</span>
-                      </span>
-                    </div>
-                    <div className="text-sm font-mono text-muted-foreground">
-                      {nodes.length} nodes configured
-                    </div>
-                  </div>
-                  <Button
-                    onClick={handleStartPaperAnalysis}
-                    disabled={isAnalyzing || nodes.length === 0}
-                    className="gap-2"
-                  >
-                    <BookOpen className="w-4 h-4" />
-                    Analyze Papers
-                  </Button>
-                </div>
-              </Card>
-            )}
+      case 'source':
+        return (
+          <div className="relative z-10 w-full">
+            <SourceSelector onSelect={handleSourceSelect} />
+          </div>
+        );
 
-            {scrapedPapers.length > 0 && (
-              <PaperResults 
-                papers={scrapedPapers}
-                title="Scraped AI Papers"
+      case 'scraper':
+        return (
+          <div className="relative z-10 w-full max-w-3xl mx-auto px-4 animate-fade-in">
+            {selectedSource === 'reddit' ? (
+              <RedditScraperSimplified
+                nodes={selectedNodes}
+                onScrapeAndAnalyze={(data) => handleScrapeAndAnalyze(data, 'reddit')}
+                onBack={() => setCurrentStep('source')}
+              />
+            ) : (
+              <PaperScraperSimplified
+                nodes={selectedNodes}
+                onScrapeAndAnalyze={(data) => handleScrapeAndAnalyze(data, 'papers')}
+                onBack={() => setCurrentStep('source')}
               />
             )}
           </div>
         );
 
-      case 'papers-archive':
+      case 'loading':
+        return null; // Loading overlay handles this
+
+      case 'results':
         return (
-          <div className="p-6">
-            <PaperHistory 
-              onLoadScrape={(papers) => {
-                handlePapersLoaded(papers);
-                setActiveTab('papers');
-              }}
-            />
-          </div>
+          <ResultsPage
+            sourceType={selectedSource || 'reddit'}
+            overallSentiment={overallSentiment}
+            results={results}
+            nodeAnalysis={nodeAnalysis}
+            timeSeriesData={timeSeriesData}
+            sources={sources}
+            onGoHome={handleGoHome}
+            onViewArchive={handleViewArchive}
+          />
         );
 
-      case 'papers-analysis':
+      case 'archive':
         return (
-          <ScrollArea className="h-[450px]">
-            <div className="p-4 space-y-3">
-              {paperResults.length > 0 ? (
-                <>
-                  <SentimentScore 
-                    score={paperOverallSentiment} 
-                    label="Academic Sentiment Index" 
-                  />
-
-                  {paperNodeAnalysis.length > 0 && (
-                    <KPISortableTable data={paperNodeAnalysis} />
-                  )}
-
-                  <div className="grid grid-cols-2 gap-3">
-                    {paperNodeAnalysis.length > 0 && <KPIRadarChart data={paperNodeAnalysis} />}
-                    <SourceDistribution sources={[{ name: 'Semantic Scholar', value: scrapedPapers.length }]} />
-                    {paperResults.length > 0 && <ConfidenceDistribution results={paperResults} />}
-                    {paperNodeAnalysis.length > 0 && <TopicsList topics={paperNodeAnalysis} />}
-                    {paperNodeAnalysis.length > 0 && <KPIHeatmap data={paperNodeAnalysis} />}
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-3">
-                    {paperNodeAnalysis.slice(0, 3).map((node) => (
-                      <ExemplarQuotes
-                        key={node.nodeId}
-                        results={paperResults}
-                        nodeId={node.nodeId}
-                        nodeName={node.nodeName}
-                      />
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <div className="text-center py-16">
-                  <BookOpen className="w-16 h-16 mx-auto text-muted-foreground/30 mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">No Paper Analysis Results</h3>
-                  <p className="text-muted-foreground text-sm">
-                    Search for papers and run analysis to see results here.
-                  </p>
-                  <Button 
-                    variant="outline" 
-                    className="mt-4"
-                    onClick={() => setActiveTab('papers')}
-                  >
-                    Go to Paper Scanner
-                  </Button>
-                </div>
-              )}
-            </div>
-          </ScrollArea>
-        );
-
-      case 'upload':
-        return (
-          <div className="p-6">
-            <ManualUpload 
-              onDataReady={(content, fileType, fileCount) => {
-                handleFilesLoaded(content, fileType, fileCount);
-              }}
-            />
-          </div>
-        );
-
-      case 'settings':
-        return (
-          <div className="p-6">
-            <NodeManager nodes={nodes} onNodesChange={setNodes} />
-          </div>
+          <ArchivePage
+            sourceType={selectedSource || 'reddit'}
+            onGoHome={handleGoHome}
+            onLoadScrape={handleArchiveLoad}
+          />
         );
 
       default:
@@ -716,100 +310,32 @@ const Index = () => {
     }
   };
 
-  const handleModeSelect = (mode: ModeId) => {
-    setIsModeTransitioning(true);
-    
-    // Small delay for fade out effect
-    setTimeout(() => {
-      setSelectedMode(mode);
-      setActiveTab(mode as TabId);
-      setIsModeTransitioning(false);
-    }, 300);
-  };
-
-  const handleBackToHome = () => {
-    setIsModeTransitioning(true);
-    
-    setTimeout(() => {
-      setSelectedMode(null);
-      setIsModeTransitioning(false);
-    }, 300);
-  };
-
   return (
-    <div className="min-h-screen bg-background relative overflow-hidden flex items-center justify-center p-4">
+    <div className="min-h-screen bg-background relative overflow-hidden flex items-center justify-center">
       {/* Full-screen Particle Background */}
-      <ParticleBackground 
-        particleCount={60} 
-        interactive={true} 
-        dataCount={stagedContent.length} 
-      />
-      
-      {/* Subtle Grid Overlay */}
-      <div className="fixed inset-0 observatory-grid pointer-events-none z-0 opacity-50" />
-      
-      {/* Intro Splash Screen */}
-      {showIntro && (
-        <div 
-          className={`fixed inset-0 z-[100] bg-background flex items-center justify-center transition-opacity duration-[1500ms] ease-out ${
-            introFading ? 'opacity-0' : 'opacity-100'
-          }`}
-        >
-          <div className={`transition-opacity duration-[3000ms] ease-in ${
-            logoVisible ? 'opacity-100' : 'opacity-0'
-          }`}>
-            <AnimatedLogo />
-          </div>
-        </div>
-      )}
-
-      {/* Tutorial Sequence */}
-      {showTutorial && (
-        <TutorialSequence 
-          onComplete={handleTutorialComplete} 
-          currentView={selectedMode ? selectedMode as any : 'modeSelector'}
-        />
+      {currentStep !== 'results' && currentStep !== 'archive' && (
+        <>
+          <ParticleBackground
+            particleCount={60}
+            interactive={true}
+            dataCount={scrapedDataCount}
+          />
+          <div className="fixed inset-0 observatory-grid pointer-events-none z-0 opacity-50" />
+        </>
       )}
 
       {/* Analysis Loading Overlay */}
-      <AnalysisLoadingOverlay 
-        isVisible={isAnalyzing && !showWindow}
+      <AnalysisLoadingOverlay
+        isVisible={currentStep === 'loading'}
         progress={progress}
         status={analysisStatus}
-        currentStep={currentStep}
+        currentStep={loadingStep}
         totalSteps={TOTAL_STEPS}
-        totalTexts={stagedContent.length}
+        totalTexts={scrapedDataCount}
       />
-      
-      {/* Mode Selector - shown when no mode is selected */}
-      {!selectedMode && !isModeTransitioning && (
-        <ModeSelector 
-          onSelectMode={handleModeSelect}
-          isVisible={true}
-        />
-      )}
-      
-      {/* Floating Window - with fade animations */}
-      {selectedMode && (showWindow || isWindowHiding) && (
-        <div className={`relative z-10 w-full transition-all duration-300 ${
-          isWindowHiding || isModeTransitioning
-            ? 'opacity-0 scale-95' 
-            : 'opacity-100 scale-100 animate-fade-in'
-        }`}>
-          <FloatingWindow
-            header={
-              <WindowTabs 
-                activeTab={activeTab} 
-                onTabChange={setActiveTab}
-                dataCount={stagedContent.length}
-                onBackToHome={handleBackToHome}
-              />
-            }
-          >
-            {renderTabContent()}
-          </FloatingWindow>
-        </div>
-      )}
+
+      {/* Main Content */}
+      {renderContent()}
     </div>
   );
 };
