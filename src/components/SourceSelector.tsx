@@ -24,10 +24,10 @@ export function SourceSelector({ onSelect }: SourceSelectorProps) {
         {/* Reddit Card */}
         <button
           onClick={() => onSelect('reddit')}
-          className="group relative p-8 rounded-xl border border-border/50 bg-card/60 backdrop-blur-sm hover:border-orange-500/30 hover:bg-card/80 transition-all duration-300"
+          className="group relative p-8 rounded-xl border border-border/50 bg-card/60 backdrop-blur-sm hover:border-orange-500/30 hover:bg-card/80 transition-all duration-300 hover:scale-[1.03] hover:shadow-xl"
         >
           <div className="flex flex-col items-center text-center">
-            <div className="w-16 h-16 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+            <div className="w-16 h-16 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:rotate-3 transition-all duration-300">
               <Radio className="w-8 h-8 text-orange-400" />
             </div>
             <h3 className="text-xl font-semibold text-foreground mb-2">Reddit</h3>
@@ -48,10 +48,10 @@ export function SourceSelector({ onSelect }: SourceSelectorProps) {
         {/* Academic Papers Card */}
         <button
           onClick={() => onSelect('papers')}
-          className="group relative p-8 rounded-xl border border-border/50 bg-card/60 backdrop-blur-sm hover:border-blue-500/30 hover:bg-card/80 transition-all duration-300"
+          className="group relative p-8 rounded-xl border border-border/50 bg-card/60 backdrop-blur-sm hover:border-blue-500/30 hover:bg-card/80 transition-all duration-300 hover:scale-[1.03] hover:shadow-xl"
         >
           <div className="flex flex-col items-center text-center">
-            <div className="w-16 h-16 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+            <div className="w-16 h-16 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:-rotate-3 transition-all duration-300">
               <BookOpen className="w-8 h-8 text-blue-400" />
             </div>
             <h3 className="text-xl font-semibold text-foreground mb-2">Academic Papers</h3>

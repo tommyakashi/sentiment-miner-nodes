@@ -22,12 +22,24 @@ type AppStep = 'intro' | 'nodes' | 'source' | 'scraper' | 'loading' | 'results' 
 const Index = () => {
   // Flow state
   const [currentStep, setCurrentStep] = useState<AppStep>('intro');
+  const [previousStep, setPreviousStep] = useState<AppStep | null>(null);
+  const [isTransitioning, setIsTransitioning] = useState(false);
   const [selectedNodes, setSelectedNodes] = useState<Node[]>([]);
   const [selectedSource, setSelectedSource] = useState<SourceType | null>(null);
 
   // Intro animation state
   const [logoVisible, setLogoVisible] = useState(false);
   const [introFading, setIntroFading] = useState(false);
+
+  // Smooth step transition helper
+  const transitionToStep = (nextStep: AppStep) => {
+    setIsTransitioning(true);
+    setPreviousStep(currentStep);
+    setTimeout(() => {
+      setCurrentStep(nextStep);
+      setTimeout(() => setIsTransitioning(false), 50);
+    }, 200);
+  };
 
   // Analysis state
   const [results, setResults] = useState<SentimentResult[]>([]);
@@ -103,13 +115,13 @@ const Index = () => {
   // Node selection handler
   const handleNodesContinue = (nodes: Node[]) => {
     setSelectedNodes(nodes);
-    setCurrentStep('source');
+    transitionToStep('source');
   };
 
   // Source selection handler
   const handleSourceSelect = (source: SourceType) => {
     setSelectedSource(source);
-    setCurrentStep('scraper');
+    transitionToStep('scraper');
   };
 
   // Combined scrape + analyze handler
@@ -219,11 +231,11 @@ const Index = () => {
 
   // Navigation handlers
   const handleGoHome = () => {
-    setCurrentStep('source');
+    transitionToStep('source');
   };
 
   const handleViewArchive = () => {
-    setCurrentStep('archive');
+    transitionToStep('archive');
   };
 
   const handleArchiveLoad = (data: any) => {
@@ -248,32 +260,32 @@ const Index = () => {
 
       case 'nodes':
         return (
-          <div className="relative z-10 w-full">
+          <div className={`relative z-10 w-full transition-all duration-300 ${isTransitioning ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}>
             <NodeSelectionPage nodes={allNodes} onContinue={handleNodesContinue} />
           </div>
         );
 
       case 'source':
         return (
-          <div className="relative z-10 w-full">
+          <div className={`relative z-10 w-full transition-all duration-300 ${isTransitioning ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}>
             <SourceSelector onSelect={handleSourceSelect} />
           </div>
         );
 
       case 'scraper':
         return (
-          <div className="relative z-10 w-full max-w-3xl mx-auto px-4 animate-fade-in">
+          <div className={`relative z-10 w-full max-w-3xl mx-auto px-4 transition-all duration-300 ${isTransitioning ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}>
             {selectedSource === 'reddit' ? (
               <RedditScraperSimplified
                 nodes={selectedNodes}
                 onScrapeAndAnalyze={(data) => handleScrapeAndAnalyze(data, 'reddit')}
-                onBack={() => setCurrentStep('source')}
+                onBack={() => transitionToStep('source')}
               />
             ) : (
               <PaperScraperSimplified
                 nodes={selectedNodes}
                 onScrapeAndAnalyze={(data) => handleScrapeAndAnalyze(data, 'papers')}
-                onBack={() => setCurrentStep('source')}
+                onBack={() => transitionToStep('source')}
               />
             )}
           </div>
