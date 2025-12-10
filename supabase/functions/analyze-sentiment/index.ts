@@ -43,8 +43,8 @@ interface AnalysisItem {
   };
 }
 
-const BATCH_SIZE = 75; // Larger batches with tool calling reliability
-const PARALLEL_BATCHES = 2; // Process 2 batches concurrently
+const BATCH_SIZE = 100; // Optimized for speed with tool calling reliability
+const PARALLEL_BATCHES = 3; // Process 3 batches concurrently for ~50% faster throughput
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -98,22 +98,10 @@ serve(async (req) => {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
-    // Create detailed node list with keywords for better matching
-    const nodesList = nodes.map(n => `- ${n.id}: "${n.name}" (keywords: ${n.keywords.slice(0, 5).join(', ')})`).join('\n');
-    const nodeIds = nodes.map(n => n.id).join(', ');
-    const systemPrompt = `You are a sentiment analyzer that categorizes research-related texts into thematic nodes.
-
-AVAILABLE NODES (you MUST use one of these exact IDs for bestMatchingNodeId):
-${nodesList}
-
-CRITICAL: Distribute texts across ALL relevant nodes based on their actual content. Each text should match the node whose theme is most relevant to the text's subject matter. Do NOT default to just one node.
-
-For each text, determine:
-1. bestMatchingNodeId: Choose from [${nodeIds}] based on which theme the text discusses
-2. polarity: "positive", "neutral", or "negative"
-3. polarityScore: -1 (very negative) to +1 (very positive)
-4. confidence: 0 to 1
-5. kpiScores: trust, optimism, frustration, clarity, access, fairness (each -1 to +1)`;
+    // Streamlined node list for faster token processing
+    const nodesList = nodes.map(n => `${n.id}:"${n.name}"`).join(', ');
+    const systemPrompt = `Sentiment analyzer for research texts. Nodes: [${nodesList}].
+For each text: bestMatchingNodeId (from nodes above), polarity (positive/neutral/negative), polarityScore (-1 to +1), confidence (0-1), kpiScores {trust,optimism,frustration,clarity,access,fairness} (each -1 to +1). Distribute across ALL relevant nodes.`;
 
     const totalBatches = Math.ceil(texts.length / BATCH_SIZE);
 
@@ -183,111 +171,120 @@ For each text, determine:
           console.log(`[analyze-sentiment] Batch ${batchIndex + 1}/${totalBatches} (${batchTexts.length} texts)`);
           
           const textsForPrompt = batchTexts.map((t, i) => `[${i}] "${t.slice(0, 250)}"`).join('\n');
-          const userPrompt = `Analyze these ${batchTexts.length} texts and call submit_analysis_results with one result per text:\n${textsForPrompt}`;
+          const userPrompt = `Analyze ${batchTexts.length} texts:\n${textsForPrompt}`;
 
-          try {
-            const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${LOVABLE_API_KEY}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                model: "google/gemini-2.5-flash-lite",
-                messages: [
-                  { role: "system", content: systemPrompt },
-                  { role: "user", content: userPrompt }
-                ],
-                tools: analysisTools,
-                tool_choice: { type: "function", function: { name: "submit_analysis_results" } },
-                max_tokens: 20000,
-              }),
-            });
+          const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${LOVABLE_API_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: "google/gemini-2.5-flash-lite",
+              messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: userPrompt }
+              ],
+              tools: analysisTools,
+              tool_choice: { type: "function", function: { name: "submit_analysis_results" } },
+              max_tokens: 25000,
+            }),
+          });
 
-            if (!response.ok) {
-              const errorText = await response.text();
-              console.error(`[analyze-sentiment] AI error batch ${batchIndex + 1}: ${response.status} - ${errorText}`);
-              
-              if (response.status === 429) {
-                throw new Error('rate_limit');
-              }
-              if (response.status === 402) {
-                throw new Error('credits_exhausted');
-              }
-              throw new Error(`AI request failed: ${response.status}`);
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`[analyze-sentiment] AI error batch ${batchIndex + 1}: ${response.status} - ${errorText}`);
+            
+            if (response.status === 429) {
+              throw new Error('rate_limit');
             }
+            if (response.status === 402) {
+              throw new Error('credits_exhausted');
+            }
+            throw new Error(`AI request failed: ${response.status}`);
+          }
 
-            const data = await response.json();
-            
-            // Extract results from tool call
-            let parsed: AnalysisItem[] = [];
-            const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
-            
-            if (toolCall?.function?.arguments) {
+          const data = await response.json();
+          
+          // Extract results from tool call
+          let parsed: AnalysisItem[] = [];
+          const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+          
+          if (toolCall?.function?.arguments) {
+            try {
+              const args = JSON.parse(toolCall.function.arguments);
+              parsed = args.results || [];
+              console.log(`[analyze-sentiment] Batch ${batchIndex + 1} tool call: ${parsed.length} results`);
+            } catch (toolParseError) {
+              console.error(`[analyze-sentiment] Tool parse error batch ${batchIndex + 1}:`, toolParseError);
+            }
+          }
+          
+          // Fallback: try to extract from content if tool call failed
+          if (parsed.length === 0) {
+            const content = data.choices?.[0]?.message?.content || '';
+            if (content) {
               try {
-                const args = JSON.parse(toolCall.function.arguments);
-                parsed = args.results || [];
-                console.log(`[analyze-sentiment] Batch ${batchIndex + 1} tool call: ${parsed.length} results`);
-              } catch (toolParseError) {
-                console.error(`[analyze-sentiment] Tool parse error batch ${batchIndex + 1}:`, toolParseError);
-              }
-            }
-            
-            // Fallback: try to extract from content if tool call failed
-            if (parsed.length === 0) {
-              const content = data.choices?.[0]?.message?.content || '';
-              if (content) {
-                try {
-                  let jsonStr = content.trim();
-                  if (jsonStr.includes('```')) {
-                    const match = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
-                    if (match && match[1]) jsonStr = match[1].trim();
-                  }
-                  const arrayMatch = jsonStr.match(/\[[\s\S]*\]/);
-                  if (arrayMatch) jsonStr = arrayMatch[0];
-                  parsed = JSON.parse(jsonStr);
-                  console.log(`[analyze-sentiment] Batch ${batchIndex + 1} content fallback: ${parsed.length} results`);
-                } catch {
-                  console.error(`[analyze-sentiment] Fallback parse failed batch ${batchIndex + 1}`);
+                let jsonStr = content.trim();
+                if (jsonStr.includes('```')) {
+                  const match = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+                  if (match && match[1]) jsonStr = match[1].trim();
                 }
+                const arrayMatch = jsonStr.match(/\[[\s\S]*\]/);
+                if (arrayMatch) jsonStr = arrayMatch[0];
+                parsed = JSON.parse(jsonStr);
+                console.log(`[analyze-sentiment] Batch ${batchIndex + 1} content fallback: ${parsed.length} results`);
+              } catch {
+                console.error(`[analyze-sentiment] Fallback parse failed batch ${batchIndex + 1}`);
               }
             }
+          }
 
-            // Map parsed results to full SentimentResult objects
-            const batchResults: SentimentResult[] = [];
-            for (let i = 0; i < batchTexts.length; i++) {
-              const result = parsed[i] || {
-                polarity: 'neutral' as const,
-                polarityScore: 0,
-                bestMatchingNodeId: nodes[0].id,
-                confidence: 0.3,
-                kpiScores: { trust: 0, optimism: 0, frustration: 0, clarity: 0, access: 0, fairness: 0 }
-              };
+          // Map parsed results to full SentimentResult objects
+          const batchResults: SentimentResult[] = [];
+          for (let i = 0; i < batchTexts.length; i++) {
+            const result = parsed[i] || {
+              polarity: 'neutral' as const,
+              polarityScore: 0,
+              bestMatchingNodeId: nodes[0].id,
+              confidence: 0.3,
+              kpiScores: { trust: 0, optimism: 0, frustration: 0, clarity: 0, access: 0, fairness: 0 }
+            };
 
-              const matchedNode = nodes.find(n => n.id === result.bestMatchingNodeId) || nodes[0];
+            const matchedNode = nodes.find(n => n.id === result.bestMatchingNodeId) || nodes[0];
 
-              batchResults.push({
-                text: batchTexts[i],
-                nodeId: matchedNode.id,
-                nodeName: matchedNode.name,
-                polarity: result.polarity || 'neutral',
-                polarityScore: typeof result.polarityScore === 'number' ? result.polarityScore : 0,
-                kpiScores: {
-                  trust: result.kpiScores?.trust ?? 0,
-                  optimism: result.kpiScores?.optimism ?? 0,
-                  frustration: result.kpiScores?.frustration ?? 0,
-                  clarity: result.kpiScores?.clarity ?? 0,
-                  access: result.kpiScores?.access ?? 0,
-                  fairness: result.kpiScores?.fairness ?? 0,
-                },
-                confidence: typeof result.confidence === 'number' ? Math.min(0.95, result.confidence) : 0.3,
-              });
+            batchResults.push({
+              text: batchTexts[i],
+              nodeId: matchedNode.id,
+              nodeName: matchedNode.name,
+              polarity: result.polarity || 'neutral',
+              polarityScore: typeof result.polarityScore === 'number' ? result.polarityScore : 0,
+              kpiScores: {
+                trust: result.kpiScores?.trust ?? 0,
+                optimism: result.kpiScores?.optimism ?? 0,
+                frustration: result.kpiScores?.frustration ?? 0,
+                clarity: result.kpiScores?.clarity ?? 0,
+                access: result.kpiScores?.access ?? 0,
+                fairness: result.kpiScores?.fairness ?? 0,
+              },
+              confidence: typeof result.confidence === 'number' ? Math.min(0.95, result.confidence) : 0.3,
+            });
+          }
+
+          return batchResults;
+        }
+
+        // Wrapper with single retry for transient failures
+        async function processBatchWithRetry(batchIndex: number, batchTexts: string[]): Promise<SentimentResult[]> {
+          try {
+            return await processBatch(batchIndex, batchTexts);
+          } catch (error) {
+            // Don't retry rate limits or credit exhaustion
+            if (error instanceof Error && (error.message === 'rate_limit' || error.message === 'credits_exhausted')) {
+              throw error;
             }
-
-            return batchResults;
-          } catch (batchError) {
-            console.error(`[analyze-sentiment] Batch ${batchIndex + 1} error:`, batchError);
-            throw batchError;
+            console.log(`[analyze-sentiment] Retrying batch ${batchIndex + 1}...`);
+            return await processBatch(batchIndex, batchTexts);
           }
         }
 
@@ -313,7 +310,7 @@ For each text, determine:
             });
 
             batchPromises.push(
-              processBatch(batchIndex, batchTexts)
+              processBatchWithRetry(batchIndex, batchTexts)
                 .then(results => ({ batchIndex, results }))
                 .catch(error => {
                   if (error.message === 'rate_limit') {
