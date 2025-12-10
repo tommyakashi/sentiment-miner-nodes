@@ -1,14 +1,31 @@
-import { Radio, BookOpen } from 'lucide-react';
+import { Radio, BookOpen, ArrowLeft } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 export type SourceType = 'reddit' | 'papers';
 
 interface SourceSelectorProps {
   onSelect: (source: SourceType) => void;
+  onBack?: () => void;
 }
 
-export function SourceSelector({ onSelect }: SourceSelectorProps) {
+export function SourceSelector({ onSelect, onBack }: SourceSelectorProps) {
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] w-full max-w-3xl mx-auto px-4 animate-fade-in">
+      {/* Back Button */}
+      {onBack && (
+        <div className="self-start mb-6">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onBack}
+            className="font-mono text-muted-foreground hover:text-foreground"
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to Nodes
+          </Button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="text-center mb-12">
         <h1 className="text-3xl font-mono font-bold text-foreground tracking-tight mb-3">
