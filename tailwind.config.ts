@@ -93,15 +93,15 @@ export default {
         },
         "logo-glow": {
           "0%": { 
-            filter: "drop-shadow(0 0 4px hsl(185 100% 50% / 0.4)) drop-shadow(0 0 8px hsl(185 100% 50% / 0.2))",
+            filter: "drop-shadow(0 0 4px hsl(0 0% 100% / 0.3)) drop-shadow(0 0 8px hsl(0 0% 100% / 0.15))",
             opacity: "0.7"
           },
           "50%": { 
-            filter: "drop-shadow(0 0 15px hsl(185 100% 50% / 0.9)) drop-shadow(0 0 30px hsl(185 100% 50% / 0.6)) drop-shadow(0 0 60px hsl(185 100% 50% / 0.4))",
+            filter: "drop-shadow(0 0 15px hsl(0 0% 100% / 0.8)) drop-shadow(0 0 30px hsl(0 0% 100% / 0.5)) drop-shadow(0 0 60px hsl(0 0% 100% / 0.3))",
             opacity: "1"
           },
           "100%": { 
-            filter: "drop-shadow(0 0 4px hsl(185 100% 50% / 0.4)) drop-shadow(0 0 8px hsl(185 100% 50% / 0.2))",
+            filter: "drop-shadow(0 0 4px hsl(0 0% 100% / 0.3)) drop-shadow(0 0 8px hsl(0 0% 100% / 0.15))",
             opacity: "0.7"
           },
         },
