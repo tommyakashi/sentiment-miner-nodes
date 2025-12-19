@@ -43,8 +43,8 @@ interface AnalysisItem {
   };
 }
 
-const BATCH_SIZE = 100; // Optimized for speed with tool calling reliability
-const PARALLEL_BATCHES = 3; // Process 3 batches concurrently for ~50% faster throughput
+const BATCH_SIZE = 50; // Smaller batches for faster individual completion
+const PARALLEL_BATCHES = 5; // Increased parallelism to compensate for smaller batches
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -180,7 +180,7 @@ For each text: bestMatchingNodeId (from nodes above), polarity (positive/neutral
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              model: "google/gemini-2.5-flash-lite",
+              model: "google/gemini-2.5-flash",
               messages: [
                 { role: "system", content: systemPrompt },
                 { role: "user", content: userPrompt }
