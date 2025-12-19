@@ -459,7 +459,8 @@ export async function performSentimentAnalysisServer(
   }
 
   const allResults: SentimentResult[] = [];
-  let maxProgress = 10; // Track max progress to prevent going backwards
+  let maxProgress = 10;
+  let serverSuccessRate = 100; // Track server-reported success rate
   
   const updateProgress = (newProgress: number) => {
     if (newProgress > maxProgress) {
@@ -494,7 +495,6 @@ export async function performSentimentAnalysisServer(
       throw new Error(errorData.error || `Analysis failed: ${response.status}`);
     }
 
-    // Handle SSE streaming response
     const reader = response.body?.getReader();
     if (!reader) {
       throw new Error('No response stream available');
@@ -509,9 +509,8 @@ export async function performSentimentAnalysisServer(
 
       buffer += decoder.decode(value, { stream: true });
 
-      // Process complete SSE events
       const lines = buffer.split('\n');
-      buffer = lines.pop() || ''; // Keep incomplete line in buffer
+      buffer = lines.pop() || '';
 
       let currentEvent = '';
       let currentData = '';
@@ -531,7 +530,6 @@ export async function performSentimentAnalysisServer(
                   if (data.type === 'start') {
                     if (onStatus) onStatus(`Analyzing ${data.totalTexts} texts in ${data.totalBatches} batches...`);
                   } else if (data.type === 'batch_start') {
-                    // Use processedCount for accurate progress
                     const progress = 10 + ((data.processedCount || 0) / texts.length) * 80;
                     updateProgress(progress);
                     if (onStatus) onStatus(`Processing batch ${data.batch}/${data.totalBatches}...`);
@@ -539,11 +537,9 @@ export async function performSentimentAnalysisServer(
                   break;
                   
                 case 'batch_complete':
-                  // Add batch results to accumulated results
                   if (data.results && Array.isArray(data.results)) {
                     allResults.push(...data.results);
                   }
-                  // Use actual processed count for accurate progress
                   const progress = 10 + (data.processedCount / data.totalCount) * 80;
                   updateProgress(progress);
                   if (onStatus) onStatus(`Completed batch ${data.batch}/${data.totalBatches} (${data.processedCount}/${data.totalCount} texts)`);
@@ -564,13 +560,16 @@ export async function performSentimentAnalysisServer(
                   break;
                   
                 case 'complete':
-                  // Final results - use these if we didn't accumulate from batches
                   if (allResults.length === 0 && data.results) {
                     allResults.push(...data.results);
                   }
+                  // Track server-reported success rate
+                  if (typeof data.successRate === 'number') {
+                    serverSuccessRate = data.successRate;
+                  }
                   if (onProgress) onProgress(95);
                   if (onStatus) onStatus(`Analysis complete: ${data.processedCount} texts in ${Math.round(data.executionTimeMs / 1000)}s`);
-                  console.log(`[Server] Analysis complete: ${data.processedCount} results in ${data.executionTimeMs}ms`);
+                  console.log(`[Server] Analysis complete: ${data.processedCount} results in ${data.executionTimeMs}ms (${serverSuccessRate}% success)`);
                   break;
               }
             } catch (parseError) {
@@ -588,6 +587,13 @@ export async function performSentimentAnalysisServer(
 
     console.log(`[Server] Streaming complete: ${allResults.length} total results`);
     
+    // Defensive check: if we got suspiciously low results, log a warning
+    const resultRate = (allResults.length / texts.length) * 100;
+    if (resultRate < 50) {
+      console.warn(`[Server] WARNING: Only ${resultRate.toFixed(1)}% of texts returned results`);
+    }
+    
+    // Always return what we have - the edge function now ensures we get results for all texts
     return allResults;
   } catch (error) {
     console.error('[Server] Sentiment analysis error:', error);

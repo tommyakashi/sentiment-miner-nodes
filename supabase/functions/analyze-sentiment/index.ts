@@ -43,8 +43,79 @@ interface AnalysisItem {
   };
 }
 
-const BATCH_SIZE = 100; // Optimized for speed with tool calling reliability
-const PARALLEL_BATCHES = 3; // Process 3 batches concurrently for ~50% faster throughput
+const BATCH_SIZE = 100;
+const PARALLEL_BATCHES = 3;
+
+// Aggressive JSON object extraction - finds all valid objects even in malformed JSON
+function extractJsonObjects(text: string): AnalysisItem[] {
+  const results: AnalysisItem[] = [];
+  
+  // Pattern to match individual result objects
+  const objectPattern = /\{[^{}]*"polarity"\s*:\s*"(positive|neutral|negative)"[^{}]*"bestMatchingNodeId"\s*:\s*"[^"]*"[^{}]*\}/g;
+  const matches = text.match(objectPattern);
+  
+  if (matches) {
+    for (const match of matches) {
+      try {
+        // Try to parse each matched object
+        const obj = JSON.parse(match);
+        if (obj.polarity && obj.bestMatchingNodeId) {
+          results.push({
+            polarity: obj.polarity,
+            polarityScore: typeof obj.polarityScore === 'number' ? obj.polarityScore : 0,
+            bestMatchingNodeId: obj.bestMatchingNodeId,
+            confidence: typeof obj.confidence === 'number' ? obj.confidence : 0.5,
+            kpiScores: {
+              trust: obj.kpiScores?.trust ?? 0,
+              optimism: obj.kpiScores?.optimism ?? 0,
+              frustration: obj.kpiScores?.frustration ?? 0,
+              clarity: obj.kpiScores?.clarity ?? 0,
+              access: obj.kpiScores?.access ?? 0,
+              fairness: obj.kpiScores?.fairness ?? 0,
+            }
+          });
+        }
+      } catch {
+        // Skip malformed objects
+      }
+    }
+  }
+  
+  // If pattern matching failed, try line-by-line extraction
+  if (results.length === 0) {
+    const lines = text.split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('{') && trimmed.includes('polarity')) {
+        try {
+          let cleanLine = trimmed;
+          if (cleanLine.endsWith(',')) cleanLine = cleanLine.slice(0, -1);
+          const obj = JSON.parse(cleanLine);
+          if (obj.polarity && obj.bestMatchingNodeId) {
+            results.push({
+              polarity: obj.polarity,
+              polarityScore: typeof obj.polarityScore === 'number' ? obj.polarityScore : 0,
+              bestMatchingNodeId: obj.bestMatchingNodeId,
+              confidence: typeof obj.confidence === 'number' ? obj.confidence : 0.5,
+              kpiScores: {
+                trust: obj.kpiScores?.trust ?? 0,
+                optimism: obj.kpiScores?.optimism ?? 0,
+                frustration: obj.kpiScores?.frustration ?? 0,
+                clarity: obj.kpiScores?.clarity ?? 0,
+                access: obj.kpiScores?.access ?? 0,
+                fairness: obj.kpiScores?.fairness ?? 0,
+              }
+            });
+          }
+        } catch {
+          // Skip
+        }
+      }
+    }
+  }
+  
+  return results;
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -91,27 +162,32 @@ serve(async (req) => {
       });
     }
 
-    console.log(`[analyze-sentiment] Starting parallel analysis: ${texts.length} texts, ${nodes.length} nodes, batch size ${BATCH_SIZE}, parallelism ${PARALLEL_BATCHES}`);
+    console.log(`[analyze-sentiment] Starting: ${texts.length} texts, ${nodes.length} nodes, batch ${BATCH_SIZE}, parallelism ${PARALLEL_BATCHES}`);
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
-    // Streamlined node list for faster token processing
     const nodesList = nodes.map(n => `${n.id}:"${n.name}"`).join(', ');
-    const systemPrompt = `Sentiment analyzer for research texts. Nodes: [${nodesList}].
-For each text: bestMatchingNodeId (from nodes above), polarity (positive/neutral/negative), polarityScore (-1 to +1), confidence (0-1), kpiScores {trust,optimism,frustration,clarity,access,fairness} (each -1 to +1). Distribute across ALL relevant nodes.`;
+    const systemPrompt = `You are a sentiment analyzer. Nodes: [${nodesList}].
+For each text in order, return EXACTLY one result object with:
+- bestMatchingNodeId: pick from nodes above
+- polarity: "positive", "neutral", or "negative"  
+- polarityScore: -1 to +1
+- confidence: 0 to 1
+- kpiScores: {trust, optimism, frustration, clarity, access, fairness} each -1 to +1
+
+IMPORTANT: Return EXACTLY ${BATCH_SIZE} results for ${BATCH_SIZE} texts, in order.`;
 
     const totalBatches = Math.ceil(texts.length / BATCH_SIZE);
 
-    // Tool definition for structured output
     const analysisTools = [
       {
         type: "function",
         function: {
           name: "submit_analysis_results",
-          description: "Submit the sentiment analysis results for all texts",
+          description: "Submit the sentiment analysis results for all texts in order",
           parameters: {
             type: "object",
             properties: {
@@ -121,9 +197,9 @@ For each text: bestMatchingNodeId (from nodes above), polarity (positive/neutral
                   type: "object",
                   properties: {
                     polarity: { type: "string", enum: ["positive", "neutral", "negative"] },
-                    polarityScore: { type: "number", description: "Score from -1 (negative) to 1 (positive)" },
-                    bestMatchingNodeId: { type: "string", description: "ID of the best matching node" },
-                    confidence: { type: "number", description: "Confidence score from 0 to 1" },
+                    polarityScore: { type: "number" },
+                    bestMatchingNodeId: { type: "string" },
+                    confidence: { type: "number" },
                     kpiScores: {
                       type: "object",
                       properties: {
@@ -147,7 +223,6 @@ For each text: bestMatchingNodeId (from nodes above), polarity (positive/neutral
       }
     ];
 
-    // Create streaming response using Server-Sent Events
     const stream = new ReadableStream({
       async start(controller) {
         const encoder = new TextEncoder();
@@ -157,7 +232,6 @@ For each text: bestMatchingNodeId (from nodes above), polarity (positive/neutral
           controller.enqueue(encoder.encode(message));
         };
 
-        // Send initial progress
         sendEvent('progress', { 
           type: 'start', 
           totalTexts: texts.length, 
@@ -166,12 +240,13 @@ For each text: bestMatchingNodeId (from nodes above), polarity (positive/neutral
 
         const allResults: SentimentResult[] = [];
 
-        // Process a single batch with tool calling
-        async function processBatch(batchIndex: number, batchTexts: string[]): Promise<SentimentResult[]> {
-          console.log(`[analyze-sentiment] Batch ${batchIndex + 1}/${totalBatches} (${batchTexts.length} texts)`);
+        // Process a single batch with aggressive parsing
+        async function processBatch(batchIndex: number, batchTexts: string[], isRetry: boolean = false): Promise<SentimentResult[]> {
+          const retryLabel = isRetry ? ' (retry)' : '';
+          console.log(`[analyze-sentiment] Batch ${batchIndex + 1}/${totalBatches}${retryLabel} (${batchTexts.length} texts)`);
           
-          const textsForPrompt = batchTexts.map((t, i) => `[${i}] "${t.slice(0, 250)}"`).join('\n');
-          const userPrompt = `Analyze ${batchTexts.length} texts:\n${textsForPrompt}`;
+          const textsForPrompt = batchTexts.map((t, i) => `[${i}] "${t.slice(0, 200)}"`).join('\n');
+          const userPrompt = `Analyze these ${batchTexts.length} texts. Return exactly ${batchTexts.length} results in order:\n${textsForPrompt}`;
 
           const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
             method: "POST",
@@ -180,50 +255,53 @@ For each text: bestMatchingNodeId (from nodes above), polarity (positive/neutral
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              model: "google/gemini-2.5-flash-lite",
+              model: "google/gemini-2.5-flash",
               messages: [
                 { role: "system", content: systemPrompt },
                 { role: "user", content: userPrompt }
               ],
               tools: analysisTools,
               tool_choice: { type: "function", function: { name: "submit_analysis_results" } },
-              max_tokens: 25000,
+              max_tokens: 30000,
             }),
           });
 
           if (!response.ok) {
             const errorText = await response.text();
-            console.error(`[analyze-sentiment] AI error batch ${batchIndex + 1}: ${response.status} - ${errorText}`);
+            console.error(`[analyze-sentiment] Batch ${batchIndex + 1} error: ${response.status} - ${errorText.slice(0, 200)}`);
             
-            if (response.status === 429) {
-              throw new Error('rate_limit');
-            }
-            if (response.status === 402) {
-              throw new Error('credits_exhausted');
-            }
+            if (response.status === 429) throw new Error('rate_limit');
+            if (response.status === 402) throw new Error('credits_exhausted');
             throw new Error(`AI request failed: ${response.status}`);
           }
 
           const data = await response.json();
           
-          // Extract results from tool call
           let parsed: AnalysisItem[] = [];
           const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
           
+          // Try 1: Parse from tool call arguments
           if (toolCall?.function?.arguments) {
             try {
               const args = JSON.parse(toolCall.function.arguments);
               parsed = args.results || [];
-              console.log(`[analyze-sentiment] Batch ${batchIndex + 1} tool call: ${parsed.length} results`);
+              console.log(`[analyze-sentiment] Batch ${batchIndex + 1} tool call: ${parsed.length}/${batchTexts.length} results`);
             } catch (toolParseError) {
               console.error(`[analyze-sentiment] Tool parse error batch ${batchIndex + 1}:`, toolParseError);
+              // Try aggressive extraction from malformed tool call
+              const rawArgs = toolCall.function.arguments || '';
+              parsed = extractJsonObjects(rawArgs);
+              if (parsed.length > 0) {
+                console.log(`[analyze-sentiment] Recovered ${parsed.length} from malformed tool call`);
+              }
             }
           }
           
-          // Fallback: try to extract from content if tool call failed
+          // Try 2: Parse from content field
           if (parsed.length === 0) {
             const content = data.choices?.[0]?.message?.content || '';
             if (content) {
+              console.log(`[analyze-sentiment] Batch ${batchIndex + 1} trying content fallback (${content.length} chars)`);
               try {
                 let jsonStr = content.trim();
                 if (jsonStr.includes('```')) {
@@ -231,16 +309,34 @@ For each text: bestMatchingNodeId (from nodes above), polarity (positive/neutral
                   if (match && match[1]) jsonStr = match[1].trim();
                 }
                 const arrayMatch = jsonStr.match(/\[[\s\S]*\]/);
-                if (arrayMatch) jsonStr = arrayMatch[0];
-                parsed = JSON.parse(jsonStr);
-                console.log(`[analyze-sentiment] Batch ${batchIndex + 1} content fallback: ${parsed.length} results`);
+                if (arrayMatch) {
+                  parsed = JSON.parse(arrayMatch[0]);
+                  console.log(`[analyze-sentiment] Content fallback: ${parsed.length} results`);
+                }
               } catch {
-                console.error(`[analyze-sentiment] Fallback parse failed batch ${batchIndex + 1}`);
+                // Try aggressive extraction
+                parsed = extractJsonObjects(content);
+                if (parsed.length > 0) {
+                  console.log(`[analyze-sentiment] Aggressive extraction from content: ${parsed.length} results`);
+                }
               }
             }
           }
 
-          // Map parsed results to full SentimentResult objects
+          // Try 3: If still empty, extract from raw response
+          if (parsed.length === 0) {
+            const rawResponse = JSON.stringify(data);
+            parsed = extractJsonObjects(rawResponse);
+            if (parsed.length > 0) {
+              console.log(`[analyze-sentiment] Last resort extraction: ${parsed.length} results`);
+            }
+          }
+
+          // Log parsing success rate
+          const parseRate = Math.round((parsed.length / batchTexts.length) * 100);
+          console.log(`[analyze-sentiment] Batch ${batchIndex + 1}: ${parsed.length}/${batchTexts.length} parsed (${parseRate}%)`);
+
+          // Map results, using defaults for missing items
           const batchResults: SentimentResult[] = [];
           for (let i = 0; i < batchTexts.length; i++) {
             const result = parsed[i] || {
@@ -274,21 +370,52 @@ For each text: bestMatchingNodeId (from nodes above), polarity (positive/neutral
           return batchResults;
         }
 
-        // Wrapper with single retry for transient failures
+        // Wrapper with retry for empty/low results
         async function processBatchWithRetry(batchIndex: number, batchTexts: string[]): Promise<SentimentResult[]> {
           try {
-            return await processBatch(batchIndex, batchTexts);
+            const results = await processBatch(batchIndex, batchTexts, false);
+            
+            // Count how many results have actual analysis (not just defaults)
+            const analyzedCount = results.filter(r => r.confidence > 0.3).length;
+            const successRate = analyzedCount / batchTexts.length;
+            
+            // If less than 50% were actually analyzed, retry once
+            if (successRate < 0.5 && batchTexts.length > 0) {
+              console.log(`[analyze-sentiment] Batch ${batchIndex + 1} low success (${Math.round(successRate * 100)}%), retrying...`);
+              const retryResults = await processBatch(batchIndex, batchTexts, true);
+              const retryAnalyzedCount = retryResults.filter(r => r.confidence > 0.3).length;
+              
+              // Use retry if better
+              if (retryAnalyzedCount > analyzedCount) {
+                console.log(`[analyze-sentiment] Retry improved: ${retryAnalyzedCount} vs ${analyzedCount}`);
+                return retryResults;
+              }
+            }
+            
+            return results;
           } catch (error) {
-            // Don't retry rate limits or credit exhaustion
             if (error instanceof Error && (error.message === 'rate_limit' || error.message === 'credits_exhausted')) {
               throw error;
             }
-            console.log(`[analyze-sentiment] Retrying batch ${batchIndex + 1}...`);
-            return await processBatch(batchIndex, batchTexts);
+            console.log(`[analyze-sentiment] Batch ${batchIndex + 1} failed, retrying...`);
+            try {
+              return await processBatch(batchIndex, batchTexts, true);
+            } catch (retryError) {
+              console.error(`[analyze-sentiment] Batch ${batchIndex + 1} retry also failed`);
+              // Return default results rather than failing completely
+              return batchTexts.map(text => ({
+                text,
+                nodeId: nodes[0].id,
+                nodeName: nodes[0].name,
+                polarity: 'neutral' as const,
+                polarityScore: 0,
+                kpiScores: { trust: 0, optimism: 0, frustration: 0, clarity: 0, access: 0, fairness: 0 },
+                confidence: 0.1,
+              }));
+            }
           }
         }
 
-        // Process batches in parallel groups
         let rateLimited = false;
         let creditsExhausted = false;
 
@@ -296,12 +423,10 @@ For each text: bestMatchingNodeId (from nodes above), polarity (positive/neutral
           const groupEnd = Math.min(groupStart + PARALLEL_BATCHES, totalBatches);
           const batchPromises: Promise<{ batchIndex: number; results: SentimentResult[] }>[] = [];
 
-          // Create batch promises for this parallel group
           for (let batchIndex = groupStart; batchIndex < groupEnd; batchIndex++) {
             const startIdx = batchIndex * BATCH_SIZE;
             const batchTexts = texts.slice(startIdx, startIdx + BATCH_SIZE);
             
-            // Send batch progress
             sendEvent('progress', { 
               type: 'batch_start', 
               batch: batchIndex + 1, 
@@ -337,15 +462,12 @@ For each text: bestMatchingNodeId (from nodes above), polarity (positive/neutral
             );
           }
 
-          // Wait for all batches in this parallel group
           const batchResultsArray = await Promise.all(batchPromises);
 
-          // Process results in order
           for (const { batchIndex, results } of batchResultsArray.sort((a, b) => a.batchIndex - b.batchIndex)) {
             if (results.length > 0) {
               allResults.push(...results);
               
-              // Stream batch results
               sendEvent('batch_complete', { 
                 batch: batchIndex + 1, 
                 totalBatches,
@@ -358,14 +480,19 @@ For each text: bestMatchingNodeId (from nodes above), polarity (positive/neutral
         }
 
         const totalTime = Date.now() - startTime;
-        console.log(`[analyze-sentiment] Complete: ${allResults.length} results in ${totalTime}ms`);
+        
+        // Calculate actual analysis success rate
+        const analyzedResults = allResults.filter(r => r.confidence > 0.3);
+        const successRate = Math.round((analyzedResults.length / texts.length) * 100);
+        
+        console.log(`[analyze-sentiment] Complete: ${allResults.length}/${texts.length} results (${successRate}% analyzed) in ${totalTime}ms`);
 
-        // Send final completion event
         sendEvent('complete', { 
           results: allResults,
           processedCount: allResults.length,
           totalCount: texts.length,
-          executionTimeMs: totalTime
+          executionTimeMs: totalTime,
+          successRate
         });
 
         controller.close();
