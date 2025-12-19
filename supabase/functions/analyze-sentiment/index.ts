@@ -29,22 +29,17 @@ interface SentimentResult {
 }
 
 interface AnalysisItem {
-  polarity: 'positive' | 'neutral' | 'negative';
-  polarityScore: number;
-  bestMatchingNodeId: string;
-  confidence: number;
-  kpiScores: {
-    trust: number;
-    optimism: number;
-    frustration: number;
-    clarity: number;
-    access: number;
-    fairness: number;
-  };
+  p: 'pos' | 'neu' | 'neg'; // polarity shorthand
+  s: number; // polarityScore
+  n: string; // bestMatchingNodeId
+  c: number; // confidence
+  k: [number, number, number, number, number, number]; // [trust, optimism, frustration, clarity, access, fairness]
 }
 
-const BATCH_SIZE = 50; // Smaller batches for faster individual completion
-const PARALLEL_BATCHES = 5; // Increased parallelism to compensate for smaller batches
+// SPEED OPTIMIZED: Large batches + high parallelism + fastest model
+const BATCH_SIZE = 100;
+const PARALLEL_BATCHES = 8;
+const MAX_TEXT_LENGTH = 100; // Truncate texts aggressively
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -91,63 +86,22 @@ serve(async (req) => {
       });
     }
 
-    console.log(`[analyze-sentiment] Starting parallel analysis: ${texts.length} texts, ${nodes.length} nodes, batch size ${BATCH_SIZE}, parallelism ${PARALLEL_BATCHES}`);
+    console.log(`[analyze-sentiment] Starting: ${texts.length} texts, ${nodes.length} nodes`);
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
-    // Streamlined node list for faster token processing
-    const nodesList = nodes.map(n => `${n.id}:"${n.name}"`).join(', ');
-    const systemPrompt = `Sentiment analyzer for research texts. Nodes: [${nodesList}].
-For each text: bestMatchingNodeId (from nodes above), polarity (positive/neutral/negative), polarityScore (-1 to +1), confidence (0-1), kpiScores {trust,optimism,frustration,clarity,access,fairness} (each -1 to +1). Distribute across ALL relevant nodes.`;
+    // Compact node reference
+    const nodeIds = nodes.map(n => n.id).join(',');
+    
+    // Ultra-compact system prompt for speed
+    const systemPrompt = `Analyze sentiment. Nodes:[${nodeIds}]. Return JSON array. Each item:{p:"pos"/"neu"/"neg",s:float(-1to1),n:"nodeId",c:float(0to1),k:[trust,opt,frust,clar,acc,fair]}. k values -1to1. No explanation.`;
 
     const totalBatches = Math.ceil(texts.length / BATCH_SIZE);
 
-    // Tool definition for structured output
-    const analysisTools = [
-      {
-        type: "function",
-        function: {
-          name: "submit_analysis_results",
-          description: "Submit the sentiment analysis results for all texts",
-          parameters: {
-            type: "object",
-            properties: {
-              results: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    polarity: { type: "string", enum: ["positive", "neutral", "negative"] },
-                    polarityScore: { type: "number", description: "Score from -1 (negative) to 1 (positive)" },
-                    bestMatchingNodeId: { type: "string", description: "ID of the best matching node" },
-                    confidence: { type: "number", description: "Confidence score from 0 to 1" },
-                    kpiScores: {
-                      type: "object",
-                      properties: {
-                        trust: { type: "number" },
-                        optimism: { type: "number" },
-                        frustration: { type: "number" },
-                        clarity: { type: "number" },
-                        access: { type: "number" },
-                        fairness: { type: "number" }
-                      },
-                      required: ["trust", "optimism", "frustration", "clarity", "access", "fairness"]
-                    }
-                  },
-                  required: ["polarity", "polarityScore", "bestMatchingNodeId", "confidence", "kpiScores"]
-                }
-              }
-            },
-            required: ["results"]
-          }
-        }
-      }
-    ];
-
-    // Create streaming response using Server-Sent Events
+    // Create streaming response
     const stream = new ReadableStream({
       async start(controller) {
         const encoder = new TextEncoder();
@@ -157,22 +111,15 @@ For each text: bestMatchingNodeId (from nodes above), polarity (positive/neutral
           controller.enqueue(encoder.encode(message));
         };
 
-        // Send initial progress
-        sendEvent('progress', { 
-          type: 'start', 
-          totalTexts: texts.length, 
-          totalBatches 
-        });
+        sendEvent('progress', { type: 'start', totalTexts: texts.length, totalBatches });
 
         const allResults: SentimentResult[] = [];
 
-        // Process a single batch with tool calling
+        // Process a single batch - NO TOOL CALLING for speed
         async function processBatch(batchIndex: number, batchTexts: string[]): Promise<SentimentResult[]> {
-          console.log(`[analyze-sentiment] Batch ${batchIndex + 1}/${totalBatches} (${batchTexts.length} texts)`);
+          // Truncate texts aggressively for speed
+          const textsForPrompt = batchTexts.map((t, i) => `${i}:"${t.slice(0, MAX_TEXT_LENGTH)}"`).join('\n');
           
-          const textsForPrompt = batchTexts.map((t, i) => `[${i}] "${t.slice(0, 250)}"`).join('\n');
-          const userPrompt = `Analyze ${batchTexts.length} texts:\n${textsForPrompt}`;
-
           const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
             method: "POST",
             headers: {
@@ -180,110 +127,96 @@ For each text: bestMatchingNodeId (from nodes above), polarity (positive/neutral
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              model: "google/gemini-2.5-flash",
+              model: "google/gemini-2.5-flash-lite", // FASTEST model
               messages: [
                 { role: "system", content: systemPrompt },
-                { role: "user", content: userPrompt }
+                { role: "user", content: textsForPrompt }
               ],
-              tools: analysisTools,
-              tool_choice: { type: "function", function: { name: "submit_analysis_results" } },
-              max_tokens: 25000,
+              max_tokens: 6000, // Reduced for speed
             }),
           });
 
           if (!response.ok) {
             const errorText = await response.text();
-            console.error(`[analyze-sentiment] AI error batch ${batchIndex + 1}: ${response.status} - ${errorText}`);
+            console.error(`[analyze-sentiment] Batch ${batchIndex + 1} error: ${response.status}`);
             
-            if (response.status === 429) {
-              throw new Error('rate_limit');
-            }
-            if (response.status === 402) {
-              throw new Error('credits_exhausted');
-            }
+            if (response.status === 429) throw new Error('rate_limit');
+            if (response.status === 402) throw new Error('credits_exhausted');
             throw new Error(`AI request failed: ${response.status}`);
           }
 
           const data = await response.json();
+          const content = data.choices?.[0]?.message?.content || '';
           
-          // Extract results from tool call
+          // Parse compact JSON response
           let parsed: AnalysisItem[] = [];
-          const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
-          
-          if (toolCall?.function?.arguments) {
-            try {
-              const args = JSON.parse(toolCall.function.arguments);
-              parsed = args.results || [];
-              console.log(`[analyze-sentiment] Batch ${batchIndex + 1} tool call: ${parsed.length} results`);
-            } catch (toolParseError) {
-              console.error(`[analyze-sentiment] Tool parse error batch ${batchIndex + 1}:`, toolParseError);
+          try {
+            let jsonStr = content.trim();
+            // Extract JSON array from response
+            if (jsonStr.includes('```')) {
+              const match = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+              if (match?.[1]) jsonStr = match[1].trim();
             }
-          }
-          
-          // Fallback: try to extract from content if tool call failed
-          if (parsed.length === 0) {
-            const content = data.choices?.[0]?.message?.content || '';
-            if (content) {
-              try {
-                let jsonStr = content.trim();
-                if (jsonStr.includes('```')) {
-                  const match = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
-                  if (match && match[1]) jsonStr = match[1].trim();
-                }
-                const arrayMatch = jsonStr.match(/\[[\s\S]*\]/);
-                if (arrayMatch) jsonStr = arrayMatch[0];
-                parsed = JSON.parse(jsonStr);
-                console.log(`[analyze-sentiment] Batch ${batchIndex + 1} content fallback: ${parsed.length} results`);
-              } catch {
-                console.error(`[analyze-sentiment] Fallback parse failed batch ${batchIndex + 1}`);
-              }
-            }
+            const arrayMatch = jsonStr.match(/\[[\s\S]*\]/);
+            if (arrayMatch) jsonStr = arrayMatch[0];
+            parsed = JSON.parse(jsonStr);
+            console.log(`[analyze-sentiment] Batch ${batchIndex + 1}: ${parsed.length} results`);
+          } catch (e) {
+            console.error(`[analyze-sentiment] Parse error batch ${batchIndex + 1}:`, e);
           }
 
-          // Map parsed results to full SentimentResult objects
+          // Map compact results to full format
           const batchResults: SentimentResult[] = [];
           for (let i = 0; i < batchTexts.length; i++) {
-            const result = parsed[i] || {
-              polarity: 'neutral' as const,
-              polarityScore: 0,
-              bestMatchingNodeId: nodes[0].id,
-              confidence: 0.3,
-              kpiScores: { trust: 0, optimism: 0, frustration: 0, clarity: 0, access: 0, fairness: 0 }
-            };
-
-            const matchedNode = nodes.find(n => n.id === result.bestMatchingNodeId) || nodes[0];
-
-            batchResults.push({
-              text: batchTexts[i],
-              nodeId: matchedNode.id,
-              nodeName: matchedNode.name,
-              polarity: result.polarity || 'neutral',
-              polarityScore: typeof result.polarityScore === 'number' ? result.polarityScore : 0,
-              kpiScores: {
-                trust: result.kpiScores?.trust ?? 0,
-                optimism: result.kpiScores?.optimism ?? 0,
-                frustration: result.kpiScores?.frustration ?? 0,
-                clarity: result.kpiScores?.clarity ?? 0,
-                access: result.kpiScores?.access ?? 0,
-                fairness: result.kpiScores?.fairness ?? 0,
-              },
-              confidence: typeof result.confidence === 'number' ? Math.min(0.95, result.confidence) : 0.3,
-            });
+            const r = parsed[i];
+            const defaultKpi = { trust: 0, optimism: 0, frustration: 0, clarity: 0, access: 0, fairness: 0 };
+            
+            if (r) {
+              const matchedNode = nodes.find(n => n.id === r.n) || nodes[0];
+              const polarityMap = { pos: 'positive', neu: 'neutral', neg: 'negative' } as const;
+              
+              batchResults.push({
+                text: batchTexts[i],
+                nodeId: matchedNode.id,
+                nodeName: matchedNode.name,
+                polarity: polarityMap[r.p] || 'neutral',
+                polarityScore: typeof r.s === 'number' ? r.s : 0,
+                kpiScores: Array.isArray(r.k) ? {
+                  trust: r.k[0] ?? 0,
+                  optimism: r.k[1] ?? 0,
+                  frustration: r.k[2] ?? 0,
+                  clarity: r.k[3] ?? 0,
+                  access: r.k[4] ?? 0,
+                  fairness: r.k[5] ?? 0,
+                } : defaultKpi,
+                confidence: typeof r.c === 'number' ? Math.min(0.95, r.c) : 0.5,
+              });
+            } else {
+              // Fallback for missing results
+              batchResults.push({
+                text: batchTexts[i],
+                nodeId: nodes[0].id,
+                nodeName: nodes[0].name,
+                polarity: 'neutral',
+                polarityScore: 0,
+                kpiScores: defaultKpi,
+                confidence: 0.3,
+              });
+            }
           }
 
           return batchResults;
         }
 
-        // Wrapper with single retry for transient failures
+        // Wrapper with retry
         async function processBatchWithRetry(batchIndex: number, batchTexts: string[]): Promise<SentimentResult[]> {
           try {
             return await processBatch(batchIndex, batchTexts);
           } catch (error) {
-            // Don't retry rate limits or credit exhaustion
             if (error instanceof Error && (error.message === 'rate_limit' || error.message === 'credits_exhausted')) {
               throw error;
             }
-            console.log(`[analyze-sentiment] Retrying batch ${batchIndex + 1}...`);
+            console.log(`[analyze-sentiment] Retry batch ${batchIndex + 1}`);
             return await processBatch(batchIndex, batchTexts);
           }
         }
@@ -296,18 +229,11 @@ For each text: bestMatchingNodeId (from nodes above), polarity (positive/neutral
           const groupEnd = Math.min(groupStart + PARALLEL_BATCHES, totalBatches);
           const batchPromises: Promise<{ batchIndex: number; results: SentimentResult[] }>[] = [];
 
-          // Create batch promises for this parallel group
           for (let batchIndex = groupStart; batchIndex < groupEnd; batchIndex++) {
             const startIdx = batchIndex * BATCH_SIZE;
             const batchTexts = texts.slice(startIdx, startIdx + BATCH_SIZE);
             
-            // Send batch progress
-            sendEvent('progress', { 
-              type: 'batch_start', 
-              batch: batchIndex + 1, 
-              totalBatches,
-              processedCount: allResults.length
-            });
+            sendEvent('progress', { type: 'batch_start', batch: batchIndex + 1, totalBatches });
 
             batchPromises.push(
               processBatchWithRetry(batchIndex, batchTexts)
@@ -315,41 +241,25 @@ For each text: bestMatchingNodeId (from nodes above), polarity (positive/neutral
                 .catch(error => {
                   if (error.message === 'rate_limit') {
                     rateLimited = true;
-                    sendEvent('error', { 
-                      type: 'rate_limit', 
-                      message: 'Rate limited, returning partial results',
-                      partialResults: allResults.length
-                    });
+                    sendEvent('error', { type: 'rate_limit', message: 'Rate limited' });
                   } else if (error.message === 'credits_exhausted') {
                     creditsExhausted = true;
-                    sendEvent('error', { 
-                      type: 'credits_exhausted', 
-                      message: 'AI credits exhausted'
-                    });
-                  } else {
-                    sendEvent('batch_error', { 
-                      batch: batchIndex + 1, 
-                      error: error.message 
-                    });
+                    sendEvent('error', { type: 'credits_exhausted', message: 'Credits exhausted' });
                   }
                   return { batchIndex, results: [] };
                 })
             );
           }
 
-          // Wait for all batches in this parallel group
           const batchResultsArray = await Promise.all(batchPromises);
 
-          // Process results in order
           for (const { batchIndex, results } of batchResultsArray.sort((a, b) => a.batchIndex - b.batchIndex)) {
             if (results.length > 0) {
               allResults.push(...results);
-              
-              // Stream batch results
               sendEvent('batch_complete', { 
                 batch: batchIndex + 1, 
                 totalBatches,
-                results: results,
+                results,
                 processedCount: allResults.length,
                 totalCount: texts.length
               });
@@ -358,9 +268,8 @@ For each text: bestMatchingNodeId (from nodes above), polarity (positive/neutral
         }
 
         const totalTime = Date.now() - startTime;
-        console.log(`[analyze-sentiment] Complete: ${allResults.length} results in ${totalTime}ms`);
+        console.log(`[analyze-sentiment] Done: ${allResults.length} in ${totalTime}ms`);
 
-        // Send final completion event
         sendEvent('complete', { 
           results: allResults,
           processedCount: allResults.length,
