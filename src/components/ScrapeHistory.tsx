@@ -30,28 +30,30 @@ export function ScrapeHistory({ onLoadScrape }: ScrapeHistoryProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const { toast } = useToast();
   const { savedPosts, unsavePost } = useSavedPosts();
-  const { scrapes, isLoading, deleteScrape, getScrapeData } = useScrapeHistory();
+  const { scrapes, isLoading, deleteScrape, getScrapeData, hasData } = useScrapeHistory();
 
   const handleLoadScrape = (scrape: ScrapeRecord) => {
     setSelectedId(scrape.id);
     
-    const posts = scrape.content?.posts || [];
-    const comments = scrape.content?.comments || [];
-    const allData = [...posts, ...comments] as RedditData[];
+    // Try to get data from memory cache
+    const allData = getScrapeData(scrape.id);
 
-    if (allData.length === 0) {
+    if (!allData || allData.length === 0) {
       toast({
-        title: 'No data',
-        description: 'This scrape contains no data to analyze',
+        title: 'Data not available',
+        description: 'Scrape data is only available during the current session. Please run a new scrape.',
         variant: 'destructive',
       });
       return;
     }
 
+    const postCount = scrape.metadata?.postCount || 0;
+    const commentCount = scrape.metadata?.commentCount || 0;
+    
     onLoadScrape(allData);
     toast({
       title: 'Data loaded',
-      description: `Loaded ${posts.length} posts and ${comments.length} comments`,
+      description: `Loaded ${postCount} posts and ${commentCount} comments`,
     });
   };
 
@@ -209,11 +211,12 @@ export function ScrapeHistory({ onLoadScrape }: ScrapeHistoryProps) {
         <ScrollArea className="h-[400px]">
           <div className="space-y-3 pr-4">
             {scrapes.map((scrape) => {
-              const posts = scrape.content?.posts?.length || 0;
-              const comments = scrape.content?.comments?.length || 0;
-              const topSubs = getTopSubreddits(scrape.content?.subredditStats);
+              const posts = scrape.metadata?.postCount || 0;
+              const comments = scrape.metadata?.commentCount || 0;
+              const topSubs = getTopSubreddits(scrape.metadata?.subredditStats);
               const isSelected = selectedId === scrape.id;
               const isScheduled = scrape.name.includes('Scheduled');
+              const dataAvailable = hasData(scrape.id);
 
               return (
                 <div
@@ -222,6 +225,7 @@ export function ScrapeHistory({ onLoadScrape }: ScrapeHistoryProps) {
                     p-4 rounded-lg border cursor-pointer transition-all
                     hover:border-primary/50 hover:bg-muted/30
                     ${isSelected ? 'border-primary bg-primary/5' : 'border-border'}
+                    ${!dataAvailable ? 'opacity-60' : ''}
                   `}
                   onClick={() => handleLoadScrape(scrape)}
                 >
@@ -229,8 +233,13 @@ export function ScrapeHistory({ onLoadScrape }: ScrapeHistoryProps) {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <Badge variant={isScheduled ? 'secondary' : 'outline'} className="text-xs">
-                          {isScheduled ? '⏰ Scheduled' : getTimeRangeLabel(scrape.content?.timeRange)}
+                          {isScheduled ? '⏰ Scheduled' : getTimeRangeLabel(scrape.metadata?.timeRange)}
                         </Badge>
+                        {!dataAvailable && (
+                          <Badge variant="secondary" className="text-xs bg-muted text-muted-foreground">
+                            Session expired
+                          </Badge>
+                        )}
                         <span className="text-xs text-muted-foreground flex items-center gap-1">
                           <Calendar className="w-3 h-3" />
                           {formatDistanceToNow(new Date(scrape.created_at), { addSuffix: true })}
@@ -255,9 +264,9 @@ export function ScrapeHistory({ onLoadScrape }: ScrapeHistoryProps) {
                               r/{sub}
                             </Badge>
                           ))}
-                          {(scrape.content?.totalSubreddits || 0) > 3 && (
+                          {(scrape.metadata?.totalSubreddits || 0) > 3 && (
                             <span className="text-xs text-muted-foreground">
-                              +{(scrape.content?.totalSubreddits || 0) - 3} more
+                              +{(scrape.metadata?.totalSubreddits || 0) - 3} more
                             </span>
                           )}
                         </div>
