@@ -100,40 +100,40 @@ const detectPerformanceTier = (): PerformanceTier => {
   
   if (isMobile) {
     return {
-      milkyWayStars: 150,
-      bulgeStars: 40,
-      backgroundStars: 30,
-      dustLanes: 2,
-      nebulae: 3,
-      targetFps: 24,
-      canvasScale: 0.4,
+      milkyWayStars: 300,
+      bulgeStars: 80,
+      backgroundStars: 60,
+      dustLanes: 3,
+      nebulae: 5,
+      targetFps: 30,
+      canvasScale: 0.6,
       useSimpleStars: true,
     };
   }
   
   if (isLowEndDevice || isSafari) {
     return {
-      milkyWayStars: 250,
-      bulgeStars: 60,
-      backgroundStars: 50,
-      dustLanes: 2,
-      nebulae: 4,
-      targetFps: 30,
-      canvasScale: 0.5,
+      milkyWayStars: 600,
+      bulgeStars: 150,
+      backgroundStars: 120,
+      dustLanes: 4,
+      nebulae: 8,
+      targetFps: 45,
+      canvasScale: isHighDPI ? 0.65 : 0.85,
       useSimpleStars: true,
     };
   }
   
-  // High-end device - reduced for better performance
+  // High-end device
   return {
-    milkyWayStars: 400,
-    bulgeStars: 100,
-    backgroundStars: 80,
-    dustLanes: 3,
-    nebulae: 6,
-    targetFps: 30,
-    canvasScale: isHighDPI ? 0.5 : 0.75,
-    useSimpleStars: true,
+    milkyWayStars: 1200,
+    bulgeStars: 400,
+    backgroundStars: 250,
+    dustLanes: 5,
+    nebulae: 12,
+    targetFps: 60,
+    canvasScale: isHighDPI ? 0.75 : 1,
+    useSimpleStars: false,
   };
 };
 

@@ -527,13 +527,13 @@ export async function performSentimentAnalysisServer(
               const data = JSON.parse(currentData);
               
               switch (currentEvent) {
-              case 'progress':
+                case 'progress':
                   if (data.type === 'start') {
                     if (onStatus) onStatus(`Analyzing ${data.totalTexts} texts in ${data.totalBatches} batches...`);
                   } else if (data.type === 'batch_start') {
-                    // Calculate progress based on batch number (since processedCount is 0 at start)
-                    const batchProgress = ((data.batch - 1) / data.totalBatches) * 80;
-                    updateProgress(10 + batchProgress);
+                    // Use processedCount for accurate progress
+                    const progress = 10 + ((data.processedCount || 0) / texts.length) * 80;
+                    updateProgress(progress);
                     if (onStatus) onStatus(`Processing batch ${data.batch}/${data.totalBatches}...`);
                   }
                   break;
@@ -543,10 +543,10 @@ export async function performSentimentAnalysisServer(
                   if (data.results && Array.isArray(data.results)) {
                     allResults.push(...data.results);
                   }
-                  // Use batch completion for smooth progress (processedCount may be accumulated incorrectly)
-                  const batchCompleteProgress = (data.batch / data.totalBatches) * 80;
-                  updateProgress(10 + batchCompleteProgress);
-                  if (onStatus) onStatus(`Completed batch ${data.batch}/${data.totalBatches} (${allResults.length} texts analyzed)`);
+                  // Use actual processed count for accurate progress
+                  const progress = 10 + (data.processedCount / data.totalCount) * 80;
+                  updateProgress(progress);
+                  if (onStatus) onStatus(`Completed batch ${data.batch}/${data.totalBatches} (${data.processedCount}/${data.totalCount} texts)`);
                   console.log(`[Server] Batch ${data.batch} complete: ${data.results?.length || 0} results, total: ${allResults.length}`);
                   break;
                   
