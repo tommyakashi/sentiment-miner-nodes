@@ -501,85 +501,121 @@ export async function performSentimentAnalysisServer(
     }
 
     const decoder = new TextDecoder();
-    let buffer = '';
+    let sseBuffer = '';
 
+    const handleSseEvent = (eventName: string, dataStr: string) => {
+      if (!eventName || !dataStr) return;
+
+      try {
+        const data = JSON.parse(dataStr);
+
+        switch (eventName) {
+          case 'progress':
+            if (data.type === 'start') {
+              if (onStatus) onStatus(`Analyzing ${data.totalTexts} texts in ${data.totalBatches} batches...`);
+            } else if (data.type === 'batch_start') {
+              const progress = 10 + ((data.processedCount || 0) / texts.length) * 80;
+              updateProgress(progress);
+              if (onStatus) onStatus(`Processing batch ${data.batch}/${data.totalBatches}...`);
+            }
+            break;
+
+          case 'batch_complete':
+            if (data.results && Array.isArray(data.results)) {
+              allResults.push(...data.results);
+            }
+            if (typeof data.processedCount === 'number' && typeof data.totalCount === 'number' && data.totalCount > 0) {
+              const progress = 10 + (data.processedCount / data.totalCount) * 80;
+              updateProgress(progress);
+            }
+            if (onStatus && data.batch && data.totalBatches && data.processedCount && data.totalCount) {
+              onStatus(`Completed batch ${data.batch}/${data.totalBatches} (${data.processedCount}/${data.totalCount} texts)`);
+            }
+            console.log(`[Server] Batch ${data.batch} complete: ${data.results?.length || 0} results, total: ${allResults.length}`);
+            break;
+
+          case 'batch_error':
+            console.error(`[Server] Batch ${data.batch} error:`, data.error);
+            break;
+
+          case 'error':
+            if (data.type === 'rate_limit') {
+              console.warn('[Server] Rate limited, returning partial results');
+              if (onStatus) onStatus('Rate limited - returning partial results');
+            } else if (data.type === 'credits_exhausted') {
+              throw new Error('AI credits exhausted. Please add credits to continue.');
+            }
+            break;
+
+          case 'complete':
+            if (allResults.length === 0 && data.results) {
+              allResults.push(...data.results);
+            }
+            // Track server-reported success rate
+            if (typeof data.successRate === 'number') {
+              serverSuccessRate = data.successRate;
+            }
+            if (onProgress) onProgress(95);
+            if (onStatus) {
+              onStatus(`Analysis complete: ${data.processedCount} texts in ${Math.round((data.executionTimeMs || 0) / 1000)}s`);
+            }
+            console.log(`[Server] Analysis complete: ${data.processedCount} results in ${data.executionTimeMs}ms (${serverSuccessRate}% success)`);
+            break;
+        }
+      } catch (parseError) {
+        console.warn('[Server] Failed to parse SSE data:', { eventName, dataStr: dataStr.slice(0, 200) });
+      }
+    };
+
+    // Robust SSE parsing across chunk boundaries:
+    // - SSE events are delimited by a blank line ("\n\n")
+    // - Each event may contain multiple data lines
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
 
-      buffer += decoder.decode(value, { stream: true });
+      sseBuffer += decoder.decode(value, { stream: true });
+      sseBuffer = sseBuffer.replace(/\r\n/g, '\n');
 
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
+      let delimiterIndex: number;
+      while ((delimiterIndex = sseBuffer.indexOf('\n\n')) !== -1) {
+        const rawEvent = sseBuffer.slice(0, delimiterIndex);
+        sseBuffer = sseBuffer.slice(delimiterIndex + 2);
 
-      let currentEvent = '';
-      let currentData = '';
+        const trimmed = rawEvent.trim();
+        if (!trimmed) continue;
 
-      for (const line of lines) {
-        if (line.startsWith('event: ')) {
-          currentEvent = line.slice(7).trim();
-        } else if (line.startsWith('data: ')) {
-          currentData = line.slice(6).trim();
-          
-          if (currentEvent && currentData) {
-            try {
-              const data = JSON.parse(currentData);
-              
-              switch (currentEvent) {
-                case 'progress':
-                  if (data.type === 'start') {
-                    if (onStatus) onStatus(`Analyzing ${data.totalTexts} texts in ${data.totalBatches} batches...`);
-                  } else if (data.type === 'batch_start') {
-                    const progress = 10 + ((data.processedCount || 0) / texts.length) * 80;
-                    updateProgress(progress);
-                    if (onStatus) onStatus(`Processing batch ${data.batch}/${data.totalBatches}...`);
-                  }
-                  break;
-                  
-                case 'batch_complete':
-                  if (data.results && Array.isArray(data.results)) {
-                    allResults.push(...data.results);
-                  }
-                  const progress = 10 + (data.processedCount / data.totalCount) * 80;
-                  updateProgress(progress);
-                  if (onStatus) onStatus(`Completed batch ${data.batch}/${data.totalBatches} (${data.processedCount}/${data.totalCount} texts)`);
-                  console.log(`[Server] Batch ${data.batch} complete: ${data.results?.length || 0} results, total: ${allResults.length}`);
-                  break;
-                  
-                case 'batch_error':
-                  console.error(`[Server] Batch ${data.batch} error:`, data.error);
-                  break;
-                  
-                case 'error':
-                  if (data.type === 'rate_limit') {
-                    console.warn('[Server] Rate limited, returning partial results');
-                    if (onStatus) onStatus('Rate limited - returning partial results');
-                  } else if (data.type === 'credits_exhausted') {
-                    throw new Error('AI credits exhausted. Please add credits to continue.');
-                  }
-                  break;
-                  
-                case 'complete':
-                  if (allResults.length === 0 && data.results) {
-                    allResults.push(...data.results);
-                  }
-                  // Track server-reported success rate
-                  if (typeof data.successRate === 'number') {
-                    serverSuccessRate = data.successRate;
-                  }
-                  if (onProgress) onProgress(95);
-                  if (onStatus) onStatus(`Analysis complete: ${data.processedCount} texts in ${Math.round(data.executionTimeMs / 1000)}s`);
-                  console.log(`[Server] Analysis complete: ${data.processedCount} results in ${data.executionTimeMs}ms (${serverSuccessRate}% success)`);
-                  break;
-              }
-            } catch (parseError) {
-              console.warn('[Server] Failed to parse SSE data:', currentData);
-            }
+        let eventName = '';
+        const dataLines: string[] = [];
+
+        for (const line of rawEvent.split('\n')) {
+          if (!line) continue;
+          if (line.startsWith(':')) continue; // comment/keepalive
+          if (line.startsWith('event:')) {
+            eventName = line.slice('event:'.length).trim();
+          } else if (line.startsWith('data:')) {
+            dataLines.push(line.slice('data:'.length).trim());
           }
-          currentEvent = '';
-          currentData = '';
         }
+
+        const dataStr = dataLines.join('\n');
+        handleSseEvent(eventName, dataStr);
       }
+    }
+
+    // Flush any trailing (non-delimited) event when the stream ends
+    const leftover = sseBuffer.trim();
+    if (leftover) {
+      let eventName = '';
+      const dataLines: string[] = [];
+      for (const line of leftover.split('\n')) {
+        if (!line) continue;
+        if (line.startsWith(':')) continue;
+        if (line.startsWith('event:')) eventName = line.slice('event:'.length).trim();
+        else if (line.startsWith('data:')) dataLines.push(line.slice('data:'.length).trim());
+      }
+      const dataStr = dataLines.join('\n');
+      handleSseEvent(eventName, dataStr);
     }
 
     if (onStatus) onStatus('Finalizing...');
