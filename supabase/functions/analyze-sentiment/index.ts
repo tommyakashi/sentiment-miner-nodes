@@ -28,18 +28,69 @@ interface SentimentResult {
   confidence: number;
 }
 
-interface AnalysisItem {
-  p: 'pos' | 'neu' | 'neg'; // polarity shorthand
-  s: number; // polarityScore
-  n: string; // bestMatchingNodeId
-  c: number; // confidence
-  k: [number, number, number, number, number, number]; // [trust, optimism, frustration, clarity, access, fairness]
-}
-
 // SPEED OPTIMIZED: Large batches + high parallelism + fastest model
 const BATCH_SIZE = 100;
 const PARALLEL_BATCHES = 8;
-const MAX_TEXT_LENGTH = 100; // Truncate texts aggressively
+const MAX_TEXT_LENGTH = 120;
+
+// Robust JSON repair function
+function repairAndParseJSON(content: string): any[] {
+  let jsonStr = content.trim();
+  
+  // Remove markdown code blocks
+  if (jsonStr.includes('```')) {
+    const match = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (match?.[1]) jsonStr = match[1].trim();
+  }
+  
+  // Extract array portion
+  const arrayStart = jsonStr.indexOf('[');
+  const arrayEnd = jsonStr.lastIndexOf(']');
+  if (arrayStart !== -1 && arrayEnd > arrayStart) {
+    jsonStr = jsonStr.slice(arrayStart, arrayEnd + 1);
+  }
+  
+  // Try direct parse first
+  try {
+    return JSON.parse(jsonStr);
+  } catch (e) {
+    // Attempt repairs
+  }
+  
+  // Fix common issues
+  jsonStr = jsonStr
+    // Fix unquoted property names
+    .replace(/(\{|\,)\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":')
+    // Fix single quotes to double quotes
+    .replace(/'/g, '"')
+    // Fix trailing commas before ] or }
+    .replace(/,\s*([\]\}])/g, '$1')
+    // Fix missing commas between objects
+    .replace(/\}\s*\{/g, '},{')
+    // Remove any control characters
+    .replace(/[\x00-\x1F\x7F]/g, ' ');
+  
+  try {
+    return JSON.parse(jsonStr);
+  } catch (e) {
+    // Last resort: extract individual objects
+  }
+  
+  // Extract individual JSON objects as fallback
+  const results: any[] = [];
+  const objectPattern = /\{[^{}]*\}/g;
+  let match;
+  while ((match = objectPattern.exec(jsonStr)) !== null) {
+    try {
+      const obj = JSON.parse(match[0]);
+      results.push(obj);
+    } catch {
+      // Skip malformed objects
+    }
+  }
+  
+  return results;
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -93,15 +144,27 @@ serve(async (req) => {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
-    // Compact node reference
-    const nodeIds = nodes.map(n => n.id).join(',');
+    // Node mapping for the prompt
+    const nodeIds = nodes.map(n => n.id).join('|');
     
-    // Ultra-compact system prompt for speed
-    const systemPrompt = `Analyze sentiment. Nodes:[${nodeIds}]. Return JSON array. Each item:{p:"pos"/"neu"/"neg",s:float(-1to1),n:"nodeId",c:float(0to1),k:[trust,opt,frust,clar,acc,fair]}. k values -1to1. No explanation.`;
+    // Clear, explicit prompt that produces reliable JSON
+    const systemPrompt = `You are a sentiment analyzer. For each numbered text, output a JSON object on its own line.
+
+Format per text (one JSON object per line, no array wrapper):
+{"i":INDEX,"p":"pos"|"neu"|"neg","s":SCORE,"n":"NODE_ID","c":CONF,"t":T,"o":O,"f":F,"cl":CL,"a":A,"fa":FA}
+
+Fields:
+- i: text index (0-based)
+- p: polarity (pos/neu/neg)
+- s: polarity score (-1 to 1)
+- n: best matching node from [${nodeIds}]
+- c: confidence (0-1)
+- t,o,f,cl,a,fa: trust,optimism,frustration,clarity,access,fairness scores (-1 to 1)
+
+Output ONLY the JSON objects, one per line. No other text.`;
 
     const totalBatches = Math.ceil(texts.length / BATCH_SIZE);
 
-    // Create streaming response
     const stream = new ReadableStream({
       async start(controller) {
         const encoder = new TextEncoder();
@@ -115,10 +178,13 @@ serve(async (req) => {
 
         const allResults: SentimentResult[] = [];
 
-        // Process a single batch - NO TOOL CALLING for speed
         async function processBatch(batchIndex: number, batchTexts: string[]): Promise<SentimentResult[]> {
-          // Truncate texts aggressively for speed
-          const textsForPrompt = batchTexts.map((t, i) => `${i}:"${t.slice(0, MAX_TEXT_LENGTH)}"`).join('\n');
+          // Format texts with clear indexing
+          const textsForPrompt = batchTexts.map((t, i) => {
+            // Clean text: remove quotes and newlines that could break JSON
+            const clean = t.slice(0, MAX_TEXT_LENGTH).replace(/[\n\r"]/g, ' ').trim();
+            return `[${i}] ${clean}`;
+          }).join('\n');
           
           const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
             method: "POST",
@@ -127,19 +193,17 @@ serve(async (req) => {
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              model: "google/gemini-2.5-flash-lite", // FASTEST model
+              model: "google/gemini-2.5-flash-lite",
               messages: [
                 { role: "system", content: systemPrompt },
-                { role: "user", content: textsForPrompt }
+                { role: "user", content: `Analyze these ${batchTexts.length} texts:\n${textsForPrompt}` }
               ],
-              max_tokens: 6000, // Reduced for speed
+              max_tokens: 8000,
             }),
           });
 
           if (!response.ok) {
-            const errorText = await response.text();
             console.error(`[analyze-sentiment] Batch ${batchIndex + 1} error: ${response.status}`);
-            
             if (response.status === 429) throw new Error('rate_limit');
             if (response.status === 402) throw new Error('credits_exhausted');
             throw new Error(`AI request failed: ${response.status}`);
@@ -148,48 +212,72 @@ serve(async (req) => {
           const data = await response.json();
           const content = data.choices?.[0]?.message?.content || '';
           
-          // Parse compact JSON response
-          let parsed: AnalysisItem[] = [];
-          try {
-            let jsonStr = content.trim();
-            // Extract JSON array from response
-            if (jsonStr.includes('```')) {
-              const match = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
-              if (match?.[1]) jsonStr = match[1].trim();
+          // Parse response - try line-by-line first, then array
+          let parsed: any[] = [];
+          
+          // Method 1: Parse line-by-line JSON objects
+          const lines = content.split('\n').filter((l: string) => l.trim().startsWith('{'));
+          if (lines.length > 0) {
+            for (const line of lines) {
+              try {
+                const obj = JSON.parse(line.trim());
+                parsed.push(obj);
+              } catch {
+                // Try to repair single line
+                const repaired = repairAndParseJSON(line);
+                if (repaired.length > 0) parsed.push(...repaired);
+              }
             }
-            const arrayMatch = jsonStr.match(/\[[\s\S]*\]/);
-            if (arrayMatch) jsonStr = arrayMatch[0];
-            parsed = JSON.parse(jsonStr);
-            console.log(`[analyze-sentiment] Batch ${batchIndex + 1}: ${parsed.length} results`);
-          } catch (e) {
-            console.error(`[analyze-sentiment] Parse error batch ${batchIndex + 1}:`, e);
+          }
+          
+          // Method 2: If line parsing failed, try array parsing with repair
+          if (parsed.length === 0) {
+            parsed = repairAndParseJSON(content);
+          }
+          
+          console.log(`[analyze-sentiment] Batch ${batchIndex + 1}: ${parsed.length}/${batchTexts.length} parsed`);
+
+          // Map results by index
+          const resultMap = new Map<number, any>();
+          for (const r of parsed) {
+            const idx = r.i ?? r.index ?? parsed.indexOf(r);
+            if (typeof idx === 'number' && idx >= 0 && idx < batchTexts.length) {
+              resultMap.set(idx, r);
+            }
           }
 
-          // Map compact results to full format
+          // Build final results
           const batchResults: SentimentResult[] = [];
+          const defaultKpi = { trust: 0, optimism: 0, frustration: 0, clarity: 0, access: 0, fairness: 0 };
+          const polarityMap: Record<string, 'positive' | 'neutral' | 'negative'> = { 
+            pos: 'positive', positive: 'positive',
+            neu: 'neutral', neutral: 'neutral',
+            neg: 'negative', negative: 'negative'
+          };
+          
           for (let i = 0; i < batchTexts.length; i++) {
-            const r = parsed[i];
-            const defaultKpi = { trust: 0, optimism: 0, frustration: 0, clarity: 0, access: 0, fairness: 0 };
+            const r = resultMap.get(i) || parsed[i];
             
             if (r) {
-              const matchedNode = nodes.find(n => n.id === r.n) || nodes[0];
-              const polarityMap = { pos: 'positive', neu: 'neutral', neg: 'negative' } as const;
+              const nodeId = r.n || r.node || nodes[0].id;
+              const matchedNode = nodes.find(n => n.id === nodeId) || nodes[0];
+              const pol = r.p || r.polarity || 'neu';
               
               batchResults.push({
                 text: batchTexts[i],
                 nodeId: matchedNode.id,
                 nodeName: matchedNode.name,
-                polarity: polarityMap[r.p] || 'neutral',
-                polarityScore: typeof r.s === 'number' ? r.s : 0,
-                kpiScores: Array.isArray(r.k) ? {
-                  trust: r.k[0] ?? 0,
-                  optimism: r.k[1] ?? 0,
-                  frustration: r.k[2] ?? 0,
-                  clarity: r.k[3] ?? 0,
-                  access: r.k[4] ?? 0,
-                  fairness: r.k[5] ?? 0,
-                } : defaultKpi,
-                confidence: typeof r.c === 'number' ? Math.min(0.95, r.c) : 0.5,
+                polarity: polarityMap[pol] || 'neutral',
+                polarityScore: parseFloat(r.s) || 0,
+                kpiScores: {
+                  trust: parseFloat(r.t) || 0,
+                  optimism: parseFloat(r.o) || 0,
+                  frustration: parseFloat(r.f) || 0,
+                  clarity: parseFloat(r.cl) || 0,
+                  access: parseFloat(r.a) || 0,
+                  fairness: parseFloat(r.fa) || 0,
+                },
+                confidence: Math.min(0.95, parseFloat(r.c) || 0.5),
               });
             } else {
               // Fallback for missing results
@@ -208,7 +296,6 @@ serve(async (req) => {
           return batchResults;
         }
 
-        // Wrapper with retry
         async function processBatchWithRetry(batchIndex: number, batchTexts: string[]): Promise<SentimentResult[]> {
           try {
             return await processBatch(batchIndex, batchTexts);
@@ -221,7 +308,6 @@ serve(async (req) => {
           }
         }
 
-        // Process batches in parallel groups
         let rateLimited = false;
         let creditsExhausted = false;
 
