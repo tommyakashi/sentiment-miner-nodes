@@ -29,17 +29,84 @@ interface SentimentResult {
 }
 
 interface AnalysisItem {
-  p: 'pos' | 'neu' | 'neg'; // polarity shorthand
-  s: number; // polarityScore
-  n: string; // bestMatchingNodeId
-  c: number; // confidence
-  k: [number, number, number, number, number, number]; // [trust, optimism, frustration, clarity, access, fairness]
+  polarity: 'positive' | 'neutral' | 'negative';
+  score: number;
+  node: string;
+  confidence: number;
+  kpi: [number, number, number, number, number, number];
 }
 
 // SPEED OPTIMIZED: Large batches + high parallelism + fastest model
 const BATCH_SIZE = 100;
 const PARALLEL_BATCHES = 8;
-const MAX_TEXT_LENGTH = 100; // Truncate texts aggressively
+const MAX_TEXT_LENGTH = 100;
+
+// Robust JSON parser with repair attempts
+function parseJsonSafely(content: string, expectedCount: number): AnalysisItem[] {
+  let jsonStr = content.trim();
+  
+  // Extract from markdown code blocks
+  if (jsonStr.includes('```')) {
+    const match = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (match?.[1]) jsonStr = match[1].trim();
+  }
+  
+  // Find JSON array
+  const arrayMatch = jsonStr.match(/\[[\s\S]*\]/);
+  if (arrayMatch) jsonStr = arrayMatch[0];
+  
+  // Try direct parse first
+  try {
+    const parsed = JSON.parse(jsonStr);
+    if (Array.isArray(parsed)) return parsed;
+  } catch (e) {
+    // Continue to repair attempts
+  }
+  
+  // Repair attempt 1: Fix trailing commas and missing commas
+  try {
+    let repaired = jsonStr
+      .replace(/,\s*]/g, ']')           // trailing commas before ]
+      .replace(/,\s*}/g, '}')           // trailing commas before }
+      .replace(/}\s*{/g, '},{')         // missing commas between objects
+      .replace(/]\s*\[/g, '],[')        // missing commas between arrays
+      .replace(/"\s*"/g, '","')         // missing commas between strings
+      .replace(/(\d)\s*"/g, '$1,"')     // missing comma after number before string
+      .replace(/"\s*(\d)/g, '",$1');    // missing comma after string before number
+    
+    const parsed = JSON.parse(repaired);
+    if (Array.isArray(parsed)) {
+      console.log(`[analyze-sentiment] JSON repaired successfully`);
+      return parsed;
+    }
+  } catch (e) {
+    // Continue to next repair
+  }
+  
+  // Repair attempt 2: Extract individual objects
+  try {
+    const objectMatches = jsonStr.matchAll(/\{[^{}]*\}/g);
+    const objects: AnalysisItem[] = [];
+    for (const match of objectMatches) {
+      try {
+        const obj = JSON.parse(match[0]);
+        if (obj && (obj.polarity || obj.score !== undefined || obj.node)) {
+          objects.push(obj);
+        }
+      } catch (e) {
+        // Skip malformed objects
+      }
+    }
+    if (objects.length > 0) {
+      console.log(`[analyze-sentiment] Extracted ${objects.length} objects from malformed JSON`);
+      return objects;
+    }
+  } catch (e) {
+    // Fall through to return empty
+  }
+  
+  return [];
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -93,11 +160,13 @@ serve(async (req) => {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
-    // Compact node reference
+    // Node reference for prompt
     const nodeIds = nodes.map(n => n.id).join(',');
     
-    // Ultra-compact system prompt for speed
-    const systemPrompt = `Analyze sentiment. Nodes:[${nodeIds}]. Return JSON array. Each item:{p:"pos"/"neu"/"neg",s:float(-1to1),n:"nodeId",c:float(0to1),k:[trust,opt,frust,clar,acc,fair]}. k values -1to1. No explanation.`;
+    // Clearer prompt format that model handles better
+    const systemPrompt = `Analyze sentiment for each text. Return ONLY a valid JSON array, no explanation.
+Each item: {"polarity":"positive"|"neutral"|"negative","score":-1to1,"node":"nodeId","confidence":0to1,"kpi":[trust,optimism,frustration,clarity,access,fairness]}
+Available nodes: [${nodeIds}]. kpi values range -1 to 1. Return one object per text in order.`;
 
     const totalBatches = Math.ceil(texts.length / BATCH_SIZE);
 
@@ -148,51 +217,38 @@ serve(async (req) => {
           const data = await response.json();
           const content = data.choices?.[0]?.message?.content || '';
           
-          // Parse compact JSON response
-          let parsed: AnalysisItem[] = [];
-          try {
-            let jsonStr = content.trim();
-            // Extract JSON array from response
-            if (jsonStr.includes('```')) {
-              const match = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
-              if (match?.[1]) jsonStr = match[1].trim();
-            }
-            const arrayMatch = jsonStr.match(/\[[\s\S]*\]/);
-            if (arrayMatch) jsonStr = arrayMatch[0];
-            parsed = JSON.parse(jsonStr);
-            console.log(`[analyze-sentiment] Batch ${batchIndex + 1}: ${parsed.length} results`);
-          } catch (e) {
-            console.error(`[analyze-sentiment] Parse error batch ${batchIndex + 1}:`, e);
-          }
+          // Parse with robust repair logic
+          const parsed = parseJsonSafely(content, batchTexts.length);
+          console.log(`[analyze-sentiment] Batch ${batchIndex + 1}: ${parsed.length}/${batchTexts.length} parsed`);
 
-          // Map compact results to full format
+          // Map results to full format with fallbacks
+          const defaultKpi = { trust: 0, optimism: 0, frustration: 0, clarity: 0, access: 0, fairness: 0 };
           const batchResults: SentimentResult[] = [];
+          
           for (let i = 0; i < batchTexts.length; i++) {
             const r = parsed[i];
-            const defaultKpi = { trust: 0, optimism: 0, frustration: 0, clarity: 0, access: 0, fairness: 0 };
             
-            if (r) {
-              const matchedNode = nodes.find(n => n.id === r.n) || nodes[0];
-              const polarityMap = { pos: 'positive', neu: 'neutral', neg: 'negative' } as const;
+            if (r && (r.polarity || r.score !== undefined)) {
+              const matchedNode = nodes.find(n => n.id === r.node) || nodes[0];
               
               batchResults.push({
                 text: batchTexts[i],
                 nodeId: matchedNode.id,
                 nodeName: matchedNode.name,
-                polarity: polarityMap[r.p] || 'neutral',
-                polarityScore: typeof r.s === 'number' ? r.s : 0,
-                kpiScores: Array.isArray(r.k) ? {
-                  trust: r.k[0] ?? 0,
-                  optimism: r.k[1] ?? 0,
-                  frustration: r.k[2] ?? 0,
-                  clarity: r.k[3] ?? 0,
-                  access: r.k[4] ?? 0,
-                  fairness: r.k[5] ?? 0,
+                polarity: ['positive', 'neutral', 'negative'].includes(r.polarity) ? r.polarity : 'neutral',
+                polarityScore: typeof r.score === 'number' ? r.score : 0,
+                kpiScores: Array.isArray(r.kpi) ? {
+                  trust: r.kpi[0] ?? 0,
+                  optimism: r.kpi[1] ?? 0,
+                  frustration: r.kpi[2] ?? 0,
+                  clarity: r.kpi[3] ?? 0,
+                  access: r.kpi[4] ?? 0,
+                  fairness: r.kpi[5] ?? 0,
                 } : defaultKpi,
-                confidence: typeof r.c === 'number' ? Math.min(0.95, r.c) : 0.5,
+                confidence: typeof r.confidence === 'number' ? Math.min(0.95, r.confidence) : 0.5,
               });
             } else {
-              // Fallback for missing results
+              // ALWAYS return a fallback result - never skip
               batchResults.push({
                 text: batchTexts[i],
                 nodeId: nodes[0].id,
@@ -200,7 +256,7 @@ serve(async (req) => {
                 polarity: 'neutral',
                 polarityScore: 0,
                 kpiScores: defaultKpi,
-                confidence: 0.3,
+                confidence: 0.2, // Low confidence for fallback
               });
             }
           }
