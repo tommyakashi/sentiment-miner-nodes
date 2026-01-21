@@ -251,7 +251,13 @@ const Index = () => {
     switch (currentStep) {
       case 'intro':
         return (
-          <div className={`fixed inset-0 z-[100] bg-background flex items-center justify-center transition-opacity duration-[1500ms] ease-out ${introFading ? 'opacity-0' : 'opacity-100'}`}>
+          <div 
+            className={`fixed inset-0 z-[100] flex items-center justify-center transition-all duration-[1500ms] ease-out ${introFading ? 'opacity-0' : 'opacity-100'}`}
+            style={{ 
+              backgroundColor: introFading ? '#030822' : 'hsl(var(--background))',
+              transition: 'background-color 1.5s ease-out, opacity 1.5s ease-out'
+            }}
+          >
             <div className={`transition-opacity duration-[3000ms] ease-in ${logoVisible ? 'opacity-100' : 'opacity-0'}`}>
               <AnimatedLogo />
             </div>
